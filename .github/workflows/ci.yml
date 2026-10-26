@@ -52,5 +52,5 @@ jobs:
       - name: Container logs and cleanup
         if: always()
         run: |
-          docker logs lookpilot-ci 2>/dev/null || true
+          docker logs lookpilot-ci 2>&1 || true
           docker stop lookpilot-ci 2>/dev/null || true

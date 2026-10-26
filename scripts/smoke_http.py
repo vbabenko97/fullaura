@@ -17,7 +17,8 @@ def check(base_url: str) -> None:
             with urlopen(f"{base_url}/api/ready", timeout=2) as response:
                 if json.load(response) == {"status": "ready"}:
                     break
-        except (URLError, TimeoutError):
+        except (URLError, ConnectionError, TimeoutError):
+            # Docker can bind its host port before Uvicorn accepts connections.
             pass
         if time.monotonic() >= deadline:
             raise RuntimeError("Server did not become ready within 30 seconds")
