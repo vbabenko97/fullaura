@@ -15,6 +15,7 @@ data/private/
 uploads/
 runs/
 artifacts/
+tmp/
 *.log
 .DS_Store
 .idea/

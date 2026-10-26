@@ -6,7 +6,7 @@ Personal style plans built around your preferences, budget, and existing wardrob
 
 LookPilot aims to combine outfits, optional hair and beard previews, and links to real products. A plan should remain consistent when you keep an item, change a preference, or lower the budget.
 
-**Status: initial scaffold.** The repository contains a React landing page, a FastAPI server, runtime tests, and a Docker build. Photo uploads, Meta integration, product selection, and personalized previews are planned. There is no hosted product yet.
+**Status: initial scaffold.** The repository contains a React landing page, a FastAPI server, runtime tests, and a Docker build. A Muse Image client and a feasibility test script exist; the test has not run on people yet. Photo uploads, product selection, and personalized previews are planned. There is no hosted product yet.
 
 ## Run locally
 
@@ -30,7 +30,7 @@ npm run dev
 
 Open <http://localhost:5173>. Vite forwards `/api` requests to the backend at port 8000. Development API docs are at <http://localhost:8000/api/docs>.
 
-The scaffold needs no cloud credentials and makes no model calls. `.env` is ignored by Git; the reserved Meta variables are not consumed yet.
+The web app needs no cloud credentials and makes no model calls. Only the feasibility test script ([docs/FEASIBILITY.md](docs/FEASIBILITY.md)) calls Meta, with `MODEL_API_KEY` from `.env`, which Git ignores.
 
 ## Check a change
 
@@ -63,7 +63,9 @@ uv run --frozen python scripts/smoke_http.py
 
 ## Continue development
 
-- [Product scope and next tasks](docs/SCOPE.md)
+- [Product specification](docs/SPEC.md)
+- [Tasks in build order](docs/TASKS.md)
+- [Decision log](docs/DECISIONS.md)
 - [Azure deployment plan](docs/DEPLOYMENT.md)
 - [Data and asset provenance](docs/DATA.md)
 - [Contributor and coding-agent guidance](AGENTS.md)

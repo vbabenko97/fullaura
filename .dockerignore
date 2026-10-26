@@ -12,6 +12,7 @@ data
 uploads
 runs
 artifacts
+tmp
 tests
 docs
 *.log
