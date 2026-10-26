@@ -8,7 +8,7 @@ For each catalog source, record the permission or license, source URL, retrieval
 
 Add public demo assets only after completing this register:
 
-| Asset or dataset | Source | Rights / permission | Attribution | Verified date |
-| --- | --- | --- | --- | --- |
+| Asset or dataset | Source URL | Permission or license | Allowed image use | Attribution | Retrieved |
+| --- | --- | --- | --- | --- | --- |
 
 Model output shown in a recording should include enough run metadata to reproduce the process without exposing a person's original photographs or credentials. Label cached examples and fixtures in the UI and demo.
