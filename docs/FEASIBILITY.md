@@ -58,7 +58,7 @@ If every threshold holds, previews stay as [SPEC.md](SPEC.md#previews) describes
 
 ## How to run
 
-1. Put the photos, the garment images and `cases.json` in `data/private/feasibility/formal/`, or in `exploratory/` for an exploratory run. The format of `cases.json` is at the top of `scripts/feasibility_run.py`.
+1. Put the photos, the garment images and `cases.json` in `data/private/feasibility/formal/`, or in `exploratory/` for an exploratory run. The format of `cases.json` is at the top of `scripts/feasibility_run.py`. Personal photos must be upright JPEGs: the client removes their metadata, such as GPS location, before it sends them.
 2. Check the inputs without calling the API: `uv run --frozen --env-file .env python -m scripts.feasibility_run --dry-run`. For an exploratory run, add `--cases data/private/feasibility/exploratory/cases.json` to this and the next command.
 3. Run the test: `uv run --frozen --env-file .env python -m scripts.feasibility_run --samples 2`. The run's `attempts.jsonl` records the model ID, prompt, input file names, attempts, latency and usage or error of every API call.
 4. Score every produced image in the run's `scores.csv`.
@@ -71,3 +71,10 @@ Each check shows passed / planned images.
 
 | Run | Kind | Date | Produced / planned | Median / p90 latency | Cost | Identity | Lowest subject identity | Proportions | Product details | Edit succeeds | Fails, unassessable, not produced |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 20261026T210402Z | exploratory | 2026-10-26 | 4 / 4 | 12.7 s / 17.0 s | $0.04 | 4 / 4 | 4 / 4 | 4 / 4 | 4 / 4 | 2 / 2 | 0, 0, 0 |
+| 20261026T211334Z | exploratory | 2026-10-26 | 2 / 2 | 15.3 s / 16.5 s | $0.02 | 2 / 2 | 2 / 2 | 2 / 2 | 2 / 2 | none planned | 0, 0, 0 |
+
+Both exploratory runs used the author's portrait and full-body photo, and every call succeeded on the first attempt.
+
+- 20261026T210402Z used a generated product image of a plain navy sweater as the garment, and an edit to a generated burgundy version of it. A plain garment makes the product details check easy.
+- 20261026T211334Z used the catalog photo of a Levi's Classic Worker Overshirt in a black and white check (product 195870289, from lsco.scene7.com), to test whether the check pattern, the two flap pockets, the buttons and the red tab survive. It had no edit. The author judged the proportions not ideal but acceptable and the product details preserved; the number of buttons was not compared with the catalog photo. LookPilot has no permission from the rights holder for this photo, so it is for internal testing only and must not appear in a demo, a recording or the repository.

@@ -42,7 +42,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO
 
-from backend.app.meta_images import ImageRequestError, ImageResult, InputImage, MuseImageClient
+from backend.app.meta_images import (
+    ImageRequestError,
+    ImageResult,
+    InputImage,
+    MuseImageClient,
+    strip_jpeg_metadata,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CASES = ROOT / "data" / "private" / "feasibility" / "formal" / "cases.json"
@@ -76,6 +82,14 @@ def load_cases(path: Path) -> list[dict[str, Any]]:
         unsupported = [name for name in names if mimetypes.guess_type(name)[0] not in IMAGE_TYPES]
         if unsupported:
             raise SystemExit(f"Case {case['id']}: use JPEG, PNG or WebP: {unsupported}")
+        for name in case["photos"]:
+            # The client removes metadata, such as location, from JPEGs only.
+            if mimetypes.guess_type(name)[0] != "image/jpeg":
+                raise SystemExit(f"Case {case['id']}: personal photos must be JPEG: {name}")
+            try:
+                strip_jpeg_metadata((path.parent / name).read_bytes())
+            except ValueError as error:
+                raise SystemExit(f"Case {case['id']}: {name}: {error}") from None
     return cases
 
 
@@ -145,7 +159,10 @@ def summarize(run_dir: Path) -> None:
     if len(rows) != planned:
         raise SystemExit(f"The run has {len(rows)} of {planned} planned rows; it did not finish")
     for check, count in tally(rows).items():
-        share = count["pass"] / count["planned"] if count["planned"] else 0
+        if not count["planned"]:
+            print(f"{check}: no images planned")
+            continue
+        share = count["pass"] / count["planned"]
         print(
             f"{check}: {count['pass']}/{count['planned']} passed ({share:.0%}); "
             f"{count['fail']} failed the check, {count['unassessable']} unassessable, "

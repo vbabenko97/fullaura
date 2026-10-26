@@ -17,6 +17,22 @@ WEBP = b"RIFF\x10\x00\x00\x00WEBPVP8 "
 OK = {"data": [{"b64_json": base64.b64encode(WEBP).decode()}], "usage": {"total_tokens": 7}}
 
 
+def segment(marker: int, payload: bytes) -> bytes:
+    return bytes([0xFF, marker]) + (len(payload) + 2).to_bytes(2, "big") + payload
+
+
+def jpeg(*segments: bytes, tail: bytes = b"") -> bytes:
+    """A JPEG skeleton: start, segments, a scan of fake pixels, end, and anything after it."""
+    return b"\xff\xd8" + b"".join(segments) + b"\xff\xda\x00\x02pixels\xff\xd9" + tail
+
+
+def exif(orientation: int) -> bytes:
+    """An Exif segment with one orientation tag, followed by fake GPS data."""
+    entry = b"\x01\x12\x00\x03\x00\x00\x00\x01" + orientation.to_bytes(2, "big") + b"\x00\x00"
+    tiff = b"MM\x00\x2a\x00\x00\x00\x08\x00\x01" + entry + b"\x00\x00\x00\x00GPS 00.00N 00.00E"
+    return segment(0xE1, b"Exif\x00\x00" + tiff)
+
+
 def http_error(code: int, body: bytes = b"{}") -> HTTPError:
     return HTTPError("https://api.meta.ai/v1/images/edits", code, "error", {}, io.BytesIO(body))
 
@@ -39,12 +55,32 @@ def client(*outcomes: Any) -> tuple[MuseImageClient, list[Request], list[float]]
 
 def test_retries_a_rate_limit_then_returns_the_image_and_usage() -> None:
     images, sent, slept = client(http_error(429), OK)
-    result = images.edit("Swap the shirt", [InputImage(b"jpeg", "image/jpeg")])
+    result = images.edit("Swap the shirt", [InputImage(jpeg(), "image/jpeg")])
     assert (result.image, result.mime_type, result.extension) == (WEBP, "image/webp", "webp")
     assert (result.attempts, result.usage, len(sent), slept) == (2, {"total_tokens": 7}, 2, [2])
     body = json.loads(sent[0].data)
     assert body["response_format"] == "b64_json"
     assert body["images"][0]["image_url"].startswith("data:image/jpeg;base64,")
+
+
+def test_sends_jpeg_pixels_without_location_or_other_metadata() -> None:
+    jfif = segment(0xE0, b"JFIF\x00\x01\x01")
+    color_profile = segment(0xE2, b"ICC_PROFILE\x00\x01\x01profile")
+    tables = segment(0xDB, b"\x00tables")
+    iptc = segment(0xED, b"Photoshop 3.0\x00IPTC")
+    comment = segment(0xFE, b"comment")
+    photo = jpeg(jfif, exif(1), iptc, color_profile, comment, tables, tail=b"\xff\xd8gain map")
+    images, sent, _ = client(OK)
+    images.edit("Swap the shirt", [InputImage(photo, "image/jpeg")])
+    data_uri = json.loads(sent[0].data)["images"][0]["image_url"]
+    assert base64.b64decode(data_uri.split(",", 1)[1]) == jpeg(jfif, color_profile, tables)
+
+
+def test_refuses_a_jpeg_that_relies_on_rotation_metadata() -> None:
+    images, sent, _ = client(OK)
+    with pytest.raises(ValueError, match="upright"):
+        images.edit("Swap the shirt", [InputImage(jpeg(exif(6)), "image/jpeg")])
+    assert sent == []
 
 
 def test_retries_a_connection_reset_while_reading_the_reply() -> None:

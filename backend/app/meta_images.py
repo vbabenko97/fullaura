@@ -1,6 +1,7 @@
 """Muse Image client with explicit timeouts, bounded retries and usage accounting.
 
-Errors and results never carry the API key or image bytes, so callers can log them.
+Errors and results never carry the API key or image bytes, so callers can log them. JPEG
+inputs lose their metadata, such as GPS location, before they are sent.
 """
 
 from __future__ import annotations
@@ -57,6 +58,49 @@ def image_mime_type(data: bytes) -> str | None:
     return None
 
 
+def _exif_orientation(segment: bytes) -> int | None:
+    """The orientation tag of an APP1 Exif segment, or None when it has none."""
+    body = segment[4:]
+    if not body.startswith(b"Exif\x00\x00"):
+        return None
+    tiff = body[6:]
+    order = "big" if tiff[:2] == b"MM" else "little"
+    ifd = int.from_bytes(tiff[4:8], order)
+    for entry in range(int.from_bytes(tiff[ifd : ifd + 2], order)):
+        start = ifd + 2 + 12 * entry
+        if int.from_bytes(tiff[start : start + 2], order) == 0x0112:
+            return int.from_bytes(tiff[start + 8 : start + 10], order)
+    return None
+
+
+def strip_jpeg_metadata(data: bytes) -> bytes:
+    """Keep the pixels, color profile and coding tables of a JPEG; drop Exif (with GPS
+    location and device), XMP, IPTC, comments and images appended after the main one."""
+    if not data.startswith(b"\xff\xd8"):
+        raise ValueError("Not a JPEG image")
+    kept = bytearray(b"\xff\xd8")
+    position = 2
+    while position + 4 <= len(data) and data[position] == 0xFF:
+        marker = data[position + 1]
+        if marker == 0xDA:  # start of scan: image data runs to the first end-of-image marker
+            end = data.find(b"\xff\xd9", position)
+            if end < 0:
+                break
+            return bytes(kept + data[position : end + 2])
+        length = int.from_bytes(data[position + 2 : position + 4], "big")
+        segment = data[position : position + 2 + length]
+        if marker == 0xE1 and _exif_orientation(segment) not in (None, 1):
+            raise ValueError("Save the photo upright first; its rotation lives in metadata")
+        is_app = 0xE0 <= marker <= 0xEF
+        keep_app = marker in (0xE0, 0xEE) or (
+            marker == 0xE2 and segment[4:16] == b"ICC_PROFILE\x00"
+        )
+        if (not is_app and marker != 0xFE) or keep_app:
+            kept += segment
+        position += 2 + length
+    raise ValueError("Malformed JPEG image")
+
+
 def _post_json(request: Request, timeout_s: float) -> dict[str, Any]:
     with urlopen(request, timeout=timeout_s) as response:
         return json.load(response)
@@ -103,10 +147,13 @@ class MuseImageClient:
     ) -> ImageResult:
         if not images:
             raise ValueError("An edit needs at least one input image")
-        items = [
-            {"image_url": f"data:{image.mime_type};base64,{base64.b64encode(image.data).decode()}"}
-            for image in images
-        ]
+        items = []
+        for image in images:
+            data = image.data
+            if image.mime_type == "image/jpeg":
+                data = strip_jpeg_metadata(data)  # location and device never leave the machine
+            encoded = base64.b64encode(data).decode()
+            items.append({"image_url": f"data:{image.mime_type};base64,{encoded}"})
         return self._call("images/edits", {"prompt": prompt, "images": items}, size)
 
     def _call(self, path: str, fields: dict[str, Any], size: str | None) -> ImageResult:

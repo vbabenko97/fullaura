@@ -8,6 +8,7 @@ import pytest
 
 from backend.app.meta_images import ImageRequestError, ImageResult, InputImage
 from scripts.feasibility_run import CHECKS, identity_by_subject, load_cases, run, summarize, tally
+from tests.test_meta_images import exif, jpeg
 
 CASE = {
     "id": "s1-o1",
@@ -23,8 +24,16 @@ WEBP = b"RIFF\x10\x00\x00\x00WEBPVP8 "
 
 
 def write_cases(folder: Path, cases: list[dict[str, object]], files: list[str]) -> Path:
+    """Write the input files (JPEG skeletons for .jpg, rotated ones for rotated*) and cases."""
     for name in files:
-        (folder / name).write_bytes(b"image")
+        content = (
+            jpeg(exif(6))
+            if name.startswith("rotated")
+            else jpeg()
+            if name.endswith(".jpg")
+            else b"image"
+        )
+        (folder / name).write_bytes(content)
     path = folder / "cases.json"
     path.write_text(json.dumps({"cases": cases}), encoding="utf-8")
     return path
@@ -46,6 +55,8 @@ def test_accepts_complete_and_look_only_cases(tmp_path: Path) -> None:
         ([{**CASE, "id": "s1.o1"}], FILES, "ids are unique"),
         ([{**CASE, "id": "../x"}], FILES, "ids are unique"),
         ([CASE, CASE], FILES, "ids are unique"),
+        ([{**CASE, "photos": ["portrait.png"]}], ["portrait.png", *FILES[1:]], "must be JPEG"),
+        ([{**CASE, "photos": ["rotated.jpg"]}], ["rotated.jpg", *FILES[1:]], "upright"),
     ],
 )
 def test_rejects_a_bad_case_before_any_api_call(
