@@ -1,0 +1,31 @@
+:root {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  color: #203b31;
+  background: #f6f3ed;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; }
+a { color: inherit; text-underline-offset: 0.25em; }
+a:focus-visible { outline: 3px solid #7d4822; outline-offset: 6px; }
+.page { max-width: 1100px; min-height: 100svh; margin: auto; padding: 32px 36px; }
+.masthead, footer { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.wordmark { font-size: 24px; font-weight: 750; letter-spacing: -1px; text-decoration: none; }
+.status { border: 1px solid #bec8bc; border-radius: 24px; padding: 7px 13px; font-size: 12px; }
+.intro { padding: 85px 0 72px; max-width: 790px; }
+.eyebrow { margin: 0 0 23px; font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; }
+h1 { margin: 0; font-family: Georgia, serif; font-size: clamp(46px, 8vw, 88px); font-weight: 400; line-height: 1.07; letter-spacing: -0.035em; }
+.description { max-width: 620px; margin: 28px 0; font-size: 18px; line-height: 1.65; }
+.notice { max-width: 620px; margin-top: 42px; padding: 24px 28px; background: #e8ede3; border-radius: 14px; }
+.notice h2 { font-size: 16px; margin: 0 0 9px; }
+.notice p { margin: 0; font-size: 14px; line-height: 1.65; }
+footer { padding-top: 24px; border-top: 1px solid #d8d9cf; font-size: 13px; }
+
+@media (max-width: 520px) {
+  .page { padding: 24px; }
+  .intro { padding: 60px 0; }
+  .description { font-size: 16px; }
+}
