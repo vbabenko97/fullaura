@@ -98,11 +98,13 @@ def test_stops_after_the_attempt_limit_without_a_final_sleep() -> None:
 
 
 def test_does_not_retry_a_rejected_request_and_keeps_secrets_out() -> None:
-    body = json.dumps({"error": {"type": "invalid_request_error", "message": "bad size"}})
+    message = f"bad size for key {KEY}"  # some providers repeat the key in their errors
+    body = json.dumps({"error": {"type": "invalid_request_error", "message": message}})
     images, sent, _ = client(http_error(400, body.encode()))
     with pytest.raises(ImageRequestError, match="HTTP 400 \\(invalid_request_error\\)") as failure:
         images.generate("A navy sweater")
     assert len(sent) == 1
+    assert str(failure.value).endswith("bad size for key [redacted]")
     assert KEY not in str(failure.value)
     assert KEY not in repr(images)
 
