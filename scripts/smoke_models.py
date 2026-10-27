@@ -28,11 +28,13 @@ IMAGE_PROMPT = "A plain white cotton t-shirt on a wooden hanger, studio product 
 
 
 def check_baseten(api_key: str, base_url: str, model: str) -> dict[str, Any]:
-    """One chat completion without retries, so the first failure is the one reported."""
+    """One chat completion without retries, so the first failure is the one reported. It
+    passes only with a non-empty reply that the model finished."""
     messages = [{"role": "user", "content": TEXT_PROMPT}]
     request = Request(
         f"{base_url.rstrip('/')}/chat/completions",
-        data=json.dumps({"model": model, "messages": messages, "max_tokens": 64}).encode(),
+        # The model reasons before it replies, and its reasoning counts against max_tokens.
+        data=json.dumps({"model": model, "messages": messages, "max_tokens": 256}).encode(),
         headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
         method="POST",
     )
@@ -41,14 +43,19 @@ def check_baseten(api_key: str, base_url: str, model: str) -> dict[str, Any]:
         with urlopen(request, timeout=TIMEOUT_S) as response:
             payload = json.load(response)
         choice = payload["choices"][0]
+        reply = str(choice["message"].get("content") or "").strip()
+        finished = choice.get("finish_reason") == "stop" and reply
         outcome = {
-            "status": "ok",
+            "status": "ok" if finished else "failed",
             "finish_reason": choice.get("finish_reason"),
-            "reply": str(choice["message"].get("content") or "")[:80],
+            "reply": reply[:80],
             "usage": payload.get("usage") or {},
         }
+        if not finished:
+            outcome["error"] = "The reply is empty or was cut off"
     except HTTPError as error:
-        outcome = {"status": "failed", "error": f"HTTP {error.code}{_error_detail(error)}"}
+        detail = _error_detail(error, api_key)
+        outcome = {"status": "failed", "error": f"HTTP {error.code}{detail}"}
     except (OSError, http.client.HTTPException) as error:
         reason = getattr(error, "reason", error)
         outcome = {"status": "failed", "error": f"{type(error).__name__}: {reason}"}

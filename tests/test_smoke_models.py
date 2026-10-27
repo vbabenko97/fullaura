@@ -34,14 +34,28 @@ def test_calls_no_provider_when_a_key_is_missing(monkeypatch: pytest.MonkeyPatch
 
 
 def test_reports_a_rejected_request_without_the_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    body = json.dumps({"error": {"type": "authentication_error", "message": "invalid key"}})
+    message = f"invalid key {KEY}"  # some providers repeat the key they rejected
+    body = json.dumps({"error": {"type": "authentication_error", "message": message}})
     sent: list[Request] = []
     monkeypatch.setattr(smoke_models, "urlopen", fake_urlopen(http_error(401, body.encode()), sent))
     result = smoke_models.check_baseten(KEY, smoke_models.BASETEN_URL, smoke_models.BASETEN_MODEL)
     assert result["status"] == "failed"
-    assert result["error"] == "HTTP 401 (authentication_error): invalid key"
+    assert result["error"] == "HTTP 401 (authentication_error): invalid key [redacted]"
     assert KEY not in json.dumps(result)
     assert sent[0].get_header("Authorization") == f"Bearer {KEY}"
+
+
+@pytest.mark.parametrize(
+    ("content", "finish_reason"),
+    [("", "length"), ("rea", "length"), ("  ", "stop"), (None, "stop")],
+)
+def test_an_empty_or_cut_off_reply_fails(
+    monkeypatch: pytest.MonkeyPatch, content: str | None, finish_reason: str
+) -> None:
+    reply = {"choices": [{"message": {"content": content}, "finish_reason": finish_reason}]}
+    monkeypatch.setattr(smoke_models, "urlopen", fake_urlopen(reply, []))
+    result = smoke_models.check_baseten(KEY, smoke_models.BASETEN_URL, smoke_models.BASETEN_MODEL)
+    assert (result["status"], result["error"]) == ("failed", "The reply is empty or was cut off")
 
 
 def test_reports_the_reply_and_token_usage(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -106,15 +106,19 @@ def _post_json(request: Request, timeout_s: float) -> dict[str, Any]:
         return json.load(response)
 
 
-def _error_detail(error: HTTPError) -> str:
-    """The provider's error type, code and a short message; never the request body."""
+def _error_detail(error: HTTPError, api_key: str) -> str:
+    """The provider's error type, code and a short message; never the request body, and
+    never the API key, even when the provider repeats it in the message."""
     try:
         info = json.loads(error.read())
         info = info.get("error", info)
         labels = ", ".join(str(info[key]) for key in ("type", "code") if info.get(key))
-        message = str(info.get("message", ""))[:200]
+        message = str(info.get("message", ""))
     except (ValueError, AttributeError, OSError):
         return ""
+    if api_key:
+        message = message.replace(api_key, "[redacted]")
+    message = message[:200]
     return f" ({labels}): {message}" if labels else f": {message}" if message else ""
 
 
@@ -172,7 +176,7 @@ class MuseImageClient:
             try:
                 payload = self.post(request, self.timeout_s)
             except HTTPError as error:
-                failure = f"HTTP {error.code}{_error_detail(error)}"
+                failure = f"HTTP {error.code}{_error_detail(error, self.api_key)}"
                 if error.code not in RETRY_STATUS:
                     raise ImageRequestError(failure, attempt) from None
             except (OSError, http.client.HTTPException) as error:
