@@ -30,7 +30,11 @@ npm run dev
 
 Open <http://localhost:5173>. Vite forwards `/api` requests to the backend at port 8000. Development API docs are at <http://localhost:8000/api/docs>.
 
-The web app needs no cloud credentials and makes no model calls. Only the feasibility test script ([docs/FEASIBILITY.md](docs/FEASIBILITY.md)) calls Meta, with `MODEL_API_KEY` from `.env`, which Git ignores.
+The web app needs no cloud credentials and makes no model calls. Two scripts do, with keys from `.env`, which Git ignores. The feasibility test script ([docs/FEASIBILITY.md](docs/FEASIBILITY.md)) calls Meta with `MODEL_API_KEY`. The model smoke check makes one small call to Muse Spark Open on Baseten, with `BASETEN_API_KEY`, and one to Muse Image on Meta, and prints each call's status, latency and token usage:
+
+```bash
+uv run --frozen --env-file .env python -m scripts.smoke_models
+```
 
 ## Check a change
 
