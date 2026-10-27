@@ -33,7 +33,9 @@ def write_cases(folder: Path, cases: list[dict[str, object]], files: list[str]) 
             if name.endswith(".jpg")
             else b"image"
         )
-        (folder / name).write_bytes(content)
+        image = folder / name
+        image.parent.mkdir(parents=True, exist_ok=True)
+        image.write_bytes(content)
     path = folder / "cases.json"
     path.write_text(json.dumps({"cases": cases}), encoding="utf-8")
     return path
@@ -43,6 +45,17 @@ def test_accepts_complete_and_look_only_cases(tmp_path: Path) -> None:
     assert load_cases(write_cases(tmp_path, [CASE], FILES))[0]["id"] == "s1-o1"
     look_only = {key: CASE[key] for key in ("id", "subject", "photos", "garments", "look_prompt")}
     assert load_cases(write_cases(tmp_path, [look_only], FILES[:2]))[0]["id"] == "s1-o1"
+
+
+def test_accepts_nested_input_paths(tmp_path: Path) -> None:
+    nested = {
+        **CASE,
+        "photos": ["subjects/s1/portrait.jpg"],
+        "garments": ["garments/shirt.png"],
+        "edit_garment": "garments/jacket.webp",
+    }
+    files = ["subjects/s1/portrait.jpg", "garments/shirt.png", "garments/jacket.webp"]
+    assert load_cases(write_cases(tmp_path, [nested], files))[0]["id"] == "s1-o1"
 
 
 @pytest.mark.parametrize(
@@ -57,6 +70,7 @@ def test_accepts_complete_and_look_only_cases(tmp_path: Path) -> None:
         ([CASE, CASE], FILES, "ids are unique"),
         ([{**CASE, "photos": ["portrait.png"]}], ["portrait.png", *FILES[1:]], "must be JPEG"),
         ([{**CASE, "photos": ["rotated.jpg"]}], ["rotated.jpg", *FILES[1:]], "upright"),
+        ([{**CASE, "edit_prompt": "Replace only the <garment>."}], FILES, "placeholder"),
     ],
 )
 def test_rejects_a_bad_case_before_any_api_call(
@@ -64,6 +78,29 @@ def test_rejects_a_bad_case_before_any_api_call(
 ) -> None:
     with pytest.raises(SystemExit, match=message):
         load_cases(write_cases(tmp_path, cases, files))
+
+
+def test_lists_the_missing_inputs_of_every_case_at_once(tmp_path: Path) -> None:
+    second = {**CASE, "id": "s2-o1", "subject": "s2", "photos": ["s2.jpg"]}
+    with pytest.raises(SystemExit) as failure:
+        load_cases(write_cases(tmp_path, [CASE, second], FILES[1:]))
+    assert "s1-o1: input files not found: ['portrait.jpg']" in str(failure.value)
+    assert "s2-o1: input files not found: ['s2.jpg']" in str(failure.value)
+
+
+@pytest.mark.parametrize("name", ["../outside.jpg", "/tmp/outside.jpg"])
+def test_rejects_input_paths_outside_the_cases_folder(tmp_path: Path, name: str) -> None:
+    cases = [{**CASE, "photos": [name]}]
+    with pytest.raises(SystemExit, match="input paths must"):
+        load_cases(write_cases(tmp_path, cases, FILES[1:]))
+
+
+def test_rejects_symlinked_input_outside_the_cases_folder(tmp_path: Path) -> None:
+    outside = tmp_path.parent / "outside.jpg"
+    outside.write_bytes(jpeg())
+    (tmp_path / "portrait.jpg").symlink_to(outside)
+    with pytest.raises(SystemExit, match="input paths must stay"):
+        load_cases(write_cases(tmp_path, [CASE], FILES[1:]))
 
 
 def row(subject: str, step: str, status: str, scores: str) -> dict[str, str]:

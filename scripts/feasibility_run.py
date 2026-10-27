@@ -56,40 +56,74 @@ PRICE_PER_IMAGE_USD = 0.01  # Meta pricing page, checked 2026-10-26
 IMAGE_MODEL = "muse-image-1.0"  # in the account's model list on 2026-10-26
 REQUIRED = ("id", "subject", "photos", "garments", "look_prompt")
 CASE_ID = re.compile(r"[A-Za-z0-9_-]+")
+PLACEHOLDER = re.compile(r"<[^<>]+>")  # left over from the prompt template, such as <garment>
 IMAGE_TYPES = {"image/jpeg", "image/png", "image/webp"}
 CHECKS = ("identity", "proportions", "product_details", "edit_succeeds")
 COLUMNS = ["case", "subject", "sample", "step", "status", "file", *CHECKS, "notes"]
 SCORES = ("pass", "fail", "unassessable")
 
 
+def input_path(base: Path, name: str) -> Path:
+    """Resolve an input name without leaving the folder that contains cases.json."""
+    requested = Path(name)
+    if requested.is_absolute():
+        raise ValueError("input paths must be relative")
+    resolved_base = base.resolve()
+    resolved = (resolved_base / requested).resolve()
+    if not resolved.is_relative_to(resolved_base):
+        raise ValueError("input paths must stay within the cases folder")
+    return resolved
+
+
 def load_cases(path: Path) -> list[dict[str, Any]]:
+    """The cases, or an exit that lists every problem in every case, so that one dry run
+    shows all the inputs still missing."""
     cases = json.loads(path.read_text(encoding="utf-8"))["cases"]
+    problems: list[str] = []
     seen: set[str] = set()
     for number, case in enumerate(cases, 1):
         absent = [field for field in REQUIRED if not case.get(field)]
         if absent:
-            raise SystemExit(f"Case {number}: missing {absent}")
+            problems.append(f"Case {number}: missing {absent}")
+            continue
+        label = f"Case {case['id']}"
         if not CASE_ID.fullmatch(case["id"]) or case["id"] in seen:
-            raise SystemExit(f"Case {number}: ids are unique and use only A-Z, a-z, 0-9, - and _")
+            problems.append(f"Case {number}: ids are unique and use only A-Z, a-z, 0-9, - and _")
         seen.add(case["id"])
         if case.get("edit_garment") and not case.get("edit_prompt"):
-            raise SystemExit(f"Case {case['id']}: edit_garment needs an edit_prompt")
+            problems.append(f"{label}: edit_garment needs an edit_prompt")
+        unfilled = [
+            field
+            for field in ("look_prompt", "edit_prompt")
+            if PLACEHOLDER.search(case.get(field, ""))
+        ]
+        if unfilled:
+            problems.append(f"{label}: fill in the <...> placeholder in {unfilled}")
         names = [*case["photos"], *case["garments"]]
         names += [case["edit_garment"]] if case.get("edit_garment") else []
-        missing = [name for name in names if not (path.parent / name).is_file()]
+        paths: dict[str, Path] = {}
+        for name in names:
+            try:
+                paths[name] = input_path(path.parent, name)
+            except ValueError as error:
+                problems.append(f"{label}: {name}: {error}")
+        missing = [name for name, image_path in paths.items() if not image_path.is_file()]
         if missing:
-            raise SystemExit(f"Case {case['id']}: input files not found: {missing}")
+            problems.append(f"{label}: input files not found: {missing}")
         unsupported = [name for name in names if mimetypes.guess_type(name)[0] not in IMAGE_TYPES]
         if unsupported:
-            raise SystemExit(f"Case {case['id']}: use JPEG, PNG or WebP: {unsupported}")
+            problems.append(f"{label}: use JPEG, PNG or WebP: {unsupported}")
         for name in case["photos"]:
             # The client removes metadata, such as location, from JPEGs only.
             if mimetypes.guess_type(name)[0] != "image/jpeg":
-                raise SystemExit(f"Case {case['id']}: personal photos must be JPEG: {name}")
-            try:
-                strip_jpeg_metadata((path.parent / name).read_bytes())
-            except ValueError as error:
-                raise SystemExit(f"Case {case['id']}: {name}: {error}") from None
+                problems.append(f"{label}: personal photos must be JPEG: {name}")
+            elif name in paths and name not in missing:
+                try:
+                    strip_jpeg_metadata(paths[name].read_bytes())
+                except ValueError as error:
+                    problems.append(f"{label}: {name}: {error}")
+    if problems:
+        raise SystemExit("\n".join(problems))
     return cases
 
 
@@ -224,9 +258,13 @@ def run(
         scores = csv.writer(scores_file)
         scores.writerow(COLUMNS)
         for case in cases:
-            look_inputs = [read_image(base / name) for name in case["photos"] + case["garments"]]
+            look_inputs = [
+                read_image(input_path(base, name)) for name in case["photos"] + case["garments"]
+            ]
             edit_garment = (
-                [read_image(base / case["edit_garment"])] if case.get("edit_garment") else []
+                [read_image(input_path(base, case["edit_garment"]))]
+                if case.get("edit_garment")
+                else []
             )
             for sample in range(1, samples + 1):
                 record = {"case": case["id"], "subject": case["subject"], "sample": sample}

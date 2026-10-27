@@ -1,6 +1,6 @@
 # Azure deployment plan
 
-**Status:** a Dockerfile and CI build are provided. No Azure resources, deployments, cloud credentials, or Meta requests have been created by this scaffold.
+**Status:** a Dockerfile and CI build are provided. No Azure resources, deployments, or cloud credentials have been created by this scaffold. The separate feasibility script has made Meta requests; see [FEASIBILITY.md](FEASIBILITY.md).
 
 ## Initial configuration
 

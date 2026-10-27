@@ -6,7 +6,7 @@ Personal style plans built around your preferences, budget, and existing wardrob
 
 LookPilot aims to combine outfits, optional hair and beard previews, and links to real products. A plan should remain consistent when you keep an item, change a preference, or lower the budget.
 
-**Status: initial scaffold.** The repository contains a React landing page, a FastAPI server, runtime tests, and a Docker build. A Muse Image client and a feasibility test script exist; the test has not run on people yet. Photo uploads, product selection, and personalized previews are planned. There is no hosted product yet.
+**Status: initial scaffold.** The repository contains a React landing page, a FastAPI server, runtime tests, and a Docker build. A Muse Image client and a feasibility test script exist. Exploratory runs used the author's photos; the formal evaluation is pending. Photo uploads, product selection, and personalized previews are planned. There is no hosted product yet.
 
 ## Run locally
 

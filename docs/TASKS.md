@@ -26,7 +26,7 @@ Before the interface grows, test whether Meta's models keep a person's identity 
 
 Preview quality, the model cost of a full plan and user preference have not been measured yet.
 
-The client, the run script and the approved thresholds exist. An exploratory run with the author's photos and one garment comes first. The formal evaluation needs two more subjects who give permission for model processing, their photos, and garment images that LookPilot may use; T-03 proceeds while they are recruited.
+The client, the run script and the approved thresholds exist, and the exploratory runs are done. The formal evaluation is set up; it needs two more subjects who give permission for model processing, their photos, and garment images that LookPilot may use. T-03 proceeds while they are recruited.
 
 Done when: the thresholds were set before the run, `docs/FEASIBILITY.md` reports every attempt, and the result says whether previews meet [SPEC.md](SPEC.md#previews) or the fallback in [D-11](DECISIONS.md#d-11-test-previews-first-and-keep-the-plan-useful-without-them) applies.
 

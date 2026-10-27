@@ -2,7 +2,7 @@
 
 This report covers T-02 in [TASKS.md](TASKS.md): whether Muse Image can show a person in specific garments while it keeps their identity and the garments' details, and whether a targeted edit makes the requested change while the rest of the look stays the same. It holds the protocol, the thresholds and the results of each run. The test is a small feasibility study: its results show whether previews are worth building on, not that they are reliable in production. Personal photos and previews stay in `data/private/` and never appear here ([D-13](DECISIONS.md#d-13-personal-data-stays-out-of-git)).
 
-Status: the thresholds were approved on 2026-10-26. An exploratory run with the author's photos and one garment comes first; the formal evaluation waits for two more subjects.
+Status: the thresholds were approved on 2026-10-26, and the exploratory runs are done. The formal evaluation is set up and waits for its inputs; `--dry-run` lists every input still missing.
 
 ## Model and costs
 
@@ -14,21 +14,21 @@ Status: the thresholds were approved on 2026-10-26. An exploratory run with the 
 
 On 2026-10-26 the client generated one product image of a plain navy sweater and then edited it to burgundy, with no personal data. Both calls succeeded on the first attempt, in 9.4 s and 11.0 s. The edit changed only the color; the fold, the knit texture, the lighting and the background stayed the same. This shows that the client works, and answers none of the questions of this test.
 
-## Exploratory run
+## Exploratory runs
 
-Before the formal evaluation, a separate run uses the author's own portrait and full-body photo and one garment, to tune the prompts and find problems early. Its inputs and outputs stay in `data/private/feasibility/exploratory/`. Its results are reported below, but they are not compared with the thresholds.
+Before the formal evaluation, two separate runs used the author's own portrait and full-body photo and one garment each, to find problems early. Their inputs and outputs stay in `data/private/feasibility/exploratory/`. Their results are reported below, but they are not compared with the thresholds.
 
 ## Formal evaluation
 
-- Three subjects who gave permission for model processing, each with a portrait and a full-body photo.
-- Three outfits per subject, each made of two to four garments whose product images LookPilot may use (see the register in [DATA.md](DATA.md)).
+- Three subjects who gave permission for model processing, each with a portrait and a full-body photo. Subject s1 is the author.
+- Three outfits per subject, each made of two to four garments whose product images LookPilot may use (see the register in [DATA.md](DATA.md)). Every subject wears the same three outfits, so results compare across subjects.
 - For each outfit, one look preview made from the photos and the garment images, then one targeted edit of that preview that replaces one garment.
 - Two samples of each step: 3 subjects × 3 outfits × 2 steps × 2 samples = 36 images, about $0.36 before retries.
 
-Its inputs and outputs stay in `data/private/feasibility/formal/`. Prompts follow one template for every case, so that results are comparable:
+Its inputs and outputs stay in `data/private/feasibility/formal/`: `s1/`, `s2/` and `s3/` hold each subject's `portrait.jpg` and `full_body.jpg`, and `garments/` holds the garment images of outfits o1 to o3 and the replacement garment for each outfit's edit. `cases.json` lists the nine cases, s1-o1 to s3-o3; when an outfit has more than two garments, or images in another format, its file names in `cases.json` change to match. Prompts follow one template for every case, so that results are comparable:
 
 - Look: "Show the person from the first two images, full body, wearing exactly the garments in the other images. Keep their face, hair, skin tone and body proportions. Plain light background."
-- Edit: "Replace only the <garment> with the one in the second image. Keep the person, the other garments, the pose and the background unchanged."
+- Edit: "Replace only the <garment> with the one in the second image. Keep the person, the other garments, the pose and the background unchanged." The garment's name, such as "shirt", replaces `<garment>`; the dry run refuses a prompt that still has the placeholder.
 
 ## Checks
 
@@ -58,7 +58,7 @@ If every threshold holds, previews stay as [SPEC.md](SPEC.md#previews) describes
 
 ## How to run
 
-1. Put the photos, the garment images and `cases.json` in `data/private/feasibility/formal/`, or in `exploratory/` for an exploratory run. The format of `cases.json` is at the top of `scripts/feasibility_run.py`. Personal photos must be upright JPEGs: the client removes their metadata, such as GPS location, before it sends them.
+1. Put the photos, the garment images and `cases.json` in `data/private/feasibility/formal/`, or in `exploratory/` for an exploratory run. The format of `cases.json` is at the top of `scripts/feasibility_run.py`. Image paths must be relative to the folder containing `cases.json` and stay inside it, including when they use symbolic links. Personal photos must be upright JPEGs: the client removes their metadata, such as GPS location, before it sends them.
 2. Check the inputs without calling the API: `uv run --frozen --env-file .env python -m scripts.feasibility_run --dry-run`. For an exploratory run, add `--cases data/private/feasibility/exploratory/cases.json` to this and the next command.
 3. Run the test: `uv run --frozen --env-file .env python -m scripts.feasibility_run --samples 2`. The run's `attempts.jsonl` records the model ID, prompt, input file names, attempts, latency and usage or error of every API call.
 4. Score every produced image in the run's `scores.csv`.
