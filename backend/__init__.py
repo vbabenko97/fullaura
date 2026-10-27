@@ -1,1 +1,1 @@
-"""LookPilot backend."""
+"""FullAura backend."""

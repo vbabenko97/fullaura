@@ -1,10 +1,10 @@
-# LookPilot
+# FullAura
 
-[![CI](https://github.com/vbabenko97/lookpilot/actions/workflows/ci.yml/badge.svg)](https://github.com/vbabenko97/lookpilot/actions/workflows/ci.yml)
+[![CI](https://github.com/vbabenko97/fullaura/actions/workflows/ci.yml/badge.svg)](https://github.com/vbabenko97/fullaura/actions/workflows/ci.yml)
 
 Personal style plans built around your preferences, budget, and existing wardrobe.
 
-LookPilot aims to combine outfits, optional hair and beard previews, and links to real products. A plan should remain consistent when you keep an item, change a preference, or lower the budget.
+FullAura aims to combine outfits, optional hair and beard previews, and links to real products. A plan should remain consistent when you keep an item, change a preference, or lower the budget.
 
 **Status: initial scaffold.** The repository contains a React landing page, a FastAPI server, runtime tests, and a Docker build. A Muse Image client and a feasibility test script exist. Exploratory runs used the author's photos; the formal evaluation is pending. Photo uploads, product selection, and personalized previews are planned. There is no hosted product yet.
 
@@ -13,8 +13,8 @@ LookPilot aims to combine outfits, optional hair and beard previews, and links t
 Requirements: Python 3.12, [uv](https://docs.astral.sh/uv/getting-started/installation/) 0.13.4, and Node.js 24 with npm. Dependencies are recorded in `uv.lock` and `frontend/package-lock.json`.
 
 ```bash
-git clone https://github.com/vbabenko97/lookpilot.git
-cd lookpilot
+git clone https://github.com/vbabenko97/fullaura.git
+cd fullaura
 cp .env.example .env
 uv sync --frozen
 uv run --env-file .env uvicorn backend.app.main:app --reload
@@ -53,8 +53,8 @@ CI runs these checks, builds the container, and checks its HTTP endpoints. It do
 ## Run the production container
 
 ```bash
-docker build -t lookpilot:local .
-docker run --rm -p 127.0.0.1:8000:8000 lookpilot:local
+docker build -t fullaura:local .
+docker run --rm -p 127.0.0.1:8000:8000 fullaura:local
 ```
 
 Open <http://localhost:8000>. The container serves both the built frontend and API, runs as a non-root user, and disables development API docs. `GET /api/health` checks the process; `GET /api/ready` also checks that the frontend entry point exists. Neither endpoint verifies a model provider.
@@ -74,6 +74,6 @@ uv run --frozen python scripts/smoke_http.py
 - [Data and asset provenance](docs/DATA.md)
 - [Contributor and coding-agent guidance](AGENTS.md)
 
-Development began on 26 October 2026 for the Meta Global AI Developer Hackathon. The intended track is Indie Developer, under Build for Your World. Commit history and the final demo must identify the work built during the event.
+Development began on 26 October 2026 for the Meta Global AI Developer Hackathon, under the name LookPilot; the project became FullAura on 27 October 2026 ([D-19](docs/DECISIONS.md#d-19-the-product-is-named-fullaura)). The intended track is Indie Developer, under Build for Your World. Commit history and the final demo must identify the work built during the event.
 
 Source code is available under the [MIT license](LICENSE). Third-party models, product data, and photographs retain their own terms.

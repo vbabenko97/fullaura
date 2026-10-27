@@ -16,12 +16,12 @@ class Settings:
 
     def __post_init__(self) -> None:
         if self.environment not in {"development", "production"}:
-            raise ValueError("LOOKPILOT_ENV must be development or production")
+            raise ValueError("FULLAURA_ENV must be development or production")
 
     @classmethod
     def from_env(cls) -> Settings:
-        web_dist = os.getenv("LOOKPILOT_WEB_DIST")
+        web_dist = os.getenv("FULLAURA_WEB_DIST")
         return cls(
-            environment=os.getenv("LOOKPILOT_ENV", "development"),
+            environment=os.getenv("FULLAURA_ENV", "development"),
             web_dist=Path(web_dist).resolve() if web_dist else cls().web_dist,
         )

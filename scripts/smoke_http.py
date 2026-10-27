@@ -1,4 +1,4 @@
-"""Verify a built LookPilot server over HTTP; uses no model credentials."""
+"""Verify a built FullAura server over HTTP; uses no model credentials."""
 
 from __future__ import annotations
 
@@ -25,11 +25,11 @@ def check(base_url: str) -> None:
         time.sleep(0.5)
 
     with urlopen(f"{base_url}/api/health", timeout=5) as response:
-        if json.load(response) != {"status": "ok", "service": "lookpilot"}:
+        if json.load(response) != {"status": "ok", "service": "fullaura"}:
             raise RuntimeError("Unexpected health response")
     with urlopen(f"{base_url}/", timeout=5) as response:
         html = response.read().decode("utf-8")
-        if response.headers.get_content_type() != "text/html" or "LookPilot" not in html:
+        if response.headers.get_content_type() != "text/html" or "FullAura" not in html:
             raise RuntimeError("Frontend entry point is missing")
     assets = re.findall(r'(?:src|href)="(/assets/[^"<>]+)"', html)
     if not assets:

@@ -24,7 +24,7 @@ Use a public GHCR image containing code and compiled assets if available. Never 
 ## Information needed for the first deploy
 
 - Azure subscription ID, active credit expiry, and permitted region.
-- A dedicated resource group name (suggested: `rg-lookpilot-demo`).
+- A dedicated resource group name (suggested: `rg-fullaura-demo`).
 - An authenticated Azure session with permission to create Container Apps resources.
 - A reachable container image and the tested commit/digest.
 - For model features: Meta API access, Standard-mode model IDs, confirmed credits, and a backend secret named `MODEL_API_KEY`. Enter secret values directly in local configuration or Azure secret settings.
