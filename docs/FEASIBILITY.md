@@ -21,7 +21,7 @@ Before the formal evaluation, two separate runs used the author's own portrait a
 ## Formal evaluation
 
 - Three subjects who gave permission for model processing, each with a portrait and a full-body photo. Subject s1 is the author.
-- Three outfits per subject, each made of two to four garments whose product images LookPilot may use (see the register in [DATA.md](DATA.md)). Every subject wears the same three outfits, so results compare across subjects.
+- Three outfits per subject, each made of two to four garments whose product images FullAura may use (see the register in [DATA.md](DATA.md)). Every subject wears the same three outfits, so results compare across subjects.
 - For each outfit, one look preview made from the photos and the garment images, then one targeted edit of that preview that replaces one garment.
 - Two samples of each step: 3 subjects × 3 outfits × 2 steps × 2 samples = 36 images, about $0.36 before retries.
 
@@ -77,4 +77,4 @@ Each check shows passed / planned images.
 Both exploratory runs used the author's portrait and full-body photo, and every call succeeded on the first attempt.
 
 - 20261026T210402Z used a generated product image of a plain navy sweater as the garment, and an edit to a generated burgundy version of it. A plain garment makes the product details check easy.
-- 20261026T211334Z used the catalog photo of a Levi's Classic Worker Overshirt in a black and white check (product 195870289, from lsco.scene7.com), to test whether the check pattern, the two flap pockets, the buttons and the red tab survive. It had no edit. The author judged the proportions not ideal but acceptable and the product details preserved; the number of buttons was not compared with the catalog photo. LookPilot has no permission from the rights holder for this photo, so it is for internal testing only and must not appear in a demo, a recording or the repository.
+- 20261026T211334Z used the catalog photo of a Levi's Classic Worker Overshirt in a black and white check (product 195870289, from lsco.scene7.com), to test whether the check pattern, the two flap pockets, the buttons and the red tab survive. It had no edit. The author judged the proportions not ideal but acceptable and the product details preserved; the number of buttons was not compared with the catalog photo. FullAura has no permission from the rights holder for this photo, so it is for internal testing only and must not appear in a demo, a recording or the repository.

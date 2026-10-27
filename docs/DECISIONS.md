@@ -1,6 +1,6 @@
 # Decisions
 
-This file records decisions about LookPilot's product and code, with the reason for each, so that a settled point is not reopened by accident. [SPEC.md](SPEC.md) describes what the product does, and [AGENTS.md](../AGENTS.md) holds the working rules for coding agents; this file says why.
+This file records decisions about FullAura's product and code, with the reason for each, so that a settled point is not reopened by accident. [SPEC.md](SPEC.md) describes what the product does, and [AGENTS.md](../AGENTS.md) holds the working rules for coding agents; this file says why.
 
 Each decision has a number that is never reused and a status: accepted, proposed (not decided yet), or superseded when a later decision replaces it. After an entry is accepted, only its status line changes. To change a decision, add a new entry and set the old one's status to superseded, with a link to the new one. When a proposed decision is accepted as written, change its status in place.
 
@@ -132,3 +132,11 @@ Each decision has a number that is never reused and a status: accepted, proposed
 - **Status:** accepted
 - **Decision:** With no material exclusion active, a catalog product with unknown composition can be used, labeled as unknown. While an exclusion is active, catalog products whose composition cannot be checked are left out. [SPEC.md](SPEC.md#hard-constraints) has the rule.
 - **Reason:** Not recorded.
+
+## D-19: The product is named FullAura
+
+- **Date:** 2026-10-27
+- **Status:** accepted
+- **Decision:** The product and its GitHub repository are named FullAura. Code identifiers, environment variables, Docker images and Azure resource names use the lowercase form `fullaura`.
+- **Reason:** Not recorded.
+- **Consequences:** The product was called LookPilot until this decision, and earlier entries keep that name because accepted entries do not change. The repository moved from `vbabenko97/lookpilot` to `vbabenko97/fullaura`, and GitHub redirects the old URLs. The environment variables `LOOKPILOT_ENV` and `LOOKPILOT_WEB_DIST` became `FULLAURA_ENV` and `FULLAURA_WEB_DIST`.

@@ -2,7 +2,7 @@ export function App() {
   return (
     <main className="page">
       <header className="masthead">
-        <a className="wordmark" href="/" aria-label="LookPilot home">LookPilot</a>
+        <a className="wordmark" href="/" aria-label="FullAura home">FullAura</a>
         <span className="status">Early prototype</span>
       </header>
       <section className="intro" aria-labelledby="title">
@@ -21,8 +21,8 @@ export function App() {
         </aside>
       </section>
       <footer>
-        <span>LookPilot · 2026</span>
-        <a href="https://github.com/vbabenko97/lookpilot">View the project</a>
+        <span>FullAura · 2026</span>
+        <a href="https://github.com/vbabenko97/fullaura">View the project</a>
       </footer>
     </main>
   );

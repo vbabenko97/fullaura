@@ -17,7 +17,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         raise RuntimeError("Build the frontend before starting in production")
 
     app = FastAPI(
-        title="LookPilot API",
+        title="FullAura API",
         version="0.1.0",
         docs_url="/api/docs" if settings.environment == "development" else None,
         redoc_url=None,
@@ -27,7 +27,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @app.get("/api/health", tags=["operations"])
     def health() -> dict[str, str]:
         """Process health; this does not contact or verify Meta or Azure."""
-        return {"status": "ok", "service": "lookpilot"}
+        return {"status": "ok", "service": "fullaura"}
 
     @app.get("/api/ready", tags=["operations"])
     def ready() -> JSONResponse:
@@ -52,7 +52,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if index_file.is_file():
             return FileResponse(index_file, headers={"Cache-Control": "no-cache"})
         return JSONResponse(
-            {"service": "lookpilot", "status": "frontend_not_built"},
+            {"service": "fullaura", "status": "frontend_not_built"},
             status_code=503,
         )
 

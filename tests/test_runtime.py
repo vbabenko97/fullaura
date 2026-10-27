@@ -11,14 +11,14 @@ from backend.app.main import create_app
 
 def test_api_stays_available_without_frontend_or_provider_credentials(tmp_path: Path) -> None:
     with TestClient(create_app(Settings(web_dist=tmp_path))) as client:
-        assert client.get("/api/health").json() == {"status": "ok", "service": "lookpilot"}
+        assert client.get("/api/health").json() == {"status": "ok", "service": "fullaura"}
         assert client.get("/api/ready").status_code == 200
         assert client.get("/").status_code == 503
 
 
 @pytest.mark.parametrize("method", ["get", "post", "put", "patch", "delete", "options"])
 def test_unknown_api_routes_never_return_the_frontend(tmp_path: Path, method: str) -> None:
-    (tmp_path / "index.html").write_text("<html>LookPilot</html>", encoding="utf-8")
+    (tmp_path / "index.html").write_text("<html>FullAura</html>", encoding="utf-8")
     with TestClient(create_app(Settings(web_dist=tmp_path))) as client:
         response = getattr(client, method)("/api/unknown")
         assert response.status_code == 404
@@ -32,7 +32,7 @@ def test_production_requires_a_frontend_build(tmp_path: Path) -> None:
 
 def test_production_serves_assets_and_reports_missing_entrypoint(tmp_path: Path) -> None:
     index = tmp_path / "index.html"
-    index.write_text("<html>LookPilot</html>", encoding="utf-8")
+    index.write_text("<html>FullAura</html>", encoding="utf-8")
     (tmp_path / "assets").mkdir()
     (tmp_path / "assets" / "app.js").write_text("export {};", encoding="utf-8")
     with TestClient(create_app(Settings(environment="production", web_dist=tmp_path))) as client:

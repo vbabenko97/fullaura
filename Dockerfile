@@ -13,8 +13,8 @@ ENV UV_COMPILE_BYTECODE=1 \
     PATH="/opt/venv/bin:$PATH" \
     PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    LOOKPILOT_ENV=production \
-    LOOKPILOT_WEB_DIST=/app/frontend/dist
+    FULLAURA_ENV=production \
+    FULLAURA_WEB_DIST=/app/frontend/dist
 WORKDIR /app
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project

@@ -1,4 +1,4 @@
-# Working on LookPilot
+# Working on FullAura
 
 Read `README.md` and `docs/SPEC.md` before changing product behavior. `docs/TASKS.md` lists the work in build order, and `docs/DECISIONS.md` records why each choice was made. Keep implemented features separate from proposed work in documentation and the UI.
 
