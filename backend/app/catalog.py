@@ -32,13 +32,17 @@ class Record(BaseModel):
 # use for it. Any other name is refused, so an exclusion or a catalog record cannot name a
 # material that the checks would not recognize.
 MATERIALS: dict[str, tuple[str, ...]] = {
+    "acetate": (),
     "acrylic": (),
     "cashmere": (),
+    "cork": (),
     "cotton": (),
     "elastane": ("spandex",),
+    "ethylene-vinyl acetate": ("eva",),
     "leather": (),
     "linen": (),
     "lyocell": (),
+    "metal": (),
     "modal": (),
     "polyamide": ("nylon",),
     "polyester": (),
@@ -77,8 +81,13 @@ class Category(StrEnum):
 
 
 class CompositionStatus(StrEnum):
-    COMPLETE = "complete"  # the source lists every component of the item
-    PARTIAL = "partial"  # some components are listed, for example the upper but not the sole
+    # Every part that EU labelling covers, each named by a listed material: for clothing, each
+    # textile component except one under 30% of the weight that is not a main lining; for
+    # shoes, the upper, the lining and insole, and the sole. Trims such as buttons, zips, elastic
+    # bands and laces do not decide it (docs/DECISIONS.md, D-27).
+    COMPLETE = "complete"
+    # A labelled part is missing, as with an upper but no sole, or named only vaguely
+    PARTIAL = "partial"
     UNKNOWN = "unknown"  # the source gives no composition
     CONFLICTING = "conflicting"  # sources disagree, so no single composition is listed
 
@@ -92,7 +101,9 @@ class Component(Record):
 class Composition(Record):
     status: CompositionStatus
     components: tuple[Component, ...]
-    # The source's own words when they name no listed material, such as "textile/synthetic".
+    # The composition as the source shows it, word for word, such as "Hauptmaterial: 100%
+    # Baumwolle (bio); Trimming: Reissverschluss aus Plastik". It keeps parts whose material is
+    # vague or not listed, which the components leave out.
     source_text: str | None
 
     @model_validator(mode="after")

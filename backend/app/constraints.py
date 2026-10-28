@@ -27,10 +27,11 @@ from backend.app.state import Budget, BudgetMode, ItemKind, ItemRef, LockedPlace
 DELIVERY_COUNTRY = "AT"
 _WORD = re.compile(r"[a-z]+(?:'[a-z]+)*")
 _NEGATIONS = frozenset({"no", "non", "not", "without"})
-# Every listed name as words, longest first, so "synthetic rubber" wins over "rubber".
+# Every listed name as words, split like a description, longest first, so "synthetic rubber"
+# wins over "rubber" and "ethylene-vinyl acetate" matches its three words.
 _NAMES_LONGEST_FIRST = sorted(
     (
-        (tuple(name.split()), material)
+        (tuple(_WORD.findall(name)), material)
         for material, others in MATERIALS.items()
         for name in (material, *others)
     ),

@@ -9,10 +9,69 @@ import pytest
 from pydantic import ValidationError
 
 from backend.app.catalog import Catalog
+from backend.app.constraints import check_plan, item_violations
+from backend.app.state import Budget, ItemKind, ItemRef, Look, Plan, State
 
+ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = json.loads(
     (Path(__file__).parent / "fixtures" / "synthetic_catalog.json").read_text(encoding="utf-8")
 )
+REAL = Catalog.model_validate_json(
+    (ROOT / "backend" / "data" / "catalog.json").read_text(encoding="utf-8")
+)
+REAL_VARIANTS = [variant for product in REAL.products for variant in product.variants]
+
+
+def test_the_real_catalog_names_registered_sources_and_keeps_their_wording() -> None:
+    assert not REAL.synthetic
+    register = (ROOT / "docs" / "DATA.md").read_text(encoding="utf-8")
+    urls = [variant.source.url for variant in REAL_VARIANTS] + [
+        url
+        for variant in REAL_VARIANTS
+        for offer in variant.offers
+        for url in (offer.url, offer.source.url)
+    ]
+    assert {url.host for url in urls if url.host.removeprefix("www.") not in register} == set()
+    assert all(variant.composition.source_text for variant in REAL_VARIANTS)
+
+
+@pytest.mark.parametrize("exclusions", [set(), {"wool"}])
+def test_the_real_catalog_builds_three_looks_that_pass_every_check(exclusions: set[str]) -> None:
+    looks = [
+        {"top": "ae-jaames-black-m", "bottom": "ae-aaster-space-steel-32-32"},  # EUR 199.75
+        {"top": "ae-maarkos-moonshadow-m", "bottom": "ae-kaavo-lolite-32-32"},  # EUR 249.75
+        {"top": "ae-loukaa-dark-earth-m", "bottom": "ae-lenovaa-dark-steel-m"},  # EUR 239.75
+    ]
+    plan = Plan(
+        looks=[
+            Look(
+                id=f"look_{n}",
+                items={
+                    slot: ItemRef(kind=ItemKind.CATALOG, id=variant_id)
+                    for slot, variant_id in {**items, "footwear": "gw-beach-hellgrau-42"}.items()
+                },
+            )
+            for n, items in enumerate(looks, start=1)
+        ],
+        selected_offers={
+            variant_id: f"{variant_id}-offer"
+            for variant_id in {v for items in looks for v in items.values()}
+            | {"gw-beach-hellgrau-42"}
+        },
+    )
+    state = State(budget=Budget(amount_cents=25000), material_exclusions=exclusions, plan=plan)
+    assert check_plan(state, REAL).violations == ()
+
+
+def test_only_one_real_shoe_passes_a_wool_exclusion() -> None:
+    shoes = [
+        variant
+        for product in REAL.products
+        if product.category == "footwear"
+        for variant in product.variants
+    ]
+    passing = [v.id for v in shoes if not item_violations(v, v.offers[0], {"wool"})]
+    assert passing == ["gw-beach-hellgrau-42"]
 
 
 def test_the_synthetic_fixture_is_labeled_and_links_nowhere_real() -> None:

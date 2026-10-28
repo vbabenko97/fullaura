@@ -398,6 +398,9 @@ def test_owned_items_stay_under_an_exclusion_with_labels() -> None:
         ("synthetic rubber sole", "rubber", False),  # the longest name is synthetic rubber
         ("synthetic rubber sole", "synthetic rubber", True),
         ("rubber sole, no wool", "rubber", True),
+        ("EVA sole", "eva", True),
+        ("ethylene-vinyl acetate sole", "eva", True),  # a hyphenated listed name
+        ("Ethylene-Vinyl Acetate sole", "ethylene-vinyl acetate", True),
     ],
 )
 def test_a_description_names_a_material_as_whole_words_without_negation(
