@@ -166,7 +166,7 @@ def strip_jpeg_metadata(data: bytes) -> bytes:
             ):
                 kept.extend(_jpeg_marker_segment(marker, payload[:12] + b"\x00\x00"))
         elif marker == 0xEE and payload.startswith(b"Adobe"):
-            # Keep only its color transform; canonicalize version and reserved flags.
+            # Keep only its color transform; canonicalize version and flags.
             if len(payload) >= 12 and payload[11] in (0, 1, 2):
                 adobe = b"Adobe\x00\x64\x00\x00\x00\x00" + payload[11:12]
                 kept.extend(_jpeg_marker_segment(marker, adobe))

@@ -10,7 +10,7 @@ Keep private inputs and outputs in ignored `data/private/` while testing. Obtain
 
 This accepted policy is defined by [D-31](DECISIONS.md#d-31-no-persistent-server-copies-of-personal-photos). The application has no photo upload or server storage yet.
 
-The upload implementation will remove JPEG metadata before sending a photo to a provider. It will reject a JPEG whose visible orientation depends on EXIF orientation metadata, because removing that tag without rotating the encoded pixels would change how the photo appears. It may keep the JFIF header, ICC color profile and JPEG coding tables. It must remove Exif, XMP, IPTC, comments and data appended after the primary JPEG image.
+The upload implementation will remove JPEG metadata before sending a photo to a provider. It will reject a JPEG whose visible orientation depends on EXIF orientation metadata, because removing that tag without rotating the encoded pixels would change how the photo appears. It may keep the recognized JFIF header and Adobe color-transform field, a complete ICC profile, and JPEG coding tables. It must remove Exif, XMP, IPTC, comments and data appended after the primary JPEG image.
 
 FullAura will keep no persistent server copy of an original photograph, generated preview or provider response. During one request, it may hold the original, stripped input and preview bytes only in memory. It must not write them to logs, caches, backups or a database. The response returns the preview to the browser without server-side storage. This rule cannot establish or shorten a model provider's retention; the photo-processing notice must describe the provider's current terms separately.
 
