@@ -6,7 +6,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | --- | --- | --- |
 | [T-01](#t-01-foundation) Foundation | done | 2026-10-26 |
 | [T-02](#t-02-feasibility-test) Feasibility test | next | |
-| [T-03](#t-03-catalog-and-hard-constraints) Catalog and hard constraints | next | |
+| [T-03](#t-03-catalog-and-hard-constraints) Catalog and hard constraints | done | 2026-10-28 |
 | [T-04](#t-04-one-complete-flow) One complete flow | planned | |
 | [T-05](#t-05-azure-demo) Azure demo | planned | |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
@@ -34,7 +34,7 @@ Done when: the thresholds were set before the run, `docs/FEASIBILITY.md` reports
 
 Define a typed product schema and a small catalog that FullAura has permission to use. Implement the hard constraints and locked-item state, including owned items and both budget modes, before any model orchestration. Keep the catalog data under `backend/`, because the container image leaves out `data/`.
 
-The schema, the application state and the hard-constraint checks exist in `backend/app/catalog.py`, `state.py` and `constraints.py`, with tests against a synthetic catalog in `tests/fixtures/`. The catalog itself is missing. Its product facts need a source whose terms of use allow FullAura to record them, and its product images need a license, a feed whose terms permit display, or FullAura's own photos; neither needs a letter from each brand ([D-25](DECISIONS.md#d-25-product-facts-and-product-images-need-different-rights)). The first catalog takes its facts, recorded by hand, from Zalando.at and the Austrian Armedangels store, and holds no retailer images ([D-26](DECISIONS.md#d-26-the-first-catalog-records-facts-from-zalando-and-armedangels-without-images)). The task stays open until the catalog is added under `backend/` and each source is registered in [DATA.md](DATA.md).
+The schema, the application state and the hard-constraint checks are in `backend/app/catalog.py`, `state.py` and `constraints.py`, with tests against a synthetic catalog in `tests/fixtures/`. The catalog, `backend/data/catalog.json`, holds the facts of 15 real product variants from Armedangels and Giesswein and no retailer images ([D-26](DECISIONS.md#d-26-the-first-catalog-records-facts-from-armedangels-and-giesswein-without-images)); its sources are in the register in [DATA.md](DATA.md). Product facts need a source whose terms of use allow FullAura to record them, and product images need a license, a feed whose terms permit display, or FullAura's own photos ([D-25](DECISIONS.md#d-25-product-facts-and-product-images-need-different-rights)). A test checks that the catalog builds three looks that pass every check, with no exclusion and under a wool exclusion.
 
 Done when: each catalog source is recorded in the register in [DATA.md](DATA.md), and tests cover every hard constraint in [SPEC.md](SPEC.md#hard-constraints), including the cases that fail.
 

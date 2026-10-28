@@ -1,0 +1,851 @@
+{
+  "id": "fullaura-catalog-2026-10-28",
+  "synthetic": false,
+  "products": [
+    {
+      "id": "ae-maarkos-moonshadow-m-product",
+      "title": "MAARKOS HEAVY WEIGHT T-SHIRT",
+      "brand": "Armedangels",
+      "category": "top",
+      "variants": [
+        {
+          "id": "ae-maarkos-moonshadow-m",
+          "sku": null,
+          "color": "moonshadow",
+          "size": "M",
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 50,
+                "part": "main fabric"
+              },
+              {
+                "material": "cotton",
+                "percent": 50,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Hauptmaterial: 50% Baumwolle (bio), 50% Baumwolle (recycelt)"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/maarkos-heavy-weight-t-shirt-moonshadow",
+            "checked_at": "2026-10-28T11:19:00Z"
+          },
+          "offers": [
+            {
+              "id": "ae-maarkos-moonshadow-m-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/maarkos-heavy-weight-t-shirt-moonshadow",
+              "price_cents": 4990,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": null,
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/maarkos-heavy-weight-t-shirt-moonshadow",
+                "checked_at": "2026-10-28T11:19:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ae-jaames-black-m-product",
+      "title": "JAAMES LANGARMSHIRT",
+      "brand": "Armedangels",
+      "category": "top",
+      "variants": [
+        {
+          "id": "ae-jaames-black-m",
+          "sku": null,
+          "color": "black",
+          "size": "M",
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 100,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Hauptmaterial: 100% Baumwolle (bio)"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/jaames-langarmhemd-black",
+            "checked_at": "2026-10-28T11:19:00Z"
+          },
+          "offers": [
+            {
+              "id": "ae-jaames-black-m-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/jaames-langarmhemd-black",
+              "price_cents": 3990,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": null,
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/jaames-langarmhemd-black",
+                "checked_at": "2026-10-28T11:19:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ae-loukaa-dark-earth-m-product",
+      "title": "LOUKAA STRICKPULLOVER",
+      "brand": "Armedangels",
+      "category": "knitwear",
+      "variants": [
+        {
+          "id": "ae-loukaa-dark-earth-m",
+          "sku": null,
+          "color": "dark earth",
+          "size": "M",
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 100,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Hauptmaterial: 100% Baumwolle (bio)"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/loukaa-knit-sweater-dark-earth",
+            "checked_at": "2026-10-28T11:19:00Z"
+          },
+          "offers": [
+            {
+              "id": "ae-loukaa-dark-earth-m-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/loukaa-knit-sweater-dark-earth",
+              "price_cents": 7990,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": null,
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/loukaa-knit-sweater-dark-earth",
+                "checked_at": "2026-10-28T11:19:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ae-wool-cardigan-claystone-m-product",
+      "title": "RECYCELTE WOLL-STRICKJACKE",
+      "brand": "Armedangels",
+      "category": "knitwear",
+      "variants": [
+        {
+          "id": "ae-wool-cardigan-claystone-m",
+          "sku": null,
+          "color": "claystone melange",
+          "size": "M",
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "wool",
+                "percent": 100,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Hauptmaterial: 100% Wolle (recycelt)"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/recycelte-woll-strickjacke-claystone-melange",
+            "checked_at": "2026-10-28T11:19:00Z"
+          },
+          "offers": [
+            {
+              "id": "ae-wool-cardigan-claystone-m-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/recycelte-woll-strickjacke-claystone-melange",
+              "price_cents": 19990,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": null,
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/recycelte-woll-strickjacke-claystone-melange",
+                "checked_at": "2026-10-28T11:19:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ae-aaster-space-steel-32-32-product",
+      "title": "AASTER CHINOHOSE",
+      "brand": "Armedangels",
+      "category": "bottom",
+      "variants": [
+        {
+          "id": "ae-aaster-space-steel-32-32",
+          "sku": null,
+          "color": "space steel",
+          "size": "Weite 32 / Länge 32",
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 97,
+                "part": "main fabric"
+              },
+              {
+                "material": "elastane",
+                "percent": 3,
+                "part": "main fabric"
+              },
+              {
+                "material": "metal",
+                "percent": null,
+                "part": "zip"
+              }
+            ],
+            "source_text": "Hauptmaterial: 97% Baumwolle (bio), 3% Elasthan; Trimming: Reissverschluss aus nickelfreiem Metall"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/aaster-chino-pant-space-steel",
+            "checked_at": "2026-10-28T11:19:00Z"
+          },
+          "offers": [
+            {
+              "id": "ae-aaster-space-steel-32-32-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/aaster-chino-pant-space-steel",
+              "price_cents": 9990,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": null,
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/aaster-chino-pant-space-steel",
+                "checked_at": "2026-10-28T11:19:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ae-kaavo-lolite-32-32-product",
+      "title": "KAAVO BARREL JEANS",
+      "brand": "Armedangels",
+      "category": "bottom",
+      "variants": [
+        {
+          "id": "ae-kaavo-lolite-32-32",
+          "sku": null,
+          "color": "Lolite",
+          "size": "Weite 32 / Länge 32",
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 80,
+                "part": "main fabric"
+              },
+              {
+                "material": "cotton",
+                "percent": 20,
+                "part": "main fabric"
+              },
+              {
+                "material": "metal",
+                "percent": null,
+                "part": "zip"
+              }
+            ],
+            "source_text": "Hauptmaterial: 80% Baumwolle (bio), 20% Baumwolle (recycelt); Trimming: Reissverschluss aus Metall"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/kaavo-baggy-jeans-lolite",
+            "checked_at": "2026-10-28T11:19:00Z"
+          },
+          "offers": [
+            {
+              "id": "ae-kaavo-lolite-32-32-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/kaavo-baggy-jeans-lolite",
+              "price_cents": 13990,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": null,
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/kaavo-baggy-jeans-lolite",
+                "checked_at": "2026-10-28T11:19:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ae-selvedge-overshirt-midnight-air-m-product",
+      "title": "SELVEDGE JEANS-OVERSHIRT",
+      "brand": "Armedangels",
+      "category": "outerwear",
+      "variants": [
+        {
+          "id": "ae-selvedge-overshirt-midnight-air-m",
+          "sku": null,
+          "color": "midnight air",
+          "size": "M",
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 100,
+                "part": "main fabric"
+              },
+              {
+                "material": "metal",
+                "percent": null,
+                "part": "buttons"
+              }
+            ],
+            "source_text": "Hauptmaterial: 100% Baumwolle (bio); Trimming: Knöpfe aus Metall"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/selvedge-jeans-overshirt-midnight-air",
+            "checked_at": "2026-10-28T11:19:00Z"
+          },
+          "offers": [
+            {
+              "id": "ae-selvedge-overshirt-midnight-air-m-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/selvedge-jeans-overshirt-midnight-air",
+              "price_cents": 15990,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": null,
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/selvedge-jeans-overshirt-midnight-air",
+                "checked_at": "2026-10-28T11:19:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ae-cord-mini-dress-velvet-ember-m-product",
+      "title": "CORD-MINI-KLEID MIT RUNDHALS",
+      "brand": "Armedangels",
+      "category": "one_piece",
+      "variants": [
+        {
+          "id": "ae-cord-mini-dress-velvet-ember-m",
+          "sku": null,
+          "color": "velvet ember",
+          "size": "M",
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 98,
+                "part": "main fabric"
+              },
+              {
+                "material": "elastane",
+                "percent": 2,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Hauptmaterial: 98% Baumwolle (bio), 2% Elasthan; Trimming: Reissverschluss aus Plastik"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/cord-mini-kleid-velvet-ember",
+            "checked_at": "2026-10-28T11:18:00Z"
+          },
+          "offers": [
+            {
+              "id": "ae-cord-mini-dress-velvet-ember-m-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/cord-mini-kleid-velvet-ember",
+              "price_cents": 11990,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": null,
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/cord-mini-kleid-velvet-ember",
+                "checked_at": "2026-10-28T11:18:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ae-lenovaa-dark-steel-m-product",
+      "title": "LENOVAA SATIN-ROCK",
+      "brand": "Armedangels",
+      "category": "bottom",
+      "variants": [
+        {
+          "id": "ae-lenovaa-dark-steel-m",
+          "sku": "30007820000022",
+          "color": "dark steel",
+          "size": "M",
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "acetate",
+                "percent": 96,
+                "part": "main fabric"
+              },
+              {
+                "material": "elastane",
+                "percent": 4,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Hauptmaterial: 96% Acetat (Eastman Naia™ Renew), 4% Elasthan"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/lenovaa-satin-rock-dark-steel",
+            "checked_at": "2026-10-28T11:45:21Z"
+          },
+          "offers": [
+            {
+              "id": "ae-lenovaa-dark-steel-m-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/lenovaa-satin-rock-dark-steel",
+              "price_cents": 9990,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/lenovaa-satin-rock-dark-steel",
+                "checked_at": "2026-10-28T11:45:21Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ae-rehmaa-velvet-red-m-product",
+      "title": "REHMAA LEGGINGS",
+      "brand": "Armedangels",
+      "category": "bottom",
+      "variants": [
+        {
+          "id": "ae-rehmaa-velvet-red-m",
+          "sku": "30007644000020",
+          "color": "velvet red",
+          "size": "M",
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 96,
+                "part": "main fabric"
+              },
+              {
+                "material": "elastane",
+                "percent": 4,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Hauptmaterial: 96% Baumwolle (bio), 4% Elasthan"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/rehmaa-leggings-velvet-red",
+            "checked_at": "2026-10-28T11:45:21Z"
+          },
+          "offers": [
+            {
+              "id": "ae-rehmaa-velvet-red-m-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/rehmaa-leggings-velvet-red",
+              "price_cents": 3490,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/rehmaa-leggings-velvet-red",
+                "checked_at": "2026-10-28T11:45:21Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ae-relaxed-jersey-shorts-dried-palm-m-product",
+      "title": "RELAXED JERSEY-SHORTS",
+      "brand": "Armedangels",
+      "category": "bottom",
+      "variants": [
+        {
+          "id": "ae-relaxed-jersey-shorts-dried-palm-m",
+          "sku": "30008406000006",
+          "color": "dried palm",
+          "size": "M",
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "viscose",
+                "percent": 97,
+                "part": "main fabric"
+              },
+              {
+                "material": "elastane",
+                "percent": 3,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Hauptmaterial: 97% Viskose (LENZING™ ECOVERO™), 3% Elasthan"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/relaxed-jersey-shorts-dried-palm",
+            "checked_at": "2026-10-28T11:45:43Z"
+          },
+          "offers": [
+            {
+              "id": "ae-relaxed-jersey-shorts-dried-palm-m-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/relaxed-jersey-shorts-dried-palm",
+              "price_cents": 3490,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/relaxed-jersey-shorts-dried-palm",
+                "checked_at": "2026-10-28T11:45:43Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gw-beach-hellgrau-42-product",
+      "title": "Beach",
+      "brand": "Giesswein",
+      "category": "footwear",
+      "variants": [
+        {
+          "id": "gw-beach-hellgrau-42",
+          "sku": "85-10-44406-031-42",
+          "color": "hellgrau-031",
+          "size": "42",
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "eva",
+                "percent": null,
+                "part": "upper"
+              },
+              {
+                "material": "eva",
+                "percent": null,
+                "part": "lining"
+              },
+              {
+                "material": "eva",
+                "percent": null,
+                "part": "sole"
+              },
+              {
+                "material": "eva",
+                "percent": null,
+                "part": "insole"
+              }
+            ],
+            "source_text": "Material: EVA; Innenmaterial: EVA; Sohle: EVA; Innensohle: EVA"
+          },
+          "source": {
+            "url": "https://www.giesswein.com/products/beach",
+            "checked_at": "2026-10-28T11:49:45Z"
+          },
+          "offers": [
+            {
+              "id": "gw-beach-hellgrau-42-offer",
+              "retailer": "Giesswein",
+              "url": "https://www.giesswein.com/products/beach",
+              "price_cents": 5995,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.giesswein.com/products/beach",
+                "checked_at": "2026-10-28T11:49:45Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gw-wool-sneaker-women-schwarz-39-product",
+      "title": "Wool Sneaker Women",
+      "brand": "Giesswein",
+      "category": "footwear",
+      "variants": [
+        {
+          "id": "gw-wool-sneaker-women-schwarz-39",
+          "sku": "74-10-49315-022-39",
+          "color": "schwarz-022",
+          "size": "39",
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "wool",
+                "percent": null,
+                "part": "upper"
+              },
+              {
+                "material": "polyamide",
+                "percent": null,
+                "part": "upper"
+              },
+              {
+                "material": "wool",
+                "percent": null,
+                "part": "lining"
+              },
+              {
+                "material": "polyamide",
+                "percent": null,
+                "part": "lining"
+              },
+              {
+                "material": "eva",
+                "percent": null,
+                "part": "sole"
+              },
+              {
+                "material": "wool",
+                "percent": null,
+                "part": "insole"
+              },
+              {
+                "material": "polyamide",
+                "percent": null,
+                "part": "insole"
+              }
+            ],
+            "source_text": "Fußbett: wechselbares Fußbett; Material: Schurwolle (Merino), PA; Innenmaterial: Schurwolle (Merino), PA; Sohle: Kunststoff (EVA); Innensohle: Schurwolle (Merino), PA"
+          },
+          "source": {
+            "url": "https://www.giesswein.com/products/wool-sneaker-damen",
+            "checked_at": "2026-10-28T11:49:45Z"
+          },
+          "offers": [
+            {
+              "id": "gw-wool-sneaker-women-schwarz-39-offer",
+              "retailer": "Giesswein",
+              "url": "https://www.giesswein.com/products/wool-sneaker-damen",
+              "price_cents": 11995,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.giesswein.com/products/wool-sneaker-damen",
+                "checked_at": "2026-10-28T11:49:45Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gw-merino-runners-men-schiefer-43-product",
+      "title": "Merino Runners MEN",
+      "brand": "Giesswein",
+      "category": "footwear",
+      "variants": [
+        {
+          "id": "gw-merino-runners-men-schiefer-43",
+          "sku": "68-10-49301-017-43",
+          "color": "schiefer-017",
+          "size": "43",
+          "composition": {
+            "status": "partial",
+            "components": [
+              {
+                "material": "wool",
+                "percent": null,
+                "part": "upper"
+              },
+              {
+                "material": "polyamide",
+                "percent": null,
+                "part": "upper"
+              },
+              {
+                "material": "wool",
+                "percent": null,
+                "part": "lining"
+              },
+              {
+                "material": "polyamide",
+                "percent": null,
+                "part": "lining"
+              },
+              {
+                "material": "eva",
+                "percent": null,
+                "part": "sole"
+              },
+              {
+                "material": "rubber",
+                "percent": null,
+                "part": "sole"
+              },
+              {
+                "material": "wool",
+                "percent": null,
+                "part": "insole"
+              },
+              {
+                "material": "polyamide",
+                "percent": null,
+                "part": "insole"
+              }
+            ],
+            "source_text": "Fußbett: wechselbares Fußbett; Material: Schurwolle (Merino), PA; Innenmaterial: Schurwolle (Merino), PA; Sohle: Kunststoff (EVA), Gummi (Naturkautschuk, Synthetik); Innensohle: Schurwolle (Merino), PA"
+          },
+          "source": {
+            "url": "https://www.giesswein.com/products/merino-runners-herren",
+            "checked_at": "2026-10-28T11:49:45Z"
+          },
+          "offers": [
+            {
+              "id": "gw-merino-runners-men-schiefer-43-offer",
+              "retailer": "Giesswein",
+              "url": "https://www.giesswein.com/products/merino-runners-herren",
+              "price_cents": 14995,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.giesswein.com/products/merino-runners-herren",
+                "checked_at": "2026-10-28T11:49:45Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gw-merino-slides-lite-women-ocean-blue-39-product",
+      "title": "Merino Slides Lite Women",
+      "brand": "Giesswein",
+      "category": "footwear",
+      "variants": [
+        {
+          "id": "gw-merino-slides-lite-women-ocean-blue-39",
+          "sku": "83-10-44405-540-39",
+          "color": "ocean blue-540",
+          "size": "39",
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": null,
+                "part": "upper"
+              },
+              {
+                "material": "polyester",
+                "percent": null,
+                "part": "lining"
+              },
+              {
+                "material": "cork",
+                "percent": null,
+                "part": "sole"
+              },
+              {
+                "material": "eva",
+                "percent": null,
+                "part": "sole"
+              },
+              {
+                "material": "wool",
+                "percent": null,
+                "part": "insole"
+              },
+              {
+                "material": "polyamide",
+                "percent": null,
+                "part": "insole"
+              }
+            ],
+            "source_text": "Material: Recyceltes PES; Innenmaterial: Recyceltes PES; Sohle: Kork & Kunststoff (EVA); Innensohle: Schurwolle (Merino), PA"
+          },
+          "source": {
+            "url": "https://www.giesswein.com/products/merino-slides-lite-women",
+            "checked_at": "2026-10-28T11:49:45Z"
+          },
+          "offers": [
+            {
+              "id": "gw-merino-slides-lite-women-ocean-blue-39-offer",
+              "retailer": "Giesswein",
+              "url": "https://www.giesswein.com/products/merino-slides-lite-women",
+              "price_cents": 8995,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.giesswein.com/products/merino-slides-lite-women",
+                "checked_at": "2026-10-28T11:49:45Z"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
