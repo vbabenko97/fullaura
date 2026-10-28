@@ -140,3 +140,26 @@ Each decision has a number that is never reused and a status: accepted, proposed
 - **Decision:** The product and its GitHub repository are named FullAura. Code identifiers, environment variables, Docker images and Azure resource names use the lowercase form `fullaura`.
 - **Reason:** Not recorded.
 - **Consequences:** The product was called LookPilot until this decision, and earlier entries keep that name because accepted entries do not change. The repository moved from `vbabenko97/lookpilot` to `vbabenko97/fullaura`, and GitHub redirects the old URLs. The environment variables `LOOKPILOT_ENV` and `LOOKPILOT_WEB_DIST` became `FULLAURA_ENV` and `FULLAURA_WEB_DIST`.
+
+## D-20: A plan buys each variant through one selected offer
+
+- **Date:** 2026-10-28
+- **Status:** accepted
+- **Decision:** A catalog product has variants, such as one color and size, and each variant has one or more retailer offers with a price, delivery countries and stock. A plan selects one offer for each variant it uses. Every look that contains the variant uses that offer's price and delivery, and in whole-plan mode the variant counts once at that price. [SPEC.md](SPEC.md#catalog-records) has the record format.
+- **Reason:** Price, delivery and stock belong to a retailer's offer rather than to the garment, and one variant can be sold by several retailers. With one selected offer, a variant has the same price in every look.
+- **Consequences:** When FullAura tests whether the locked items alone exceed the budget, a locked variant counts at its cheapest offer that passes the other checks, because a plan can still select that offer.
+
+## D-21: Only a complete composition passes a material exclusion
+
+- **Date:** 2026-10-28
+- **Status:** accepted
+- **Decision:** While an exclusion is active, a catalog product passes only when its composition is complete and no listed component's name includes the excluded material. A partial, unknown or conflicting composition fails, and a product whose listed components include the material fails as containing it. Matching ignores case and accepts the material inside a longer name, so an exclusion of wool also matches merino wool and lambswool. [SPEC.md](SPEC.md#hard-constraints) has the rule.
+- **Reason:** A status label alone cannot show that wool is absent; the components must be listed. A partial composition, such as a shoe's upper without its sole, cannot show that the rest is free of the material. Matching inside longer names leaves out more products than exact matching, which is the safer error for a hard filter.
+- **Consequences:** An exclusion of a short name can leave out unrelated products whose material names contain it. Catalog records name each material by its generic name (see [DATA.md](DATA.md)), because a trade name or abbreviation that does not contain the generic name would not match. Owned items use the same matching to decide whether their description names an excluded material ([D-16](#d-16-an-owned-item-that-names-an-excluded-material-can-stay)), so a description such as "wool-free" is labeled as reporting wool.
+
+## D-22: A lock holds one position in one look
+
+- **Date:** 2026-10-28
+- **Status:** accepted
+- **Decision:** A lock keeps an item in the look and the position where the person locked it, such as footwear in the first look. Moving the item to another position in that look breaks the lock. The same item in another look is not locked and can change. [SPEC.md](SPEC.md#hard-constraints) has the rule.
+- **Reason:** An item can appear in several looks, and a person who keeps it in one look has not decided about the others. Tying the lock to a position lets code check it exactly after every edit.

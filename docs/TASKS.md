@@ -34,6 +34,8 @@ Done when: the thresholds were set before the run, `docs/FEASIBILITY.md` reports
 
 Define a typed product schema and a small catalog that FullAura has permission to use. Implement the hard constraints and locked-item state, including owned items and both budget modes, before any model orchestration. Keep the catalog data under `backend/`, because the container image leaves out `data/`.
 
+The schema, the application state and the hard-constraint checks exist in `backend/app/catalog.py`, `state.py` and `constraints.py`, with tests against a synthetic catalog in `tests/fixtures/`. The catalog is missing: no retailer or brand has given FullAura permission to use its product data and images. The task stays open until such a catalog is added under `backend/` and registered in [DATA.md](DATA.md).
+
 Done when: each catalog source is recorded in the register in [DATA.md](DATA.md), and tests cover every hard constraint in [SPEC.md](SPEC.md#hard-constraints), including the cases that fail.
 
 ## T-04: One complete flow
