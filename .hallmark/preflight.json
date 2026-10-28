@@ -1,0 +1,22 @@
+{
+  "scanned": "2026-10-28",
+  "findings": {
+    "fonts": "Inter body with Georgia display in frontend/src/styles.css:1-12",
+    "palette": "Forest green #203b31 on paper #f6f3ed, notice #e8ede3, focus #7d4822 in frontend/src/styles.css:1-8",
+    "motion": "No motion library or animation in frontend/package.json:5-17 and frontend/src/styles.css:1-30",
+    "spacing": "Ad hoc spacing in frontend/src/styles.css:8-30; no shared scale",
+    "framework": "React 19.3.1, TypeScript 7.0.2 and Vite 8.3.5 in frontend/package.json:5-18"
+  },
+  "preserve": [
+    "The existing FullAura forest green, paper background and focus color",
+    "The local Inter and Georgia font stack",
+    "The Vite /api proxy and development-only planning boundary",
+    "The no-photo-storage policy in docs/DATA.md"
+  ],
+  "introduce": [
+    "A compact preference form and catalog-backed three-look results screen",
+    "Loading, empty, error and success states for catalog planning",
+    "Inline item locks for plan updates",
+    "Runtime validation for catalog and planning API responses"
+  ]
+}

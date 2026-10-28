@@ -1,0 +1,33 @@
+{
+  "fixture_label": "DETERMINISTIC TEST FIXTURE: scripted plan, not model output",
+  "looks": [
+    {
+      "id": "look_1",
+      "items": {
+        "top": { "kind": "catalog", "id": "ae-maarkos-moonshadow-m" },
+        "bottom": { "kind": "catalog", "id": "ae-aaster-space-steel-32-32" }
+      }
+    },
+    {
+      "id": "look_2",
+      "items": {
+        "top": { "kind": "catalog", "id": "ae-jaames-black-m" },
+        "bottom": { "kind": "catalog", "id": "ae-relaxed-jersey-shorts-dried-palm-m" }
+      }
+    },
+    {
+      "id": "look_3",
+      "items": {
+        "top": { "kind": "catalog", "id": "ae-maarkos-moonshadow-m" },
+        "bottom": { "kind": "catalog", "id": "ae-kaavo-lolite-32-32" }
+      }
+    }
+  ],
+  "selected_offers": {
+    "ae-maarkos-moonshadow-m": "ae-maarkos-moonshadow-m-offer",
+    "ae-aaster-space-steel-32-32": "ae-aaster-space-steel-32-32-offer",
+    "ae-jaames-black-m": "ae-jaames-black-m-offer",
+    "ae-relaxed-jersey-shorts-dried-palm-m": "ae-relaxed-jersey-shorts-dried-palm-m-offer",
+    "ae-kaavo-lolite-32-32": "ae-kaavo-lolite-32-32-offer"
+  }
+}

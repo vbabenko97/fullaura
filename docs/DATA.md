@@ -4,7 +4,7 @@ No personal photographs or generated personal previews are included in this repo
 
 The tests use `tests/fixtures/synthetic_catalog.json`, a catalog invented for testing and marked `"synthetic": true`. Its products, prices, retailer and links are fictional, and its links use the reserved test domain `synthetic.example`. It is not a catalog source: it stays out of the container image and must not appear in the interface or a demo as real products.
 
-Keep private inputs and outputs in ignored `data/private/` while testing. Obtain the subject's permission for model processing separately from permission to publish a demo image.
+Keep private inputs and outputs in ignored `data/private/` while testing. Obtain the subject's permission for model processing separately from permission to publish a demo image. The local planning screen uses a local font stack and no third-party imagery.
 
 ## Photo handling for upload support
 

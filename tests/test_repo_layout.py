@@ -10,6 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # A new root entry needs a reason in the commit that adds it.
 ROOT_ENTRIES = {
+    ".hallmark",
     ".dockerignore",
     ".editorconfig",
     ".env.example",

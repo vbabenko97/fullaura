@@ -16,6 +16,16 @@ def test_api_stays_available_without_frontend_or_provider_credentials(tmp_path: 
         assert client.get("/").status_code == 503
 
 
+def test_development_catalog_route_returns_catalog_facts_without_provider_credentials() -> None:
+    with TestClient(create_app(Settings())) as client:
+        response = client.get("/api/catalog")
+
+    assert response.status_code == 200
+    assert response.json()["id"] == "fullaura-catalog-2026-10-28"
+    assert response.json()["synthetic"] is False
+    assert len(response.json()["products"]) == 15
+
+
 @pytest.mark.parametrize("method", ["get", "post", "put", "patch", "delete", "options"])
 def test_unknown_api_routes_never_return_the_frontend(tmp_path: Path, method: str) -> None:
     (tmp_path / "index.html").write_text("<html>FullAura</html>", encoding="utf-8")
@@ -39,5 +49,6 @@ def test_production_serves_assets_and_reports_missing_entrypoint(tmp_path: Path)
         assert client.get("/").headers["content-type"].startswith("text/html")
         assert client.get("/assets/app.js").status_code == 200
         assert client.get("/api/docs").status_code == 404
+        assert client.get("/api/catalog").status_code == 404
         index.unlink()
         assert client.get("/api/ready").status_code == 503
