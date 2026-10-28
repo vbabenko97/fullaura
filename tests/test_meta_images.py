@@ -10,7 +10,12 @@ from urllib.request import Request
 
 import pytest
 
-from backend.app.meta_images import ImageRequestError, InputImage, MuseImageClient
+from backend.app.meta_images import (
+    ImageRequestError,
+    InputImage,
+    MuseImageClient,
+    strip_jpeg_metadata,
+)
 
 KEY = "secret-test-key"
 WEBP = b"RIFF\x10\x00\x00\x00WEBPVP8 "
@@ -76,10 +81,24 @@ def test_sends_jpeg_pixels_without_location_or_other_metadata() -> None:
     assert base64.b64decode(data_uri.split(",", 1)[1]) == jpeg(jfif, color_profile, tables)
 
 
-def test_refuses_a_jpeg_that_relies_on_rotation_metadata() -> None:
+def test_strips_all_metadata_app_segments_without_changing_allowed_image_data() -> None:
+    jfif = segment(0xE0, b"JFIF\x00\x01\x01")
+    xmp = segment(0xE1, b"http://ns.adobe.com/xap/1.0/\x00metadata")
+    iptc = segment(0xED, b"Photoshop 3.0\x00IPTC")
+    color_profile = segment(0xE2, b"ICC_PROFILE\x00\x01\x01profile")
+    tables = segment(0xDB, b"\x00tables")
+    comment = segment(0xFE, b"comment")
+
+    assert strip_jpeg_metadata(
+        jpeg(jfif, xmp, iptc, color_profile, comment, tables, tail=b"\xff\xd8gain map")
+    ) == jpeg(jfif, color_profile, tables)
+
+
+@pytest.mark.parametrize("orientation", range(2, 9))
+def test_refuses_a_jpeg_that_relies_on_rotation_metadata(orientation: int) -> None:
     images, sent, _ = client(OK)
     with pytest.raises(ValueError, match="upright"):
-        images.edit("Swap the shirt", [InputImage(jpeg(exif(6)), "image/jpeg")])
+        images.edit("Swap the shirt", [InputImage(jpeg(exif(orientation)), "image/jpeg")])
     assert sent == []
 
 
