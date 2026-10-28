@@ -21,7 +21,8 @@
                 "percent": 100,
                 "part": null
               }
-            ]
+            ],
+            "source_text": null
           },
           "source": {
             "url": "https://synthetic.example/products/p01",
@@ -66,7 +67,8 @@
                 "percent": 100,
                 "part": null
               }
-            ]
+            ],
+            "source_text": null
           },
           "source": {
             "url": "https://synthetic.example/products/p02",
@@ -111,7 +113,8 @@
                 "percent": 100,
                 "part": null
               }
-            ]
+            ],
+            "source_text": null
           },
           "source": {
             "url": "https://synthetic.example/products/p03",
@@ -150,7 +153,8 @@
           "size": null,
           "composition": {
             "status": "unknown",
-            "components": []
+            "components": [],
+            "source_text": null
           },
           "source": {
             "url": "https://synthetic.example/products/p04",
@@ -200,7 +204,8 @@
                 "percent": 3,
                 "part": null
               }
-            ]
+            ],
+            "source_text": null
           },
           "source": {
             "url": "https://synthetic.example/products/p05",
@@ -250,7 +255,8 @@
                 "percent": 30,
                 "part": null
               }
-            ]
+            ],
+            "source_text": null
           },
           "source": {
             "url": "https://synthetic.example/products/p06",
@@ -289,18 +295,8 @@
           "size": null,
           "composition": {
             "status": "partial",
-            "components": [
-              {
-                "material": "textile",
-                "percent": null,
-                "part": null
-              },
-              {
-                "material": "synthetic",
-                "percent": null,
-                "part": null
-              }
-            ]
+            "components": [],
+            "source_text": "textile/synthetic"
           },
           "source": {
             "url": "https://synthetic.example/products/p07",
@@ -345,7 +341,8 @@
                 "percent": null,
                 "part": "upper"
               }
-            ]
+            ],
+            "source_text": null
           },
           "source": {
             "url": "https://synthetic.example/products/p08",
@@ -390,7 +387,8 @@
                 "percent": 100,
                 "part": null
               }
-            ]
+            ],
+            "source_text": null
           },
           "source": {
             "url": "https://synthetic.example/products/p09",
@@ -435,7 +433,8 @@
                 "percent": 100,
                 "part": null
               }
-            ]
+            ],
+            "source_text": null
           },
           "source": {
             "url": "https://synthetic.example/products/p10",
@@ -485,7 +484,8 @@
                 "percent": 30,
                 "part": null
               }
-            ]
+            ],
+            "source_text": null
           },
           "source": {
             "url": "https://synthetic.example/products/p11",
@@ -524,7 +524,8 @@
           "size": null,
           "composition": {
             "status": "unknown",
-            "components": []
+            "components": [],
+            "source_text": null
           },
           "source": {
             "url": "https://synthetic.example/products/p12",
@@ -569,7 +570,8 @@
                 "percent": 100,
                 "part": null
               }
-            ]
+            ],
+            "source_text": null
           },
           "source": {
             "url": "https://synthetic.example/products/p13",
@@ -612,7 +614,8 @@
                 "percent": null,
                 "part": null
               }
-            ]
+            ],
+            "source_text": null
           },
           "source": {
             "url": "https://synthetic.example/products/p14",
@@ -657,7 +660,8 @@
                 "percent": 100,
                 "part": null
               }
-            ]
+            ],
+            "source_text": null
           },
           "source": {
             "url": "https://synthetic.example/products/p15",
@@ -707,7 +711,8 @@
                 "percent": null,
                 "part": null
               }
-            ]
+            ],
+            "source_text": null
           },
           "source": {
             "url": "https://synthetic.example/products/p16",
@@ -746,18 +751,8 @@
           "size": null,
           "composition": {
             "status": "partial",
-            "components": [
-              {
-                "material": "textile",
-                "percent": null,
-                "part": null
-              },
-              {
-                "material": "synthetic",
-                "percent": null,
-                "part": null
-              }
-            ]
+            "components": [],
+            "source_text": "textile/synthetic"
           },
           "source": {
             "url": "https://synthetic.example/products/p17",
@@ -812,7 +807,8 @@
                 "percent": null,
                 "part": "sole"
               }
-            ]
+            ],
+            "source_text": null
           },
           "source": {
             "url": "https://synthetic.example/products/p18",

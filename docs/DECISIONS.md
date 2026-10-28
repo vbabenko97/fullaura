@@ -152,7 +152,7 @@ Each decision has a number that is never reused and a status: accepted, proposed
 ## D-21: Only a complete composition passes a material exclusion
 
 - **Date:** 2026-10-28
-- **Status:** accepted
+- **Status:** superseded by [D-23](#d-23-materials-are-compared-by-names-from-a-fixed-list)
 - **Decision:** While an exclusion is active, a catalog product passes only when its composition is complete and no listed component's name includes the excluded material. A partial, unknown or conflicting composition fails, and a product whose listed components include the material fails as containing it. Matching ignores case and accepts the material inside a longer name, so an exclusion of wool also matches merino wool and lambswool. [SPEC.md](SPEC.md#hard-constraints) has the rule.
 - **Reason:** A status label alone cannot show that wool is absent; the components must be listed. A partial composition, such as a shoe's upper without its sole, cannot show that the rest is free of the material. Matching inside longer names leaves out more products than exact matching, which is the safer error for a hard filter.
 - **Consequences:** An exclusion of a short name can leave out unrelated products whose material names contain it. Catalog records name each material by its generic name (see [DATA.md](DATA.md)), because a trade name or abbreviation that does not contain the generic name would not match. Owned items use the same matching to decide whether their description names an excluded material ([D-16](#d-16-an-owned-item-that-names-an-excluded-material-can-stay)), so a description such as "wool-free" is labeled as reporting wool.
@@ -163,3 +163,19 @@ Each decision has a number that is never reused and a status: accepted, proposed
 - **Status:** accepted
 - **Decision:** A lock keeps an item in the look and the position where the person locked it, such as footwear in the first look. Moving the item to another position in that look breaks the lock. The same item in another look is not locked and can change. [SPEC.md](SPEC.md#hard-constraints) has the rule.
 - **Reason:** An item can appear in several looks, and a person who keeps it in one look has not decided about the others. Tying the lock to a position lets code check it exactly after every edit.
+
+## D-23: Materials are compared by names from a fixed list
+
+- **Date:** 2026-10-28
+- **Status:** accepted
+- **Decision:** Catalog components and material exclusions name materials from a fixed list of generic names in `backend/app/catalog.py`. Each name has other common names that map to it, such as PU for polyurethane and merino, lambswool and woollen for wool. A catalog file or an exclusion that uses a name not on the list is refused. While an exclusion is active, a catalog product passes only when its composition is complete and none of its listed components is the excluded material; a partial, unknown or conflicting composition fails, as D-21 decided. An owned item's description names a material when it contains the material's name or another name for it as whole words, unless "no", "non", "not" or "without" comes before the name or "free" follows it, as in "wool-free".
+- **Reason:** D-21 matched an exclusion anywhere inside a component's name. That left out products by mistake, because an exclusion of PU matched "pure cotton". It also let products through, because PU never matched "polyurethane", and it labeled an owned "wool-free cotton scarf" as reporting wool. Names from a fixed list make every comparison exact.
+- **Consequences:** An exclusion typed with a name that is not on the list cannot be stored, so the interface has to offer the list or ask the person to choose from it. A catalog source that uses a new material needs that material added to the list first. Each name matches only its own material: an exclusion of wool does not exclude cashmere, and an exclusion of rubber does not exclude synthetic rubber. Negation is recognized only in the forms above; any other phrasing that mentions the material labels the owned item as reporting it.
+
+## D-24: An offer reported out of stock fails
+
+- **Date:** 2026-10-28
+- **Status:** accepted
+- **Decision:** A catalog product fails the checks when its selected offer reports it out of stock. A plan can select another offer of the same variant instead. An offer that gives no stock can be used, and the interface shows its stock as unknown. [SPEC.md](SPEC.md#hard-constraints) has the rule.
+- **Reason:** A retailer cannot sell a product it reports as out of stock, so a plan that includes it cannot be bought as shown. Failing unknown stock as well would leave out every product whose source gives no stock.
+- **Consequences:** The first version has five hard constraints. When FullAura tests whether the locked items alone make a plan infeasible, a locked variant whose offers are all out of stock is a conflict.

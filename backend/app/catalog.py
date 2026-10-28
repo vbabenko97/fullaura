@@ -28,16 +28,41 @@ class Record(BaseModel):
     model_config = ConfigDict(frozen=True, extra="forbid")
 
 
-def normalize_material(name: str) -> str:
-    """Lowercase with single spaces, so "Merino  Wool" and "merino wool" compare equal."""
-    normalized = " ".join(name.casefold().split())
-    if not normalized:
-        raise ValueError("A material name cannot be empty")
-    return normalized
+# The generic material names FullAura checks, each with the other names that sources and people
+# use for it. Any other name is refused, so an exclusion or a catalog record cannot name a
+# material that the checks would not recognize.
+MATERIALS: dict[str, tuple[str, ...]] = {
+    "acrylic": (),
+    "cashmere": (),
+    "cotton": (),
+    "elastane": ("spandex",),
+    "leather": (),
+    "linen": (),
+    "lyocell": (),
+    "modal": (),
+    "polyamide": ("nylon",),
+    "polyester": (),
+    "polyurethane": ("pu",),
+    "rubber": ("natural rubber",),
+    "silk": (),
+    "synthetic rubber": (),
+    "viscose": ("rayon",),
+    "wool": ("merino", "merino wool", "lambswool", "lamb's wool", "woollen", "woolen"),
+}
+_GENERIC_NAME = {other: name for name, others in MATERIALS.items() for other in (name, *others)}
+
+
+def generic_material(name: str) -> str:
+    """The generic name for a listed material or one of its other names, ignoring case and
+    spacing: "PU" gives "polyurethane" and "Merino Wool" gives "wool"."""
+    key = " ".join(name.casefold().replace("’", "'").split())
+    if key not in _GENERIC_NAME:
+        raise ValueError(f"Unknown material {name!r}; use one of {sorted(MATERIALS)}")
+    return _GENERIC_NAME[key]
 
 
 Id = Annotated[str, Field(pattern=r"^\S+$")]
-Material = Annotated[str, AfterValidator(normalize_material)]
+Material = Annotated[str, AfterValidator(generic_material)]
 CountryCode = Annotated[str, Field(pattern=r"^[A-Z]{2}$")]
 
 
@@ -59,7 +84,7 @@ class CompositionStatus(StrEnum):
 
 
 class Component(Record):
-    material: Material  # the generic name, such as "wool" or "polyester"
+    material: Material  # stored as the generic name, such as "wool" or "polyurethane"
     percent: Annotated[int, Field(ge=1, le=100)] | None
     part: str | None  # such as "upper" or "lining"; None when the source names no part
 
@@ -67,15 +92,21 @@ class Component(Record):
 class Composition(Record):
     status: CompositionStatus
     components: tuple[Component, ...]
+    # The source's own words when they name no listed material, such as "textile/synthetic".
+    source_text: str | None
 
     @model_validator(mode="after")
     def _components_match_status(self) -> Self:
-        listed = self.status in (CompositionStatus.COMPLETE, CompositionStatus.PARTIAL)
-        if listed != bool(self.components):
-            raise ValueError(
-                f"A {self.status} composition {'needs' if listed else 'cannot have'} components"
-            )
-        if self.status is CompositionStatus.COMPLETE:
+        status = self.status
+        if status is CompositionStatus.COMPLETE and not self.components:
+            raise ValueError("A complete composition needs components")
+        if status is CompositionStatus.PARTIAL and not (self.components or self.source_text):
+            raise ValueError("A partial composition needs components or source text")
+        if status in (CompositionStatus.UNKNOWN, CompositionStatus.CONFLICTING) and self.components:
+            raise ValueError(f"A {status} composition cannot list components")
+        if status is CompositionStatus.UNKNOWN and self.source_text:
+            raise ValueError("A composition with source text is partial or conflicting")
+        if status is CompositionStatus.COMPLETE:
             for part in {component.part for component in self.components}:
                 percents = [c.percent for c in self.components if c.part == part]
                 if None not in percents and sum(percents) != 100:

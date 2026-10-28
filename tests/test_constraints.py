@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from backend.app.catalog import Catalog, Component, Composition, Product, Variant
+from backend.app.catalog import Catalog, Component, Composition, Product, Stock, Variant
 from backend.app.constraints import (
     Notice,
     NoticeKind,
@@ -21,6 +21,7 @@ from backend.app.constraints import (
     cost,
     item_violations,
     lock_conflicts,
+    names_material,
 )
 from backend.app.state import (
     Budget,
@@ -31,6 +32,7 @@ from backend.app.state import (
     Look,
     OwnedItem,
     Plan,
+    Slot,
     State,
 )
 
@@ -175,21 +177,44 @@ def test_g05_delivery_to_austria_must_be_confirmed() -> None:
     assert rules_per_item(["P13", "P12"], set()) == {"P13": {Rule.DELIVERY}, "P12": set()}
 
 
+def with_composition(status: str, *materials: str, source_text: str | None = None) -> Variant:
+    components = [Component(material=m, percent=None, part=None) for m in materials]
+    composition = Composition(status=status, components=components, source_text=source_text)
+    return variant_like("P01", "X1").model_copy(update={"composition": composition})
+
+
 @pytest.mark.parametrize(
-    ("components", "status", "rule"),
+    ("variant", "exclusion", "rules"),
     [
-        ([Component(material="Merino Wool", percent=100, part=None)], "complete", MATERIAL),
-        ([Component(material="lambswool", percent=None, part="collar")], "partial", MATERIAL),
-        ([], "conflicting", UNCHECKED),
+        pytest.param(with_composition("complete", "Merino Wool"), "wool", {MATERIAL}, id="merino"),
+        pytest.param(with_composition("partial", "lambswool"), "Wool", {MATERIAL}, id="lambswool"),
+        pytest.param(with_composition("complete", "polyurethane"), "PU", {MATERIAL}, id="pu"),
+        pytest.param(with_composition("complete", "cotton"), "PU", set(), id="pu-not-cotton"),
+        pytest.param(with_composition("conflicting"), "wool", {UNCHECKED}, id="conflicting"),
+        pytest.param(
+            with_composition("partial", source_text="textile/synthetic"),
+            "polyester",
+            {UNCHECKED},
+            id="words-that-name-no-material",
+        ),
     ],
 )
-def test_exclusion_matches_material_names_inside_longer_names(
-    components: list[Component], status: str, rule: Rule
+def test_exclusions_compare_generic_material_names(
+    variant: Variant, exclusion: str, rules: set[Rule]
 ) -> None:
-    variant = variant_like("P01", "X1").model_copy(
-        update={"composition": Composition(status=status, components=components)}
-    )
-    assert {v.rule for v in item_violations(variant, variant.offers[0], {"wool"})} == {rule}
+    assert {v.rule for v in item_violations(variant, variant.offers[0], {exclusion})} == rules
+
+
+def test_a_listed_material_is_stored_under_its_generic_name() -> None:
+    assert with_composition("complete", "Merino Wool").composition.components[0].material == "wool"
+    assert CATALOG.variant("P14").composition.components[0].material == "polyurethane"
+
+
+def test_an_out_of_stock_offer_fails_and_unknown_stock_passes() -> None:
+    out = variant_like("P01", "X1", stock=Stock.OUT_OF_STOCK)
+    unknown = variant_like("P01", "X2", stock=None)
+    assert [v.rule for v in item_violations(out, out.offers[0], ())] == [Rule.STOCK]
+    assert item_violations(unknown, unknown.offers[0], ()) == []
 
 
 # Budget: both modes, shared variants and unknown prices (G02)
@@ -268,10 +293,13 @@ def test_known_prices_over_the_budget_fail_beside_an_unknown_price(
 # Selected offers and catalog records
 
 X1 = variant_like("P01", "X1")
-TWO_OFFERS = X1.model_copy(
+OUT_OF_STOCK = X1.offers[0].model_copy(
+    update={"id": "offer_X1_OUT", "price_cents": 3000, "stock": Stock.OUT_OF_STOCK}
+)
+X1_OFFERS = X1.model_copy(
     update={
         "offers": (
-            X1.offers[0],  # EUR 55.00, delivers to Austria
+            X1.offers[0],  # EUR 55.00, delivers to Austria, in stock
             X1.offers[0].model_copy(
                 update={
                     "id": "offer_X1_DE",
@@ -279,6 +307,7 @@ TWO_OFFERS = X1.model_copy(
                     "delivery_confirmed_to": frozenset({"DE"}),
                 }
             ),
+            OUT_OF_STOCK,
         )
     }
 )
@@ -288,25 +317,29 @@ TWO_OFFERS = X1.model_copy(
     ("offer", "expected"),
     [
         ("offer_X1_AT", []),
-        ("offer_X1_DE", [(Rule.DELIVERY, "X1", None)]),  # the variant's other offer
+        ("offer_X1_DE", [(Rule.DELIVERY, "X1", None)]),  # the variant's other offers
+        ("offer_X1_OUT", [(Rule.STOCK, "X1", None)]),
         ("offer_P03_AT", [(Rule.OFFER, "X1", None)]),  # an offer of another variant
     ],
 )
-def test_the_selected_offer_decides_delivery_and_must_belong_to_the_variant(
+def test_the_selected_offer_decides_delivery_and_stock_and_must_belong_to_the_variant(
     offer: str, expected: list
 ) -> None:
     looks = plan({"top": "X1"}, {"top": "P01"}, {"top": "P01"}, offers={"X1": offer})
-    check = check_plan(state(10**6, plan=looks), catalog_with(TWO_OFFERS))
+    check = check_plan(state(10**6, plan=looks), catalog_with(X1_OFFERS))
     assert found(check.violations) == expected
 
 
-def test_a_locked_variant_counts_at_its_cheapest_offer_that_delivers_to_austria() -> None:
+def test_a_locked_variant_counts_at_its_cheapest_offer_that_passes_the_checks() -> None:
     looks = plan({"top": "X1"}, {"top": "P01"}, {"top": "P01"})
     locked = (lock("look_1", "top", "X1"),)
-    catalog = catalog_with(TWO_OFFERS)
+    catalog = catalog_with(X1_OFFERS)
     assert lock_conflicts(state(5500, locks=locked, plan=looks), catalog) == []
     (conflict,) = lock_conflicts(state(5499, locks=locked, plan=looks), catalog)
-    assert conflict.cost_cents == 5500  # not the EUR 40.00 offer without Austrian delivery
+    assert conflict.cost_cents == 5500  # not EUR 40.00 for Germany or 30.00 out of stock
+    only_out = catalog_with(X1.model_copy(update={"offers": (OUT_OF_STOCK,)}))
+    conflicts = lock_conflicts(state(10**6, locks=locked, plan=looks), only_out)
+    assert found(conflicts) == [(Rule.STOCK, "X1", None)]
 
 
 def test_items_without_a_record_fail() -> None:
@@ -338,6 +371,34 @@ def test_owned_items_stay_under_an_exclusion_with_labels() -> None:
     }
     assert not check_plan(state(18500, owned_items=owned, plan=looks), CATALOG).notices
     assert "url" not in OwnedItem.model_fields
+
+    wool_free = SCARF.model_copy(update={"description": "wool-free cotton scarf"})
+    check = check_plan(
+        state(18500, material_exclusions={"wool"}, owned_items=(BOOTS, wool_free), plan=looks),
+        CATALOG,
+    )
+    assert Notice(NoticeKind.OWNED_UNCONFIRMED, ref("O02"), "wool") in check.notices
+
+
+@pytest.mark.parametrize(
+    ("description", "material", "named"),
+    [
+        ("red wool scarf", "wool", True),
+        ("Merino jumper", "wool", True),
+        ("lamb’s wool hat", "wool", True),
+        ("PU-coated boots", "polyurethane", True),
+        ("wool-free cotton scarf", "wool", False),
+        ("scarf with no wool", "wool", False),
+        ("non-wool blend", "wool", False),
+        ("pure cotton tee", "PU", False),
+        ("woollen scarf", "wool", True),
+        ("woolly hat", "wool", False),  # a word that is not a listed name stays unconfirmed
+    ],
+)
+def test_a_description_names_a_material_as_whole_words_without_negation(
+    description: str, material: str, named: bool
+) -> None:
+    assert names_material(description, material) is named
 
 
 # Locks (G06, G07, G12)
@@ -480,6 +541,7 @@ FOUR_OWNED = (BOOTS, SCARF, *(BOOTS.model_copy(update={"id": f"O0{n}"}) for n in
             id="two-locks-in-one-slot",
         ),
         pytest.param(lambda: state(100, material_exclusions={"  "}), id="blank-exclusion"),
+        pytest.param(lambda: state(100, material_exclusions={"wol"}), id="unknown-material"),
     ],
 )
 def test_inconsistent_state_is_refused(build) -> None:
@@ -487,5 +549,28 @@ def test_inconsistent_state_is_refused(build) -> None:
         build()
 
 
-def test_exclusions_are_normalized() -> None:
-    assert state(100, material_exclusions={" Wool ", "wool"}).material_exclusions == {"wool"}
+def test_exclusions_are_stored_under_generic_names() -> None:
+    exclusions = {" Wool ", "merino", "PU"}
+    assert state(100, material_exclusions=exclusions).material_exclusions == {
+        "wool",
+        "polyurethane",
+    }
+
+
+def test_checks_refuse_a_state_changed_without_validation() -> None:
+    current = plan(*G06_PLAN)
+    checked = state(30000, plan=current)
+    # A frozen model still holds a dict that can change in place: P01 now fills two slots.
+    current.looks[0].items[Slot.FOOTWEAR] = current.looks[0].items[Slot.TOP]
+    with pytest.raises(ValidationError):
+        check_plan(checked, CATALOG)
+    with pytest.raises(ValidationError):
+        lock_conflicts(checked, CATALOG)
+
+    looks = plan({"top": "P02", "bottom": "P05"}, {"top": "P01"}, {"top": "P01"})
+    exclusions = frozenset({"Wool"})  # not stored under its generic name
+    unchecked = state(10**6, plan=looks).model_copy(update={"material_exclusions": exclusions})
+    assert found(check_plan(unchecked, CATALOG).violations) == [(MATERIAL, "P02", None)]
+    unknown = unchecked.model_copy(update={"material_exclusions": frozenset({"wol"})})
+    with pytest.raises(ValidationError):
+        check_plan(unknown, CATALOG)

@@ -6,14 +6,25 @@ finds one, no plan that keeps the locks can pass, and the plan is reported as in
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 
-from backend.app.catalog import Catalog, CompositionStatus, Offer, Variant, normalize_material
+from backend.app.catalog import (
+    MATERIALS,
+    Catalog,
+    CompositionStatus,
+    Offer,
+    Stock,
+    Variant,
+    generic_material,
+)
 from backend.app.state import Budget, BudgetMode, ItemKind, ItemRef, LockedPlacement, State
 
 DELIVERY_COUNTRY = "AT"
+_WORD = re.compile(r"[a-z]+(?:'[a-z]+)*")
+_NEGATIONS = frozenset({"no", "non", "not", "without"})
 
 
 class Rule(StrEnum):
@@ -24,6 +35,7 @@ class Rule(StrEnum):
     MATERIAL = "material"  # the composition lists an excluded material
     COMPOSITION_UNCHECKED = "composition_unchecked"  # not complete, so an exclusion cannot pass
     DELIVERY = "delivery"  # delivery to Austria is not confirmed
+    STOCK = "stock"  # the selected offer reports the variant out of stock
     LOCK = "lock"
 
 
@@ -60,11 +72,23 @@ class Check:
         return not self.violations
 
 
-def names_material(text: str, material: str) -> bool:
-    """Whether the text contains the material's name, even inside a longer word: "wool" is in
-    "merino wool" and "lambswool". Erring this way leaves an item out rather than letting an
-    excluded material through. Case and spacing do not matter."""
-    return normalize_material(material) in " ".join(text.casefold().split())
+def names_material(description: str, material: str) -> bool:
+    """Whether a person's description names the material, by its generic name or another name
+    in MATERIALS, as whole words and not negated. "Red wool scarf" and "merino jumper" name
+    wool; "wool-free scarf", "no wool" and "pure cotton" do not."""
+    words = _WORD.findall(description.casefold().replace("’", "'"))
+    material = generic_material(material)
+    for name in (material, *MATERIALS[material]):
+        name_words = name.split()
+        for start in range(len(words) - len(name_words) + 1):
+            end = start + len(name_words)
+            if words[start:end] != name_words:
+                continue
+            before = words[start - 1] if start else ""
+            after = words[end] if end < len(words) else ""
+            if before not in _NEGATIONS and after != "free":
+                return True
+    return False
 
 
 def item_violations(variant: Variant, offer: Offer, exclusions: Iterable[str]) -> list[Violation]:
@@ -72,13 +96,10 @@ def item_violations(variant: Variant, offer: Offer, exclusions: Iterable[str]) -
     The checks hold for every look, so a planner can use them to filter the catalog."""
     item = ItemRef(kind=ItemKind.CATALOG, id=variant.id)
     violations = []
-    exclusions = sorted({normalize_material(material) for material in exclusions})
+    exclusions = sorted({generic_material(material) for material in exclusions})
     composition = variant.composition
-    found = [
-        material
-        for material in exclusions
-        if any(names_material(part.material, material) for part in composition.components)
-    ]
+    listed = {component.material for component in composition.components}
+    found = [material for material in exclusions if material in listed]
     if found:
         violations.append(
             Violation(Rule.MATERIAL, f"{variant.id} contains {', '.join(found)}", item)
@@ -96,6 +117,8 @@ def item_violations(variant: Variant, offer: Offer, exclusions: Iterable[str]) -
         violations.append(
             Violation(Rule.DELIVERY, f"{offer.id} does not confirm delivery to Austria", item)
         )
+    if offer.stock is Stock.OUT_OF_STOCK:
+        violations.append(Violation(Rule.STOCK, f"{offer.id} reports it out of stock", item))
     if offer.price_cents is None:
         violations.append(Violation(Rule.PRICE_UNKNOWN, f"{offer.id} has no price", item))
     return violations
@@ -124,8 +147,16 @@ def _prices(
     return prices
 
 
+def revalidated(state: State) -> State:
+    """The state rebuilt through validation. A frozen model still holds dicts that can change in
+    place, and model_copy(update=...) skips validation; either could otherwise reach a check
+    with a structure that validation refuses. Raises ValidationError for such a state."""
+    return State.model_validate(state.model_dump())
+
+
 def check_plan(state: State, catalog: Catalog) -> Check:
     """Every hard-constraint violation in the state's plan, and the owned-item labels."""
+    state = revalidated(state)
     plan = state.plan
     if plan is None:
         raise ValueError("The state has no plan to check")
@@ -194,6 +225,7 @@ def lock_conflicts(state: State, catalog: Catalog) -> list[Violation]:
     A locked catalog item counts at its cheapest usable offer, so a budget violation here is
     a lower bound that no choice of the other items can fix. Owned items cost nothing and
     never conflict."""
+    state = revalidated(state)
     violations: list[Violation] = []
     prices: dict[str, int] = {}
     for item in dict.fromkeys(lock.item for lock in state.locks):

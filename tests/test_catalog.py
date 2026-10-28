@@ -37,6 +37,12 @@ def first_offer(data: dict) -> dict:
     return first_variant(data)["offers"][0]
 
 
+def variant(data: dict, variant_id: str) -> dict:
+    return next(
+        v for product in data["products"] for v in product["variants"] if v["id"] == variant_id
+    )
+
+
 @pytest.mark.parametrize(
     "corrupt",
     [
@@ -59,6 +65,20 @@ def first_offer(data: dict) -> dict:
         pytest.param(
             lambda d: first_variant(d)["composition"]["components"][0].update(percent=60),
             id="complete-but-60-percent",
+        ),
+        pytest.param(
+            lambda d: first_variant(d)["composition"]["components"][0].update(
+                material="pure cotton"
+            ),
+            id="unlisted-material",
+        ),
+        pytest.param(
+            lambda d: variant(d, "P04")["composition"].update(source_text="see label"),
+            id="unknown-with-source-text",
+        ),
+        pytest.param(
+            lambda d: variant(d, "P07")["composition"].update(source_text=None),
+            id="partial-with-nothing-listed",
         ),
         pytest.param(
             lambda d: d["products"][1]["variants"][0].update(id="P01"), id="repeated-variant-id"
