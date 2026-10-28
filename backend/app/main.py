@@ -6,10 +6,19 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from backend.app.catalog import Catalog
 from backend.app.config import Settings
+from backend.app.planner import (
+    BASETEN_URL,
+    SPARK_MODEL,
+    PlanRequest,
+    SparkClient,
+    plan_looks,
+    result_json,
+)
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, spark: SparkClient | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
     index_file = settings.web_dist / "index.html"
     assets_dir = settings.web_dist / "assets"
@@ -37,6 +46,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             {"status": "ready" if usable else "not_ready"},
             status_code=200 if usable else 503,
         )
+
+    # Planning calls a paid model, so it stays off in production until T-04 adds per-session
+    # limits, the 18+ confirmation and the photo-processing notice (docs/TASKS.md).
+    if settings.environment == "development":
+        catalog = Catalog.model_validate_json(settings.catalog_file.read_text(encoding="utf-8"))
+
+        @app.post("/api/plans", tags=["planning"])
+        def create_plan(request: PlanRequest) -> JSONResponse:
+            """Three looks from the catalog, checked against every hard constraint."""
+            client = spark
+            if client is None:
+                if not settings.baseten_api_key:
+                    return JSONResponse({"detail": "BASETEN_API_KEY is not set"}, status_code=503)
+                client = SparkClient(
+                    settings.baseten_api_key,
+                    model=settings.baseten_model or SPARK_MODEL,
+                    base_url=settings.baseten_base_url or BASETEN_URL,
+                )
+            return JSONResponse(
+                result_json(plan_looks(request.brief, request.state, catalog, client))
+            )
 
     # Reserve the API prefix so an unknown API URL can never serve HTML.
     @app.api_route(

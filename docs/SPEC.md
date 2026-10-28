@@ -20,6 +20,14 @@ The first version has an English interface, shows prices in EUR, and offers only
 | Hair and beard | One or two optional previews; a reference card for a barber if preview quality allows |
 | Output | Previews, a shopping list with sources and costs, and what is still unknown |
 
+## Look structure
+
+Each look has a complete base outfit: either a top and bottom or a one-piece, not both. Every
+item's category must match its slot. Extra layers, footwear and accessories are optional. Code
+checks these rules with the hard constraints before it returns a plan. An invalid look gets one
+repair attempt; if the plan still fails, the response has no plan and reports the violations
+([D-29](DECISIONS.md#d-29-looks-have-a-complete-base-outfit)).
+
 ## Catalog records
 
 A catalog record describes one product and its variants. A variant is one purchasable version of the product, such as one size and color, with its SKU and composition. Each variant has one or more offers, and an offer is one retailer's price in EUR, the countries it confirms delivery to, its stock and its shopping link. Every variant and offer keeps its source and the time its data was last checked against that source. Size and stock are recorded when the source gives them. FullAura recommends only products that have a catalog record, and it chooses them before it generates a preview. Data that a record lacks stays unknown and is shown as unknown in the output. [DATA.md](DATA.md) has the rules for catalog sources and their rights.
@@ -40,7 +48,7 @@ A hard constraint is a rule that code checks before FullAura shows a plan. A cat
 - **Stock.** A product whose selected offer reports it out of stock fails this check; another offer of the same variant can be selected instead. When the offer gives no stock, the product can be used, and the interface shows its stock as unknown ([D-24](DECISIONS.md#d-24-an-offer-reported-out-of-stock-fails)).
 - **Locked items.** A locked item is one the person chose to keep. It stays in the look where the person locked it, in the same position, such as footwear, through every edit. The same item in another look can still change ([D-22](DECISIONS.md#d-22-a-lock-holds-one-position-in-one-look)).
 
-When no plan meets every hard constraint, for example because the locked items cost more than the budget, FullAura reports that the plan is infeasible.
+When no plan meets every hard constraint, for example because the locked items cost more than the budget, FullAura reports that the plan is infeasible. It says so only when code shows that no plan can pass. When the model's plans keep failing the checks, or the model does not answer in time, FullAura says that instead and does not call the request infeasible.
 
 The selected variants and offers, budget, exclusions, owned items and locked items are kept in structured application state, and code validates the hard constraints against that state. FullAura does not present a material exclusion as a medical assurance.
 

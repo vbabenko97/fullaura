@@ -6,7 +6,7 @@ Personal style plans built around your preferences, budget, and existing wardrob
 
 FullAura aims to combine outfits, optional hair and beard previews, and links to real products. A plan should remain consistent when you keep an item, change a preference, or lower the budget.
 
-**Status: initial scaffold.** The repository contains a React landing page, a FastAPI server, runtime tests, and a Docker build. A Muse Image client and a feasibility test script exist. Exploratory runs used the author's photos; the formal evaluation is pending. A first catalog of 15 real products, with their facts and no images, and the code that checks the hard constraints exist; the interface does not use them yet. Photo uploads, product selection, and personalized previews are planned. There is no hosted product yet.
+**Status: initial scaffold.** The repository contains a React landing page, a FastAPI server, runtime tests, and a Docker build. A Muse Image client and a feasibility test script exist. Exploratory runs used the author's photos; the formal evaluation is pending. A first catalog of 15 real products, with their facts and no images, and the code that checks the hard constraints exist. A development-only endpoint asks Muse Spark for three looks and checks them; the interface does not use it yet. Photo uploads, product selection, and personalized previews are planned. There is no hosted product yet.
 
 ## Run locally
 
@@ -30,7 +30,7 @@ npm run dev
 
 Open <http://localhost:5173>. Vite forwards `/api` requests to the backend at port 8000. Development API docs are at <http://localhost:8000/api/docs>.
 
-The web app needs no cloud credentials and makes no model calls. Two scripts do, with keys from `.env`, which Git ignores. The feasibility test script ([docs/FEASIBILITY.md](docs/FEASIBILITY.md)) calls Meta with `MODEL_API_KEY`. The model smoke check makes one small call to Muse Spark Open on Baseten, with `BASETEN_API_KEY`, and one to Muse Image on Meta, and prints each call's status, latency and token usage:
+In development, the server's planning endpoint, `POST /api/plans`, asks Muse Spark Open on Baseten for three looks from the catalog and checks them against the hard constraints. It needs `BASETEN_API_KEY` in `.env`, which Git ignores, and the production container leaves it switched off. The rest of the web app needs no cloud credentials. Two scripts also call models, with keys from `.env`. The feasibility test script ([docs/FEASIBILITY.md](docs/FEASIBILITY.md)) calls Meta with `MODEL_API_KEY`. The model smoke check makes one small call to Muse Spark Open on Baseten, with `BASETEN_API_KEY`, and one to Muse Image on Meta, and prints each call's status, latency and token usage:
 
 ```bash
 uv run --frozen --env-file .env python -m scripts.smoke_models
