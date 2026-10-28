@@ -184,6 +184,14 @@ def test_refuses_a_jpeg_that_relies_on_rotation_metadata(orientation: int) -> No
     assert sent == []
 
 
+def test_refuses_exif_orientation_after_marker_fill_bytes() -> None:
+    images, sent, _ = client(OK)
+    filled_exif = b"\xff\xff" + exif(6)
+    with pytest.raises(ValueError, match="upright"):
+        images.edit("Swap the shirt", [InputImage(jpeg(filled_exif), "image/jpeg")])
+    assert sent == []
+
+
 def test_retries_a_connection_reset_while_reading_the_reply() -> None:
     reset = http.client.RemoteDisconnected("Remote end closed connection")
     images, sent, _ = client(reset, http.client.IncompleteRead(b""), OK)

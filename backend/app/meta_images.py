@@ -152,8 +152,10 @@ def strip_jpeg_metadata(data: bytes) -> bytes:
             else:
                 raise ValueError("Malformed JPEG image")
             continue
-        if marker == 0xE1 and _exif_orientation(segment) not in (None, 1):
-            raise ValueError("Save the photo upright first; its rotation lives in metadata")
+        if marker == 0xE1:
+            orientation = _exif_orientation(_jpeg_marker_segment(marker, payload))
+            if orientation not in (None, 1):
+                raise ValueError("Save the photo upright first; its rotation lives in metadata")
         if marker == 0xE0:
             # Keep the recognized JFIF header, but discard its thumbnail and any tail.
             if (
