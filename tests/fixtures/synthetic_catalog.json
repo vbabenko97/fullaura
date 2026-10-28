@@ -1,0 +1,838 @@
+{
+  "id": "synthetic-test-catalog-2026-10-27",
+  "synthetic": true,
+  "products": [
+    {
+      "id": "product_P01",
+      "title": "Ivory button shirt",
+      "brand": null,
+      "category": "top",
+      "variants": [
+        {
+          "id": "P01",
+          "sku": null,
+          "color": "ivory",
+          "size": null,
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 100,
+                "part": null
+              }
+            ],
+            "source_text": null
+          },
+          "source": {
+            "url": "https://synthetic.example/products/p01",
+            "checked_at": "2026-10-27T10:00:00Z"
+          },
+          "offers": [
+            {
+              "id": "offer_P01_AT",
+              "retailer": "Synthetic Retailer",
+              "url": "https://synthetic.example/products/p01",
+              "price_cents": 5500,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://synthetic.example/products/p01",
+                "checked_at": "2026-10-27T10:00:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product_P02",
+      "title": "Charcoal cardigan",
+      "brand": null,
+      "category": "knitwear",
+      "variants": [
+        {
+          "id": "P02",
+          "sku": null,
+          "color": "charcoal",
+          "size": null,
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "wool",
+                "percent": 100,
+                "part": null
+              }
+            ],
+            "source_text": null
+          },
+          "source": {
+            "url": "https://synthetic.example/products/p02",
+            "checked_at": "2026-10-27T10:00:00Z"
+          },
+          "offers": [
+            {
+              "id": "offer_P02_AT",
+              "retailer": "Synthetic Retailer",
+              "url": "https://synthetic.example/products/p02",
+              "price_cents": 9000,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://synthetic.example/products/p02",
+                "checked_at": "2026-10-27T10:00:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product_P03",
+      "title": "Navy overshirt",
+      "brand": null,
+      "category": "top",
+      "variants": [
+        {
+          "id": "P03",
+          "sku": null,
+          "color": "navy",
+          "size": null,
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 100,
+                "part": null
+              }
+            ],
+            "source_text": null
+          },
+          "source": {
+            "url": "https://synthetic.example/products/p03",
+            "checked_at": "2026-10-27T10:00:00Z"
+          },
+          "offers": [
+            {
+              "id": "offer_P03_AT",
+              "retailer": "Synthetic Retailer",
+              "url": "https://synthetic.example/products/p03",
+              "price_cents": 7000,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://synthetic.example/products/p03",
+                "checked_at": "2026-10-27T10:00:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product_P04",
+      "title": "Black tailored trousers",
+      "brand": null,
+      "category": "bottom",
+      "variants": [
+        {
+          "id": "P04",
+          "sku": null,
+          "color": "black",
+          "size": null,
+          "composition": {
+            "status": "unknown",
+            "components": [],
+            "source_text": null
+          },
+          "source": {
+            "url": "https://synthetic.example/products/p04",
+            "checked_at": "2026-10-27T10:00:00Z"
+          },
+          "offers": [
+            {
+              "id": "offer_P04_AT",
+              "retailer": "Synthetic Retailer",
+              "url": "https://synthetic.example/products/p04",
+              "price_cents": 7500,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://synthetic.example/products/p04",
+                "checked_at": "2026-10-27T10:00:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product_P05",
+      "title": "Olive relaxed chinos",
+      "brand": null,
+      "category": "bottom",
+      "variants": [
+        {
+          "id": "P05",
+          "sku": null,
+          "color": "olive",
+          "size": null,
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 97,
+                "part": null
+              },
+              {
+                "material": "elastane",
+                "percent": 3,
+                "part": null
+              }
+            ],
+            "source_text": null
+          },
+          "source": {
+            "url": "https://synthetic.example/products/p05",
+            "checked_at": "2026-10-27T10:00:00Z"
+          },
+          "offers": [
+            {
+              "id": "offer_P05_AT",
+              "retailer": "Synthetic Retailer",
+              "url": "https://synthetic.example/products/p05",
+              "price_cents": 6500,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://synthetic.example/products/p05",
+                "checked_at": "2026-10-27T10:00:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product_P06",
+      "title": "Burgundy knit",
+      "brand": null,
+      "category": "knitwear",
+      "variants": [
+        {
+          "id": "P06",
+          "sku": null,
+          "color": "burgundy",
+          "size": null,
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "acrylic",
+                "percent": 70,
+                "part": null
+              },
+              {
+                "material": "wool",
+                "percent": 30,
+                "part": null
+              }
+            ],
+            "source_text": null
+          },
+          "source": {
+            "url": "https://synthetic.example/products/p06",
+            "checked_at": "2026-10-27T10:00:00Z"
+          },
+          "offers": [
+            {
+              "id": "offer_P06_AT",
+              "retailer": "Synthetic Retailer",
+              "url": "https://synthetic.example/products/p06",
+              "price_cents": 6000,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://synthetic.example/products/p06",
+                "checked_at": "2026-10-27T10:00:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product_P07",
+      "title": "White trainers",
+      "brand": null,
+      "category": "footwear",
+      "variants": [
+        {
+          "id": "P07",
+          "sku": null,
+          "color": "white",
+          "size": null,
+          "composition": {
+            "status": "partial",
+            "components": [],
+            "source_text": "textile/synthetic"
+          },
+          "source": {
+            "url": "https://synthetic.example/products/p07",
+            "checked_at": "2026-10-27T10:00:00Z"
+          },
+          "offers": [
+            {
+              "id": "offer_P07_AT",
+              "retailer": "Synthetic Retailer",
+              "url": "https://synthetic.example/products/p07",
+              "price_cents": 8000,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://synthetic.example/products/p07",
+                "checked_at": "2026-10-27T10:00:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product_P08",
+      "title": "Black derby shoes",
+      "brand": null,
+      "category": "footwear",
+      "variants": [
+        {
+          "id": "P08",
+          "sku": null,
+          "color": "black",
+          "size": null,
+          "composition": {
+            "status": "partial",
+            "components": [
+              {
+                "material": "leather",
+                "percent": null,
+                "part": "upper"
+              }
+            ],
+            "source_text": null
+          },
+          "source": {
+            "url": "https://synthetic.example/products/p08",
+            "checked_at": "2026-10-27T10:00:00Z"
+          },
+          "offers": [
+            {
+              "id": "offer_P08_AT",
+              "retailer": "Synthetic Retailer",
+              "url": "https://synthetic.example/products/p08",
+              "price_cents": 12000,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://synthetic.example/products/p08",
+                "checked_at": "2026-10-27T10:00:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product_P09",
+      "title": "Teal midi skirt",
+      "brand": null,
+      "category": "bottom",
+      "variants": [
+        {
+          "id": "P09",
+          "sku": null,
+          "color": "teal",
+          "size": null,
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "viscose",
+                "percent": 100,
+                "part": null
+              }
+            ],
+            "source_text": null
+          },
+          "source": {
+            "url": "https://synthetic.example/products/p09",
+            "checked_at": "2026-10-27T10:00:00Z"
+          },
+          "offers": [
+            {
+              "id": "offer_P09_AT",
+              "retailer": "Synthetic Retailer",
+              "url": "https://synthetic.example/products/p09",
+              "price_cents": 7000,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://synthetic.example/products/p09",
+                "checked_at": "2026-10-27T10:00:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product_P10",
+      "title": "Black blazer",
+      "brand": null,
+      "category": "outerwear",
+      "variants": [
+        {
+          "id": "P10",
+          "sku": null,
+          "color": "black",
+          "size": null,
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": null
+              }
+            ],
+            "source_text": null
+          },
+          "source": {
+            "url": "https://synthetic.example/products/p10",
+            "checked_at": "2026-10-27T10:00:00Z"
+          },
+          "offers": [
+            {
+              "id": "offer_P10_AT",
+              "retailer": "Synthetic Retailer",
+              "url": "https://synthetic.example/products/p10",
+              "price_cents": 11000,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://synthetic.example/products/p10",
+                "checked_at": "2026-10-27T10:00:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product_P11",
+      "title": "Camel overcoat",
+      "brand": null,
+      "category": "outerwear",
+      "variants": [
+        {
+          "id": "P11",
+          "sku": null,
+          "color": "camel",
+          "size": null,
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "wool",
+                "percent": 70,
+                "part": null
+              },
+              {
+                "material": "polyester",
+                "percent": 30,
+                "part": null
+              }
+            ],
+            "source_text": null
+          },
+          "source": {
+            "url": "https://synthetic.example/products/p11",
+            "checked_at": "2026-10-27T10:00:00Z"
+          },
+          "offers": [
+            {
+              "id": "offer_P11_AT",
+              "retailer": "Synthetic Retailer",
+              "url": "https://synthetic.example/products/p11",
+              "price_cents": 16000,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://synthetic.example/products/p11",
+                "checked_at": "2026-10-27T10:00:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product_P12",
+      "title": "Cobalt dress",
+      "brand": null,
+      "category": "one_piece",
+      "variants": [
+        {
+          "id": "P12",
+          "sku": null,
+          "color": "cobalt",
+          "size": null,
+          "composition": {
+            "status": "unknown",
+            "components": [],
+            "source_text": null
+          },
+          "source": {
+            "url": "https://synthetic.example/products/p12",
+            "checked_at": "2026-10-27T10:00:00Z"
+          },
+          "offers": [
+            {
+              "id": "offer_P12_AT",
+              "retailer": "Synthetic Retailer",
+              "url": "https://synthetic.example/products/p12",
+              "price_cents": 9500,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://synthetic.example/products/p12",
+                "checked_at": "2026-10-27T10:00:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product_P13",
+      "title": "Black dress",
+      "brand": null,
+      "category": "one_piece",
+      "variants": [
+        {
+          "id": "P13",
+          "sku": null,
+          "color": "black",
+          "size": null,
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": null
+              }
+            ],
+            "source_text": null
+          },
+          "source": {
+            "url": "https://synthetic.example/products/p13",
+            "checked_at": "2026-10-27T10:00:00Z"
+          },
+          "offers": [
+            {
+              "id": "offer_P13_AT",
+              "retailer": "Synthetic Retailer",
+              "url": "https://synthetic.example/products/p13",
+              "price_cents": 13000,
+              "currency": "EUR",
+              "delivery_confirmed_to": [],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://synthetic.example/products/p13",
+                "checked_at": "2026-10-27T10:00:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product_P14",
+      "title": "Silver accent bag",
+      "brand": null,
+      "category": "accessory",
+      "variants": [
+        {
+          "id": "P14",
+          "sku": null,
+          "color": "silver",
+          "size": null,
+          "composition": {
+            "status": "partial",
+            "components": [
+              {
+                "material": "polyurethane",
+                "percent": null,
+                "part": null
+              }
+            ],
+            "source_text": null
+          },
+          "source": {
+            "url": "https://synthetic.example/products/p14",
+            "checked_at": "2026-10-27T10:00:00Z"
+          },
+          "offers": [
+            {
+              "id": "offer_P14_AT",
+              "retailer": "Synthetic Retailer",
+              "url": "https://synthetic.example/products/p14",
+              "price_cents": 2500,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://synthetic.example/products/p14",
+                "checked_at": "2026-10-27T10:00:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product_P15",
+      "title": "Denim jacket",
+      "brand": null,
+      "category": "outerwear",
+      "variants": [
+        {
+          "id": "P15",
+          "sku": null,
+          "color": null,
+          "size": null,
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 100,
+                "part": null
+              }
+            ],
+            "source_text": null
+          },
+          "source": {
+            "url": "https://synthetic.example/products/p15",
+            "checked_at": "2026-10-27T10:00:00Z"
+          },
+          "offers": [
+            {
+              "id": "offer_P15_AT",
+              "retailer": "Synthetic Retailer",
+              "url": "https://synthetic.example/products/p15",
+              "price_cents": 8500,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://synthetic.example/products/p15",
+                "checked_at": "2026-10-27T10:00:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product_P16",
+      "title": "Cream knit top",
+      "brand": null,
+      "category": "top",
+      "variants": [
+        {
+          "id": "P16",
+          "sku": null,
+          "color": "cream",
+          "size": null,
+          "composition": {
+            "status": "partial",
+            "components": [
+              {
+                "material": "viscose",
+                "percent": null,
+                "part": null
+              },
+              {
+                "material": "polyester",
+                "percent": null,
+                "part": null
+              }
+            ],
+            "source_text": null
+          },
+          "source": {
+            "url": "https://synthetic.example/products/p16",
+            "checked_at": "2026-10-27T10:00:00Z"
+          },
+          "offers": [
+            {
+              "id": "offer_P16_AT",
+              "retailer": "Synthetic Retailer",
+              "url": "https://synthetic.example/products/p16",
+              "price_cents": 5800,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://synthetic.example/products/p16",
+                "checked_at": "2026-10-27T10:00:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product_P17",
+      "title": "Black trainers",
+      "brand": null,
+      "category": "footwear",
+      "variants": [
+        {
+          "id": "P17",
+          "sku": null,
+          "color": "black",
+          "size": null,
+          "composition": {
+            "status": "partial",
+            "components": [],
+            "source_text": "textile/synthetic"
+          },
+          "source": {
+            "url": "https://synthetic.example/products/p17",
+            "checked_at": "2026-10-27T10:00:00Z"
+          },
+          "offers": [
+            {
+              "id": "offer_P17_AT",
+              "retailer": "Synthetic Retailer",
+              "url": "https://synthetic.example/products/p17",
+              "price_cents": 7800,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": null,
+              "source": {
+                "url": "https://synthetic.example/products/p17",
+                "checked_at": "2026-10-27T10:00:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "product_P18",
+      "title": "Canvas slip-ons",
+      "brand": null,
+      "category": "footwear",
+      "variants": [
+        {
+          "id": "P18",
+          "sku": null,
+          "color": null,
+          "size": null,
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": null,
+                "part": "upper"
+              },
+              {
+                "material": "polyester",
+                "percent": null,
+                "part": "lining"
+              },
+              {
+                "material": "synthetic rubber",
+                "percent": null,
+                "part": "sole"
+              }
+            ],
+            "source_text": null
+          },
+          "source": {
+            "url": "https://synthetic.example/products/p18",
+            "checked_at": "2026-10-27T10:00:00Z"
+          },
+          "offers": [
+            {
+              "id": "offer_P18_AT",
+              "retailer": "Synthetic Retailer",
+              "url": "https://synthetic.example/products/p18",
+              "price_cents": 6000,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": null,
+              "source": {
+                "url": "https://synthetic.example/products/p18",
+                "checked_at": "2026-10-27T10:00:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
