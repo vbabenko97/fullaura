@@ -16,8 +16,16 @@ from backend.app.catalog import Catalog
 from backend.app.config import Settings
 from backend.app.constraints import Rule
 from backend.app.main import create_app
-from backend.app.planner import Brief, Outcome, SparkClient, _post_json, plan_looks
-from backend.app.state import Budget, ItemKind, ItemRef, LockedPlacement, Look, Plan, State
+from backend.app.planner import (
+    Brief,
+    Outcome,
+    PlanRequest,
+    Replacement,
+    SparkClient,
+    _post_json,
+    plan_looks,
+)
+from backend.app.state import Budget, ItemKind, ItemRef, LockedPlacement, Look, Plan, Slot, State
 
 FIXTURE = Path(__file__).parent / "fixtures" / "synthetic_catalog.json"
 CATALOG = Catalog.model_validate_json(FIXTURE.read_text(encoding="utf-8"))
@@ -64,7 +72,30 @@ def spark(*outcomes: Any) -> tuple[SparkClient, list[dict[str, Any]], list[float
 
 
 def state(budget_cents: int = 20000, **fields: Any) -> State:
-    return State(budget=Budget(amount_cents=budget_cents), material_exclusions={"wool"}, **fields)
+    exclusions = fields.pop("material_exclusions", {"wool"})
+    return State(
+        budget=Budget(amount_cents=budget_cents),
+        material_exclusions=exclusions,
+        **fields,
+    )
+
+
+def plan_from_looks(*look_items: dict[str, str]) -> Plan:
+    looks = tuple(
+        Look(
+            id=f"look_{number}",
+            items={
+                Slot(slot): ItemRef(kind=ItemKind.CATALOG, id=variant_id)
+                for slot, variant_id in items.items()
+            },
+        )
+        for number, items in enumerate(look_items, start=1)
+    )
+    variants = {item.id for look in looks for item in look.items.values()}
+    return Plan(
+        looks=looks,
+        selected_offers={variant_id: f"offer_{variant_id}_AT" for variant_id in variants},
+    )
 
 
 class FakeClock:
@@ -91,6 +122,94 @@ def test_a_valid_plan_succeeds_with_offers_chosen_by_code() -> None:
     # Wool, compositions that cannot be checked and unconfirmed delivery never reach the model.
     assert candidates.isdisjoint({"P02", "P04", "P06", "P07", "P11", "P12", "P13"})
     assert {"P01", "P05", "P18"} <= candidates
+
+
+def test_replacement_changes_only_the_target_and_checks_the_whole_plan(tmp_path: Path) -> None:
+    current_plan = plan_from_looks(LOOK_1, LOOK_2, LOOK_3)
+    target = Replacement(
+        look_id="look_2",
+        slot=Slot.TOP,
+        item=ItemRef(kind=ItemKind.CATALOG, id="P03"),
+    )
+    locks = tuple(
+        LockedPlacement(look_id=look.id, slot=slot, item=item)
+        for look in current_plan.looks
+        for slot, item in look.items.items()
+        if not (look.id == target.look_id and slot is target.slot)
+    )
+    request_state = state(material_exclusions=frozenset(), plan=current_plan, locks=locks)
+    request = PlanRequest(brief=BRIEF, state=request_state, replacement=target)
+    changed_look_2 = {**LOOK_2, "top": "P16"}
+    client, sent, _ = spark(reply(LOOK_1, changed_look_2, LOOK_3))
+    app = create_app(Settings(web_dist=tmp_path, catalog_file=FIXTURE), spark=client)
+
+    with TestClient(app) as http:
+        response = http.post("/api/plans", json=request.model_dump(mode="json"))
+
+    payload = response.json()
+    assert response.status_code == 200 and payload["outcome"] == "success"
+    assert payload["violations"] == []
+    assert payload["plan"]["looks"][1]["items"]["top"]["id"] == "P16"
+    submitted = json.loads(sent[0]["messages"][1]["content"])
+    assert submitted["replacement"] == {
+        "look_id": "look_2",
+        "slot": "top",
+        "item": {"kind": "catalog", "id": "P03"},
+    }
+    assert submitted["current_plan"][1]["items"]["top"] == {
+        "kind": "catalog",
+        "id": "P03",
+    }
+    assert len(submitted["locks"]) == 8
+
+
+def test_replacement_retries_when_the_target_or_another_position_is_unchanged() -> None:
+    current_plan = plan_from_looks(LOOK_1, LOOK_2, LOOK_3)
+    target = Replacement(
+        look_id="look_2",
+        slot=Slot.TOP,
+        item=ItemRef(kind=ItemKind.CATALOG, id="P03"),
+    )
+    request = PlanRequest(brief=BRIEF, state=state(plan=current_plan), replacement=target)
+    invalid_replacement = reply(LOOK_1, {**LOOK_2, "bottom": "P09"}, LOOK_3)
+    client, sent, _ = spark(invalid_replacement, invalid_replacement)
+
+    result = plan_looks(
+        request.brief,
+        request.state,
+        CATALOG,
+        client,
+        replacement=request.replacement,
+    )
+
+    assert result.outcome is Outcome.GENERATION_FAILED
+    assert result.check and {issue.rule for issue in result.check.violations} == {Rule.REPLACEMENT}
+    repair = sent[1]["messages"][-1]["content"]
+    assert "Replace look_2 top with a different item" in repair
+    assert "changed the unrelated look_2 bottom position" in repair
+
+
+def test_replacement_target_must_be_unlocked_and_match_the_current_plan() -> None:
+    current_plan = plan_from_looks(LOOK_1, LOOK_2, LOOK_3)
+    target = Replacement(
+        look_id="look_2",
+        slot=Slot.TOP,
+        item=ItemRef(kind=ItemKind.CATALOG, id="P03"),
+    )
+    locked = LockedPlacement(look_id="look_2", slot=Slot.TOP, item=target.item)
+
+    with pytest.raises(ValueError, match="A locked item cannot be replaced"):
+        PlanRequest(
+            brief=BRIEF, state=state(plan=current_plan, locks=(locked,)), replacement=target
+        )
+    with pytest.raises(ValueError, match="does not match the current plan"):
+        PlanRequest(
+            brief=BRIEF,
+            state=state(plan=current_plan),
+            replacement=target.model_copy(
+                update={"item": ItemRef(kind=ItemKind.CATALOG, id="P01")}
+            ),
+        )
 
 
 def test_a_failing_plan_gets_one_repair_that_lists_its_violations() -> None:

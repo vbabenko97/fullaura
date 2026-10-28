@@ -51,6 +51,7 @@ class Rule(StrEnum):
     DELIVERY = "delivery"  # delivery to Austria is not confirmed
     STOCK = "stock"  # the selected offer reports the variant out of stock
     LOCK = "lock"
+    REPLACEMENT = "replacement"  # a replacement changes only its selected position
 
 
 @dataclass(frozen=True, slots=True)

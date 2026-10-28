@@ -126,6 +126,8 @@ interface LockedPlacement {
   item: ItemRef;
 }
 
+type ReplacementTarget = LockedPlacement;
+
 interface PlanResponse {
   outcome: "success" | "infeasible" | "generation_failed" | "provider_timeout" | "provider_error";
   plan: Plan | null;
@@ -144,6 +146,7 @@ interface PlanRequest {
     style_goal: string;
     preferred_colors: string[];
   };
+  replacement: ReplacementTarget | null;
   state: {
     budget: {
       amount_cents: number;
@@ -409,6 +412,56 @@ function selectedOffer(plan: Plan, variant: Variant): Offer | null {
   return variant.offers.find((offer) => offer.id === offerId) ?? null;
 }
 
+function sameItem(left: ItemRef | undefined, right: ItemRef | undefined): boolean {
+  return left?.kind === right?.kind && left?.id === right?.id;
+}
+
+function isExactReplacement(
+  previous: Plan,
+  next: Plan,
+  target: ReplacementTarget,
+): boolean {
+  const oldTargetLook = previous.looks.find((look) => look.id === target.look_id);
+  const newTargetLook = next.looks.find((look) => look.id === target.look_id);
+  const oldItem = oldTargetLook?.items[target.slot];
+  const newItem = newTargetLook?.items[target.slot];
+  if (!oldTargetLook || !newTargetLook || !newItem || sameItem(oldItem, newItem)) return false;
+
+  return previous.looks.every((oldLook) => {
+    const newLook = next.looks.find((look) => look.id === oldLook.id);
+    return Boolean(
+      newLook &&
+        SLOTS.every(
+          (slot) =>
+            (oldLook.id === target.look_id && slot === target.slot) ||
+            sameItem(oldLook.items[slot], newLook.items[slot]),
+        ),
+    );
+  });
+}
+
+function locksForReplacement(
+  plan: Plan,
+  target: ReplacementTarget,
+  currentLocks: LockedPlacement[],
+): LockedPlacement[] {
+  const locks = new Map<string, LockedPlacement>();
+  const add = (lock: LockedPlacement) => {
+    const key = `${lock.look_id}:${lock.slot}:${lock.item.kind}:${lock.item.id}`;
+    locks.set(key, lock);
+  };
+  currentLocks.forEach(add);
+  for (const look of plan.looks) {
+    for (const slot of SLOTS) {
+      const item = look.items[slot];
+      if (item && !(look.id === target.look_id && slot === target.slot)) {
+        add({ look_id: look.id, slot, item });
+      }
+    }
+  }
+  return [...locks.values()];
+}
+
 function lookCost(look: Look, plan: Plan, catalog: Catalog): number | null {
   let total = 0;
   for (const item of Object.values(look.items)) {
@@ -477,7 +530,9 @@ interface ProductLineProps {
   ownedNotices: OwnedNotice[];
   isLocked: boolean;
   lockDisabled: boolean;
+  replaceDisabled: boolean;
   onToggleLock: (lookId: string, slot: Slot, item: ItemRef) => void;
+  onReplaceItem: (lookId: string, slot: Slot, item: ItemRef) => void;
 }
 
 function ProductLine({
@@ -490,7 +545,9 @@ function ProductLine({
   ownedNotices,
   isLocked,
   lockDisabled,
+  replaceDisabled,
   onToggleLock,
+  onReplaceItem,
 }: ProductLineProps) {
   if (item.kind === "owned") {
     const owned = ownedItems.find((candidate) => candidate.id === item.id);
@@ -499,16 +556,27 @@ function ProductLine({
       <li className="look-item">
         <div className="look-item-heading">
           <span className="slot-name">{labelSlot(slot)}</span>
-          <button
-            aria-label={`${isLocked ? "Release" : "Keep"} ${owned?.description ?? "owned item"} in ${look.id}`}
-            aria-pressed={isLocked}
-            className={`lock-button${isLocked ? " is-locked" : ""}`}
-            disabled={lockDisabled}
-            onClick={() => onToggleLock(look.id, slot, item)}
-            type="button"
-          >
-            {isLocked ? "Kept" : "Keep item"}
-          </button>
+          <div className="look-item-actions">
+            <button
+              aria-label={`Replace ${owned?.description ?? "owned item"} in ${look.id}`}
+              className="secondary-button replace-button"
+              disabled={replaceDisabled || isLocked}
+              onClick={() => onReplaceItem(look.id, slot, item)}
+              type="button"
+            >
+              Replace
+            </button>
+            <button
+              aria-label={`${isLocked ? "Release" : "Keep"} ${owned?.description ?? "owned item"} in ${look.id}`}
+              aria-pressed={isLocked}
+              className={`lock-button${isLocked ? " is-locked" : ""}`}
+              disabled={lockDisabled}
+              onClick={() => onToggleLock(look.id, slot, item)}
+              type="button"
+            >
+              {isLocked ? "Kept" : "Keep item"}
+            </button>
+          </div>
         </div>
         <h3>{owned?.description ?? "Your item"}</h3>
         <p className="item-facts">
@@ -555,16 +623,27 @@ function ProductLine({
     <li className="look-item">
         <div className="look-item-heading">
           <span className="slot-name">{labelSlot(slot)}</span>
-        <button
-          aria-label={`${isLocked ? "Release" : "Keep"} ${entry.product.title} in ${look.id}`}
-          aria-pressed={isLocked}
+        <div className="look-item-actions">
+          <button
+            aria-label={`Replace ${entry.product.title} in ${look.id}`}
+            className="secondary-button replace-button"
+            disabled={replaceDisabled || isLocked}
+            onClick={() => onReplaceItem(look.id, slot, item)}
+            type="button"
+          >
+            Replace
+          </button>
+          <button
+            aria-label={`${isLocked ? "Release" : "Keep"} ${entry.product.title} in ${look.id}`}
+            aria-pressed={isLocked}
             className={`lock-button${isLocked ? " is-locked" : ""}`}
-          disabled={lockDisabled}
-          onClick={() => onToggleLock(look.id, slot, item)}
-          type="button"
-        >
-          {isLocked ? "Kept" : "Keep item"}
-        </button>
+            disabled={lockDisabled}
+            onClick={() => onToggleLock(look.id, slot, item)}
+            type="button"
+          >
+            {isLocked ? "Kept" : "Keep item"}
+          </button>
+        </div>
       </div>
       <h3>{entry.product.title}</h3>
       {facts && <p className="item-facts">{facts}</p>}
@@ -593,7 +672,9 @@ interface LookCardProps {
   ownedNotices: OwnedNotice[];
   locks: LockedPlacement[];
   lockDisabled: boolean;
+  replaceDisabled: boolean;
   onToggleLock: (lookId: string, slot: Slot, item: ItemRef) => void;
+  onReplaceItem: (lookId: string, slot: Slot, item: ItemRef) => void;
 }
 
 function LookCard({
@@ -604,7 +685,9 @@ function LookCard({
   ownedNotices,
   locks,
   lockDisabled,
+  replaceDisabled,
   onToggleLock,
+  onReplaceItem,
 }: LookCardProps) {
   const items = SLOTS.flatMap((slot) => {
     const item = look.items[slot];
@@ -633,8 +716,10 @@ function LookCard({
               isLocked={isLocked}
               item={item}
               lockDisabled={lockDisabled}
+              replaceDisabled={replaceDisabled}
               look={look}
               onToggleLock={onToggleLock}
+              onReplaceItem={onReplaceItem}
               ownedItems={ownedItems}
               ownedNotices={ownedNotices}
               plan={plan}
@@ -740,9 +825,17 @@ export function App() {
     });
   }
 
-  async function submitPlan(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (!catalog) return;
+  async function requestPlan(replacement: ReplacementTarget | null = null) {
+    if (!catalog || requestState === "loading") return;
+    if (replacement) {
+      const look = plan?.looks.find((candidate) => candidate.id === replacement.look_id);
+      const targetIsLocked = locks.some(
+        (lock) => lock.look_id === replacement.look_id && lock.slot === replacement.slot,
+      );
+      if (!planCurrent || !look || !sameItem(look.items[replacement.slot], replacement.item) || targetIsLocked) {
+        return;
+      }
+    }
     const colors = preferredColors
       .split(",")
       .map((color) => color.trim())
@@ -762,11 +855,12 @@ export function App() {
 
     const request: PlanRequest = {
       brief: { style_goal: styleGoal.trim(), preferred_colors: colors },
+      replacement,
       state: {
         budget: { amount_cents: amountCents, mode: budgetMode },
         material_exclusions: exclusions,
         owned_items: ownedItems,
-        locks,
+        locks: replacement && plan ? locksForReplacement(plan, replacement, locks) : locks,
         plan,
       },
     };
@@ -779,7 +873,13 @@ export function App() {
       ownedItems,
     );
     setRequestState("loading");
-    setRequestMessage(plan ? "Updating the plan. Kept items stay in place." : "Requesting three looks from the catalog.");
+    setRequestMessage(
+      replacement
+        ? "Replacing one item and checking all three looks."
+        : plan
+          ? "Updating the plan. Kept items stay in place."
+          : "Requesting three looks from the catalog.",
+    );
     try {
       const response = await fetch("/api/plans", {
         method: "POST",
@@ -788,33 +888,67 @@ export function App() {
       });
       const result = parsePlanResponse(await readJson(response));
       if (result.outcome === "success" && result.plan) {
+        if (replacement && plan && !isExactReplacement(plan, result.plan, replacement)) {
+          setRequestState("error");
+          setRequestMessage("The planner did not replace only this item.");
+          return;
+        }
         setPlan(result.plan);
         setPlanOwnedItems(ownedItems);
         setPlanNotices(result.notices);
         setSuccessfulPreferenceKey(submittedPreferenceKey);
         setRequestState("success");
-        setRequestMessage("The three looks passed the catalog and budget checks.");
+        setRequestMessage(
+          replacement
+            ? "The item was replaced. All three looks passed the catalog and budget checks."
+            : "The three looks passed the catalog and budget checks.",
+        );
       } else if (result.outcome === "infeasible") {
         setRequestState("error");
         setRequestMessage(
-          result.conflicts.length
-            ? `Kept items conflict with these constraints: ${result.conflicts.map((item) => item.detail).join("; ")}`
-            : "No plan can meet the kept items and current constraints.",
+          replacement
+            ? result.conflicts.length
+              ? `Keeping the other items conflicts with these constraints: ${result.conflicts.map((item) => item.detail).join("; ")}`
+              : "No replacement can keep the other items under the current constraints."
+            : result.conflicts.length
+              ? `Kept items conflict with these constraints: ${result.conflicts.map((item) => item.detail).join("; ")}`
+              : "No plan can meet the kept items and current constraints.",
         );
       } else if (result.outcome === "provider_timeout") {
         setRequestState("error");
-        setRequestMessage("The planning request timed out. Try again with the same or fewer constraints.");
+        setRequestMessage(
+          replacement
+            ? "The replacement request timed out."
+            : "The planning request timed out. Try again with the same or fewer constraints.",
+        );
       } else if (result.outcome === "provider_error") {
         setRequestState("error");
-        setRequestMessage("The planning provider could not complete this request.");
+        setRequestMessage(
+          replacement
+            ? "The planning provider could not complete this replacement."
+            : "The planning provider could not complete this request.",
+        );
       } else {
         setRequestState("error");
-        setRequestMessage("No plan passed the catalog checks. Adjust your preferences and try again.");
+        setRequestMessage(
+          replacement
+            ? "No replacement passed the catalog checks."
+            : "No plan passed the catalog checks. Adjust your preferences and try again.",
+        );
       }
     } catch (error) {
       setRequestState("error");
       setRequestMessage(errorMessage(error));
     }
+  }
+
+  function submitPlan(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    void requestPlan();
+  }
+
+  function replacePlanItem(lookId: string, slot: Slot, item: ItemRef) {
+    void requestPlan({ look_id: lookId, slot, item });
   }
 
   const canSubmit = catalogState === "ready" && requestState !== "loading";
@@ -1042,7 +1176,11 @@ export function App() {
             <div className="results-heading">
               <div>
                 <h2 id="results-title">Three looks</h2>
-                <p>Each item links to its catalog source. Keep pieces you want to retain.</p>
+                <p>
+                  Each item links to its catalog source. Keep pieces to retain them, or replace one
+                  item; other positions stay in place and all three looks are checked again.
+                  Replacements send a planning request, so provider quota or cost may apply.
+                </p>
               </div>
               {plan && catalog && (
                 <p className="plan-total">
@@ -1083,7 +1221,7 @@ export function App() {
                     className={`request-message${requestState === "error" ? " is-error" : ""}`}
                     role={requestState === "error" ? "alert" : "status"}
                   >
-                    {requestState === "loading" && "Updating the plan. Your kept items stay in place."}
+                    {requestState === "loading" && requestMessage}
                     {requestState === "error" && requestMessage}
                     {requestState === "success" && planCurrent && requestMessage}
                     {requestState === "success" && !planCurrent && "Preferences changed. These looks are from the previous successful request."}
@@ -1096,9 +1234,11 @@ export function App() {
                       key={look.id}
                       catalog={catalog}
                       lockDisabled={requestState === "loading"}
+                      replaceDisabled={!planCurrent || requestState === "loading"}
                       locks={locks}
                       look={look}
                       onToggleLock={toggleLock}
+                      onReplaceItem={replacePlanItem}
                       ownedItems={planOwnedItems}
                       ownedNotices={planNotices}
                       plan={plan}

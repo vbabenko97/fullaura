@@ -70,7 +70,15 @@ def create_app(settings: Settings | None = None, spark: SparkClient | None = Non
                     base_url=settings.baseten_base_url or BASETEN_URL,
                 )
             return JSONResponse(
-                result_json(plan_looks(request.brief, request.state, catalog, client))
+                result_json(
+                    plan_looks(
+                        request.brief,
+                        request.state,
+                        catalog,
+                        client,
+                        replacement=request.replacement,
+                    )
+                )
             )
 
     # Reserve the API prefix so an unknown API URL can never serve HTML.

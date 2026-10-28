@@ -17,12 +17,12 @@ import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import Annotated, Any
+from typing import Annotated, Any, Self
 from urllib.error import HTTPError
 from urllib.request import Request
 
 import httpx2
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from backend.app.catalog import Catalog, Category, Offer, Record
 from backend.app.constraints import (
@@ -63,9 +63,37 @@ class Brief(Record):
     )
 
 
+class Replacement(Record):
+    """The current item and position a person asked the planner to replace."""
+
+    look_id: str
+    slot: Slot
+    item: ItemRef
+
+
 class PlanRequest(Record):
     brief: Brief
     state: State
+    replacement: Replacement | None = None
+
+    @model_validator(mode="after")
+    def _replacement_refers_to_an_unlocked_current_item(self) -> Self:
+        if self.replacement is None:
+            return self
+        if self.state.plan is None:
+            raise ValueError("A replacement request needs the current plan")
+        look = next(
+            (look for look in self.state.plan.looks if look.id == self.replacement.look_id),
+            None,
+        )
+        if look is None or look.items.get(self.replacement.slot) != self.replacement.item:
+            raise ValueError("The replacement target does not match the current plan")
+        if any(
+            lock.look_id == self.replacement.look_id and lock.slot == self.replacement.slot
+            for lock in self.state.locks
+        ):
+            raise ValueError("A locked item cannot be replaced")
+        return self
 
 
 @dataclass(frozen=True, slots=True)
@@ -262,6 +290,10 @@ in several looks. Keep every entry of "locks" in its look and slot. Owned items 
 Stay within the budget: with mode "per_look" each look's distinct catalog items, and with mode
 "whole_plan" all distinct catalog items across the looks, must cost at most amount_eur.
 
+When "replacement" is present, replace its item with a different item in the stated look and
+slot. Keep every other slot exactly as it appears in "current_plan", including slots that are
+empty. Do not add or remove items in other slots.
+
 Reply with JSON only, in this form:
 {{"looks": [{{"id": "look_1", "items": {{"top": "ID", "bottom": "ID", "footwear": "ID"}}}},
 {{"id": "look_2", "items": {{...}}}}, {{"id": "look_3", "items": {{...}}}}]}}"""
@@ -273,6 +305,7 @@ def plan_looks(
     catalog: Catalog,
     client: SparkClient,
     clock: Callable[[], float] = time.monotonic,
+    replacement: Replacement | None = None,
 ) -> PlanResult:
     """Three checked looks for the brief, or the reason there are none."""
     usage = Usage()
@@ -283,7 +316,10 @@ def plan_looks(
     offers = _cheapest_usable_offers(catalog, state.material_exclusions)
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user", "content": json.dumps(_request(brief, state, catalog, offers))},
+        {
+            "role": "user",
+            "content": json.dumps(_request(brief, state, catalog, offers, replacement)),
+        },
     ]
     started = clock()
     deadline = started + DEADLINE_S
@@ -320,6 +356,7 @@ def plan_looks(
             checked_state = State.model_validate({**dict(state), "plan": plan})
             check = check_plan(checked_state, catalog)
             structural = _look_violations(plan, state, catalog)
+            structural.extend(_replacement_violations(plan, state, replacement))
             if structural:
                 check = Check(tuple(structural) + check.violations, check.notices)
             if check.passed:
@@ -394,6 +431,51 @@ def _look_violations(plan: Plan, state: State, catalog: Catalog) -> list[Violati
     return violations
 
 
+def _replacement_violations(
+    plan: Plan, state: State, replacement: Replacement | None
+) -> list[Violation]:
+    """Require a replacement to change only the selected, occupied position."""
+    if replacement is None:
+        return []
+    current = state.plan
+    if current is None:
+        return [Violation(Rule.REPLACEMENT, "A replacement needs the current plan")]
+
+    current_looks = {look.id: look for look in current.looks}
+    next_looks = {look.id: look for look in plan.looks}
+    violations = []
+    if current_looks.keys() != next_looks.keys():
+        violations.append(Violation(Rule.REPLACEMENT, "A replacement must keep all three looks"))
+
+    for look_id, current_look in current_looks.items():
+        next_look = next_looks.get(look_id)
+        if next_look is None:
+            continue
+        for slot in Slot:
+            before = current_look.items.get(slot)
+            after = next_look.items.get(slot)
+            if look_id == replacement.look_id and slot is replacement.slot:
+                if before != replacement.item or after is None or after == before:
+                    violations.append(
+                        Violation(
+                            Rule.REPLACEMENT,
+                            f"Replace {look_id} {slot.value} with a different item",
+                            replacement.item,
+                            look_id,
+                        )
+                    )
+            elif before != after:
+                violations.append(
+                    Violation(
+                        Rule.REPLACEMENT,
+                        f"A replacement changed the unrelated {look_id} {slot.value} position",
+                        before,
+                        look_id,
+                    )
+                )
+    return violations
+
+
 def _cheapest_usable_offers(catalog: Catalog, exclusions: frozenset[str]) -> dict[str, Offer]:
     """For each variant that can appear in a plan, its cheapest offer that passes the checks."""
     usable = {}
@@ -406,7 +488,11 @@ def _cheapest_usable_offers(catalog: Catalog, exclusions: frozenset[str]) -> dic
 
 
 def _request(
-    brief: Brief, state: State, catalog: Catalog, offers: dict[str, Offer]
+    brief: Brief,
+    state: State,
+    catalog: Catalog,
+    offers: dict[str, Offer],
+    replacement: Replacement | None = None,
 ) -> dict[str, Any]:
     candidates = [
         {
@@ -428,6 +514,21 @@ def _request(
             "mode": state.budget.mode.value,
         },
         "owned_items": [item.model_dump(mode="json") for item in state.owned_items],
+        "replacement": (replacement.model_dump(mode="json") if replacement is not None else None),
+        "current_plan": (
+            [
+                {
+                    "id": look.id,
+                    "items": {
+                        slot.value: item.model_dump(mode="json")
+                        for slot, item in look.items.items()
+                    },
+                }
+                for look in state.plan.looks
+            ]
+            if replacement is not None and state.plan is not None
+            else None
+        ),
         "locks": [
             {"look_id": lock.look_id, "slot": lock.slot.value, "item_id": lock.item.id}
             for lock in state.locks
