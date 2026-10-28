@@ -19,6 +19,7 @@ from urllib.request import Request, urlopen
 API_URL = "https://api.meta.ai/v1"
 # Rate limits, timeouts and server errors are worth another attempt; other errors are not.
 RETRY_STATUS = frozenset({408, 429, 500, 502, 503, 504})
+JPEG_SEGMENT_MARKERS = frozenset({*range(0xC0, 0xC8), *range(0xC9, 0xD0), 0xCC, *range(0xDB, 0xE0)})
 
 
 class ImageRequestError(RuntimeError):
@@ -73,31 +74,121 @@ def _exif_orientation(segment: bytes) -> int | None:
     return None
 
 
+def _jpeg_marker_segment(marker: int, payload: bytes) -> bytes:
+    return b"\xff" + bytes([marker]) + (len(payload) + 2).to_bytes(2, "big") + payload
+
+
 def strip_jpeg_metadata(data: bytes) -> bytes:
-    """Keep the pixels, color profile and coding tables of a JPEG; drop Exif (with GPS
-    location and device), XMP, IPTC, comments and images appended after the main one."""
+    """Keep JPEG coding data and recognized display metadata; remove other metadata.
+
+    JPEG markers can occur between scans, so each entropy-coded scan is copied only up
+    to its next real marker. Stuffed bytes and restart markers remain part of the scan.
+    """
     if not data.startswith(b"\xff\xd8"):
         raise ValueError("Not a JPEG image")
     kept = bytearray(b"\xff\xd8")
     position = 2
-    while position + 4 <= len(data) and data[position] == 0xFF:
-        marker = data[position + 1]
-        if marker == 0xDA:  # start of scan: image data runs to the first end-of-image marker
-            end = data.find(b"\xff\xd9", position)
-            if end < 0:
+    saw_scan = False
+    icc_chunks: dict[int, tuple[int, bytes]] = {}
+    icc_insert_at: int | None = None
+    while position < len(data):
+        if data[position] != 0xFF:
+            raise ValueError("Malformed JPEG image")
+        marker_start = position
+        while position < len(data) and data[position] == 0xFF:
+            position += 1
+        if position == len(data):
+            raise ValueError("Malformed JPEG image")
+        marker = data[position]
+        position += 1
+        if marker == 0xD9:
+            if not saw_scan:
+                raise ValueError("Malformed JPEG image")
+            # ICC chunks are kept only as a complete, consistently numbered set.
+            if icc_chunks:
+                count = next(iter(icc_chunks.values()))[0]
+                if len(icc_chunks) == count and set(icc_chunks) == set(range(1, count + 1)):
+                    chunks = b"".join(icc_chunks[index][1] for index in range(1, count + 1))
+                    kept[icc_insert_at or 0 : icc_insert_at or 0] = chunks
+            kept.extend(data[marker_start:position])
+            return bytes(kept)
+        if marker == 0x00 or marker in range(0xD0, 0xD8) or marker == 0xD8:
+            raise ValueError("Malformed JPEG image")
+        if marker == 0x01:
+            kept.extend(data[marker_start:position])
+            continue
+        if position + 2 > len(data):
+            raise ValueError("Malformed JPEG image")
+        length = int.from_bytes(data[position : position + 2], "big")
+        end = position + length
+        if length < 2 or end > len(data):
+            raise ValueError("Malformed JPEG image")
+        segment = data[marker_start:end]
+        payload = data[position + 2 : end]
+        position = end
+        if marker == 0xDA:
+            if not payload or len(payload) != 4 + 2 * payload[0] or payload[0] == 0:
+                raise ValueError("Malformed JPEG image")
+            kept.extend(segment)
+            saw_scan = True
+            scan_start = position
+            while position < len(data):
+                if data[position] != 0xFF:
+                    position += 1
+                    continue
+                marker_pos = position
+                position += 1
+                while position < len(data) and data[position] == 0xFF:
+                    position += 1
+                if position == len(data):
+                    raise ValueError("Malformed JPEG image")
+                code = data[position]
+                position += 1
+                if code == 0x00 or 0xD0 <= code <= 0xD7:
+                    continue
+                kept.extend(data[scan_start:marker_pos])
+                position = marker_pos
                 break
-            return bytes(kept + data[position : end + 2])
-        length = int.from_bytes(data[position + 2 : position + 4], "big")
-        segment = data[position : position + 2 + length]
-        if marker == 0xE1 and _exif_orientation(segment) not in (None, 1):
-            raise ValueError("Save the photo upright first; its rotation lives in metadata")
-        is_app = 0xE0 <= marker <= 0xEF
-        keep_app = marker in (0xE0, 0xEE) or (
-            marker == 0xE2 and segment[4:16] == b"ICC_PROFILE\x00"
-        )
-        if (not is_app and marker != 0xFE) or keep_app:
-            kept += segment
-        position += 2 + length
+            else:
+                raise ValueError("Malformed JPEG image")
+            continue
+        if marker == 0xE1:
+            orientation = _exif_orientation(_jpeg_marker_segment(marker, payload))
+            if orientation not in (None, 1):
+                raise ValueError("Save the photo upright first; its rotation lives in metadata")
+        if marker == 0xE0:
+            # Keep the recognized JFIF header, but discard its thumbnail and any tail.
+            if (
+                payload.startswith(b"JFIF\x00")
+                and len(payload) >= 14
+                and payload[5] == 1
+                and payload[7] <= 2
+                and int.from_bytes(payload[8:10], "big") > 0
+                and int.from_bytes(payload[10:12], "big") > 0
+            ):
+                kept.extend(_jpeg_marker_segment(marker, payload[:12] + b"\x00\x00"))
+        elif marker == 0xEE and payload.startswith(b"Adobe"):
+            # Keep only its color transform; canonicalize version and flags.
+            if len(payload) >= 12 and payload[11] in (0, 1, 2):
+                adobe = b"Adobe\x00\x64\x00\x00\x00\x00" + payload[11:12]
+                kept.extend(_jpeg_marker_segment(marker, adobe))
+        elif marker == 0xE2 and payload.startswith(b"ICC_PROFILE\x00"):
+            # Keep a complete profile set; malformed chunks are discarded.
+            if len(payload) >= 14:
+                sequence, count = payload[12], payload[13]
+                if count and 1 <= sequence <= count:
+                    previous = icc_chunks.get(sequence)
+                    consistent = all(existing[0] == count for existing in icc_chunks.values())
+                    if previous is None and consistent:
+                        if icc_insert_at is None:
+                            icc_insert_at = len(kept)
+                        icc_chunks[sequence] = (count, segment)
+        elif 0xE0 <= marker <= 0xEF or marker == 0xFE:
+            continue
+        elif marker in JPEG_SEGMENT_MARKERS:
+            kept.extend(segment)
+        else:
+            raise ValueError("Unsupported JPEG marker")
     raise ValueError("Malformed JPEG image")
 
 

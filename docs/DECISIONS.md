@@ -232,3 +232,11 @@ Each decision has a number that is never reused and a status: accepted, proposed
 - **Decision:** One monotonic 150-second deadline covers both model generations, each HTTP attempt and every retry wait. Each HTTP request receives no more than the remaining time, and a reply received at or after the deadline is discarded. The HTTP client cancels the full request when that timeout expires. `usage.calls` counts returned model completions; `usage.http_attempts` counts each outbound request, including retries.
 - **Reason:** A timeout on one blocking network operation does not limit the combined duration of multiple HTTP attempts and retry waits.
 - **Consequences:** A request ends as `provider_timeout` at the shared deadline, even when the provider later returns a usable reply. The API and planning log expose the two counters separately.
+
+## D-31: No persistent server copies of personal photos
+
+- **Date:** 2026-10-28
+- **Status:** accepted
+- **Decision:** When photo upload is implemented, FullAura keeps originals, metadata-stripped inputs and generated previews in memory only for the request. It stores no server copy, cache, backup, database record or raw provider response. It deletes any required temporary files in `finally` on every success and failure path, and removes leftovers from interrupted processes during startup before accepting uploads. If cleanup or the startup sweep fails, photo processing stays blocked until cleanup succeeds. [DATA.md](DATA.md#photo-handling-for-upload-support) describes the cleanup order.
+- **Reason:** A short server retention period is unnecessary for the first flow and increases the amount of personal data that needs storage, access control and deletion handling.
+- **Consequences:** This is not implemented until upload support exists. The browser may retain a returned preview according to its own behavior, and a model provider's retention remains governed by its published terms and the user-facing processing notice.

@@ -77,7 +77,7 @@ If previews fail the feasibility test, a person can still complete a sourced sty
 
 FullAura does not infer health, ethnicity, personality or other sensitive traits from photographs.
 
-Before FullAura accepts photo uploads, it removes image metadata, and the retention and deletion behavior for photos is defined in [DATA.md](DATA.md). Before model access is open to the public, FullAura asks each person to confirm that they are 18 or older and shows a notice that explains how their photos are processed. Meta's Standard mode keeps content out of model training but does not mean zero retention ([D-07](DECISIONS.md#d-07-standard-mode-for-personal-photographs)), so the notice cannot rely on it.
+Photo upload and storage are not implemented. Before FullAura accepts uploads, it will remove image metadata and apply the accepted no-persistent-server-copy policy in [DATA.md](DATA.md#photo-handling-for-upload-support). Before model access is open to the public, FullAura asks each person to confirm that they are 18 or older and shows a notice that explains how their photos are processed. Meta's Standard mode keeps content out of model training but does not mean zero retention ([D-07](DECISIONS.md#d-07-standard-mode-for-personal-photographs)), so the notice cannot rely on it.
 
 ## Out of scope
 
