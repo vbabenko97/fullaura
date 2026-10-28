@@ -2,6 +2,7 @@
 
 import base64
 import http.client
+import importlib.util
 import io
 import json
 from typing import Any
@@ -20,6 +21,16 @@ from backend.app.meta_images import (
 KEY = "secret-test-key"
 WEBP = b"RIFF\x10\x00\x00\x00WEBPVP8 "
 OK = {"data": [{"b64_json": base64.b64encode(WEBP).decode()}], "usage": {"total_tokens": 7}}
+PROGRESSIVE_JPEG = base64.b64decode(
+    "/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgMCAgMDAwMEAwMEBQgFBQQEBQoHBwYIDAoMDAsKCwsNDhIQDQ4R"
+    "DgsLEBYQERMUFRUVDA8XGBYUGBIUFRT/2wBDAQMEBAUEBQkFBQkUDQsNFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQU"
+    "FBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBT/wgARCAACAAMDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAA"
+    "AAb/xAAVAQEBAAAAAAAAAAAAAAAAAAAGB//aAAwDAQACEAMQAAABlxRAn//EABQQAQAAAAAAAAAAAAAAAAAAAAD/"
+    "2gAIAQEAAQUCf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQMBAT8Bf//EABQRAQAAAAAAAAAAAAAAAAAAAAD/"
+    "2gAIAQIBAT8Bf//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEABj8Cf//EABQQAQAAAAAAAAAAAAAAAAAAAAD/"
+    "2gAIAQEAAT8hf//aAAwDAQACAAMAAAAQB//EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQMBAT8Qf//EABQRAQAA"
+    "AAAAAAAAAAAAAAAAAAD/2gAIAQIBAT8Qf//EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAT8Qf//Z"
+)
 
 
 def segment(marker: int, payload: bytes) -> bytes:
@@ -28,7 +39,8 @@ def segment(marker: int, payload: bytes) -> bytes:
 
 def jpeg(*segments: bytes, tail: bytes = b"") -> bytes:
     """A JPEG skeleton: start, segments, a scan of fake pixels, end, and anything after it."""
-    return b"\xff\xd8" + b"".join(segments) + b"\xff\xda\x00\x02pixels\xff\xd9" + tail
+    scan_header = b"\xff\xda\x00\x08\x01\x01\x00\x00\x3f\x00"
+    return b"\xff\xd8" + b"".join(segments) + scan_header + b"pixels\xff\xd9" + tail
 
 
 def exif(orientation: int) -> bytes:
@@ -69,7 +81,7 @@ def test_retries_a_rate_limit_then_returns_the_image_and_usage() -> None:
 
 
 def test_sends_jpeg_pixels_without_location_or_other_metadata() -> None:
-    jfif = segment(0xE0, b"JFIF\x00\x01\x01")
+    jfif = segment(0xE0, b"JFIF\x00\x01\x02\x00\x00H\x00H\x00\x00")
     color_profile = segment(0xE2, b"ICC_PROFILE\x00\x01\x01profile")
     tables = segment(0xDB, b"\x00tables")
     iptc = segment(0xED, b"Photoshop 3.0\x00IPTC")
@@ -82,7 +94,7 @@ def test_sends_jpeg_pixels_without_location_or_other_metadata() -> None:
 
 
 def test_strips_all_metadata_app_segments_without_changing_allowed_image_data() -> None:
-    jfif = segment(0xE0, b"JFIF\x00\x01\x01")
+    jfif = segment(0xE0, b"JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00")
     xmp = segment(0xE1, b"http://ns.adobe.com/xap/1.0/\x00metadata")
     iptc = segment(0xED, b"Photoshop 3.0\x00IPTC")
     color_profile = segment(0xE2, b"ICC_PROFILE\x00\x01\x01profile")
@@ -92,6 +104,76 @@ def test_strips_all_metadata_app_segments_without_changing_allowed_image_data() 
     assert strip_jpeg_metadata(
         jpeg(jfif, xmp, iptc, color_profile, comment, tables, tail=b"\xff\xd8gain map")
     ) == jpeg(jfif, color_profile, tables)
+
+
+def _sos_positions(data: bytes) -> list[int]:
+    return [index for index in range(len(data) - 1) if data[index : index + 2] == b"\xff\xda"]
+
+
+def test_strips_markers_between_progressive_scans_and_preserves_decodability() -> None:
+    assert len(_sos_positions(PROGRESSIVE_JPEG)) > 1
+    first_scan_end = _sos_positions(PROGRESSIVE_JPEG)[1]
+    private = segment(0xFE, b"private-between-scans") + segment(
+        0xE1, b"http://ns.adobe.com/xap/1.0/\x00private-xmp"
+    )
+    photo = PROGRESSIVE_JPEG[:first_scan_end] + private + PROGRESSIVE_JPEG[first_scan_end:]
+    images, sent, _ = client(OK)
+    images.edit("Swap the shirt", [InputImage(photo, "image/jpeg")])
+    sanitized = base64.b64decode(
+        json.loads(sent[0].data)["images"][0]["image_url"].split(",", 1)[1]
+    )
+    assert sanitized == PROGRESSIVE_JPEG
+    assert b"private-between-scans" not in sanitized
+    assert b"private-xmp" not in sanitized
+    if importlib.util.find_spec("PIL"):
+        from PIL import Image
+
+        with Image.open(io.BytesIO(sanitized)) as decoded:
+            decoded.load()
+            assert decoded.size == (3, 2)
+
+
+def test_sanitizes_app0_and_app14_payloads() -> None:
+    private_app0 = segment(0xE0, b"JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00private-app0")
+    private_app14 = segment(0xEE, b"Adobe123456\x00private-app14")
+    photo = PROGRESSIVE_JPEG[:2] + private_app0 + private_app14 + PROGRESSIVE_JPEG[2:]
+    images, sent, _ = client(OK)
+    images.edit("Swap the shirt", [InputImage(photo, "image/jpeg")])
+    sanitized = base64.b64decode(
+        json.loads(sent[0].data)["images"][0]["image_url"].split(",", 1)[1]
+    )
+    expected = (
+        PROGRESSIVE_JPEG[:2]
+        + segment(0xE0, b"JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00")
+        + segment(0xEE, b"Adobe\x00d\x00\x00\x00\x00\x00")
+        + PROGRESSIVE_JPEG[2:]
+    )
+    assert sanitized == expected
+    assert b"private-app0" not in sanitized
+    assert b"private-app14" not in sanitized
+
+
+def test_drops_unrecognized_app0_and_app14_segments() -> None:
+    photo = (
+        PROGRESSIVE_JPEG[:2]
+        + segment(0xE0, b"private-unknown-app0")
+        + segment(0xEE, b"private-unknown-app14")
+        + PROGRESSIVE_JPEG[2:]
+    )
+    images, sent, _ = client(OK)
+    images.edit("Swap the shirt", [InputImage(photo, "image/jpeg")])
+    sanitized = base64.b64decode(
+        json.loads(sent[0].data)["images"][0]["image_url"].split(",", 1)[1]
+    )
+    assert sanitized == PROGRESSIVE_JPEG
+
+
+def test_preserves_stuffed_bytes_and_restart_markers_inside_scan() -> None:
+    photo = jpeg(tail=b"")
+    scan_end = photo.index(b"pixels") + len(b"pixels")
+    photo = photo[:scan_end] + b"\xff\x00\xff\xd0" + photo[scan_end:]
+    result = strip_jpeg_metadata(photo)
+    assert b"pixels\xff\x00\xff\xd0\xff\xd9" in result
 
 
 @pytest.mark.parametrize("orientation", range(2, 9))
