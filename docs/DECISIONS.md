@@ -216,3 +216,19 @@ Each decision has a number that is never reused and a status: accepted, proposed
   - provider error.
 - **Reason:** The model is used for styling choices, and code keeps prices, offers and hard constraints exact (D-09). Separate outcomes keep a model or provider failure from being shown as an impossible request.
 - **Consequences:** A request makes at most two model calls within 150 seconds. Each call has a 60-second timeout and is retried once after a timeout, a rate limit or a server error. Token usage is returned with each result and logged without prompts or briefs. The endpoint runs only in development until T-04 adds per-session limits, the 18+ confirmation and the photo-processing notice. The model replies in JSON, not through tool calls.
+
+## D-29: Looks have a complete base outfit
+
+- **Date:** 2026-10-28
+- **Status:** accepted
+- **Decision:** A generated look must contain either a top and bottom or one one-piece item, never both. Each item's category must match its slot. Extra layers, footwear and accessories are optional. Code checks these rules before success and sends violations back for the one repair attempt ([SPEC.md](SPEC.md#look-structure)).
+- **Reason:** A model reply can be valid JSON and pass price, material, delivery and stock checks while still describing an incomplete outfit or placing a product in an unrelated slot.
+- **Consequences:** A plan that still fails look-structure checks ends as `generation_failed`; the public response has no plan and keeps the violations for diagnosis.
+
+## D-30: One deadline covers planning and HTTP retries
+
+- **Date:** 2026-10-28
+- **Status:** accepted
+- **Decision:** One monotonic 150-second deadline covers both model generations, each HTTP attempt and every retry wait. Each HTTP request receives no more than the remaining time, and a reply received at or after the deadline is discarded. The HTTP client cancels the full request when that timeout expires. `usage.calls` counts returned model completions; `usage.http_attempts` counts each outbound request, including retries.
+- **Reason:** A timeout on one blocking network operation does not limit the combined duration of multiple HTTP attempts and retry waits.
+- **Consequences:** A request ends as `provider_timeout` at the shared deadline, even when the provider later returns a usable reply. The API and planning log expose the two counters separately.

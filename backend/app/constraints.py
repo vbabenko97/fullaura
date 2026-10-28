@@ -40,6 +40,8 @@ _NAMES_LONGEST_FIRST = sorted(
 
 
 class Rule(StrEnum):
+    LOOK_COMPOSITION = "look_composition"  # a complete base outfit: top + bottom or one-piece
+    SLOT_CATEGORY = "slot_category"  # the item's catalog category does not match its slot
     UNKNOWN_ITEM = "unknown_item"  # no catalog record or owned item has this ID
     OFFER = "offer"  # the selected offer is not one of the variant's offers
     PRICE_UNKNOWN = "price_unknown"  # fails the budget

@@ -42,7 +42,7 @@ Done when: each catalog source is recorded in the register in [DATA.md](DATA.md)
 
 Connect preferences, catalog selection, previews and edits into the flow in [SPEC.md](SPEC.md#what-a-person-does).
 
-Planning exists on the backend: `POST /api/plans`, switched on in development only, takes a brief and the structured state, asks Muse Spark for three looks and returns them only after they pass the checks ([D-28](DECISIONS.md#d-28-muse-spark-on-baseten-plans-and-code-checks-every-plan)). It has a timeout path for the provider. The interface, edits, previews and photo handling are still to do.
+Planning exists on the backend: `POST /api/plans`, switched on in development only, takes a brief and the structured state, asks Muse Spark for three looks and returns them only after they pass the look-structure and hard-constraint checks ([D-28](DECISIONS.md#d-28-muse-spark-on-baseten-plans-and-code-checks-every-plan), [D-29](DECISIONS.md#d-29-looks-have-a-complete-base-outfit)). The provider uses one deadline across requests, retries and waits; token usage and HTTP attempts are counted separately ([D-30](DECISIONS.md#d-30-one-deadline-covers-planning-and-http-retries)). The interface, edits, previews and photo handling are still to do.
 
 Before adding photo upload, remove image metadata and define the retention and deletion behavior for photos in [DATA.md](DATA.md). Before model calls are open to the public, add per-session limits on requests and images, a timeout path for the provider, the 18+ confirmation and the photo-processing notice ([SPEC.md](SPEC.md#photographs)).
 

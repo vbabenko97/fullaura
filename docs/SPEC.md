@@ -20,6 +20,14 @@ The first version has an English interface, shows prices in EUR, and offers only
 | Hair and beard | One or two optional previews; a reference card for a barber if preview quality allows |
 | Output | Previews, a shopping list with sources and costs, and what is still unknown |
 
+## Look structure
+
+Each look has a complete base outfit: either a top and bottom or a one-piece, not both. Every
+item's category must match its slot. Extra layers, footwear and accessories are optional. Code
+checks these rules with the hard constraints before it returns a plan. An invalid look gets one
+repair attempt; if the plan still fails, the response has no plan and reports the violations
+([D-29](DECISIONS.md#d-29-looks-have-a-complete-base-outfit)).
+
 ## Catalog records
 
 A catalog record describes one product and its variants. A variant is one purchasable version of the product, such as one size and color, with its SKU and composition. Each variant has one or more offers, and an offer is one retailer's price in EUR, the countries it confirms delivery to, its stock and its shopping link. Every variant and offer keeps its source and the time its data was last checked against that source. Size and stock are recorded when the source gives them. FullAura recommends only products that have a catalog record, and it chooses them before it generates a preview. Data that a record lacks stays unknown and is shown as unknown in the output. [DATA.md](DATA.md) has the rules for catalog sources and their rights.

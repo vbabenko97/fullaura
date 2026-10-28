@@ -1,5 +1,6 @@
 """Planning with Muse Spark, without network calls: the model's replies are scripted."""
 
+import asyncio
 import io
 import json
 import logging
@@ -15,7 +16,7 @@ from backend.app.catalog import Catalog
 from backend.app.config import Settings
 from backend.app.constraints import Rule
 from backend.app.main import create_app
-from backend.app.planner import Brief, Outcome, SparkClient, plan_looks
+from backend.app.planner import Brief, Outcome, SparkClient, _post_json, plan_looks
 from backend.app.state import Budget, ItemKind, ItemRef, LockedPlacement, Look, Plan, State
 
 FIXTURE = Path(__file__).parent / "fixtures" / "synthetic_catalog.json"
@@ -35,9 +36,9 @@ VALID = f"Here are the looks:\n```json\n{reply(LOOK_1, LOOK_2, LOOK_3)}\n```"
 WITH_WOOL = reply({**LOOK_1, "top": "P02"}, LOOK_2, LOOK_3)  # P02 is 100% wool
 
 
-def completion(content: str) -> dict[str, Any]:
+def completion(content: str, finish_reason: str = "stop") -> dict[str, Any]:
     return {
-        "choices": [{"message": {"content": content}, "finish_reason": "stop"}],
+        "choices": [{"message": {"content": content}, "finish_reason": finish_reason}],
         "usage": {"prompt_tokens": 1000, "completion_tokens": 300},
     }
 
@@ -66,6 +67,17 @@ def state(budget_cents: int = 20000, **fields: Any) -> State:
     return State(budget=Budget(amount_cents=budget_cents), material_exclusions={"wool"}, **fields)
 
 
+class FakeClock:
+    def __init__(self) -> None:
+        self.seconds = 0.0
+
+    def __call__(self) -> float:
+        return self.seconds
+
+    def advance(self, seconds: float) -> None:
+        self.seconds += seconds
+
+
 def test_a_valid_plan_succeeds_with_offers_chosen_by_code() -> None:
     client, sent, _ = spark(VALID)
     result = plan_looks(BRIEF, state(), CATALOG, client)
@@ -86,6 +98,24 @@ def test_a_failing_plan_gets_one_repair_that_lists_its_violations() -> None:
     result = plan_looks(BRIEF, state(), CATALOG, client)
     assert (result.outcome, result.usage.calls) == (Outcome.SUCCESS, 2)
     assert "P02 contains wool" in sent[1]["messages"][-1]["content"]
+
+
+def test_incomplete_looks_get_one_repair() -> None:
+    incomplete = reply({"top": "P01"}, {"top": "P03"}, {"top": "P09"})
+    client, sent, _ = spark(incomplete, VALID)
+    result = plan_looks(BRIEF, state(), CATALOG, client)
+    assert (result.outcome, result.usage.calls) == (Outcome.SUCCESS, 2)
+    assert "top and bottom or a one_piece" in sent[1]["messages"][-1]["content"]
+
+
+def test_items_in_the_wrong_slots_get_one_repair() -> None:
+    misplaced = reply({"top": "P18", "bottom": "P05", "footwear": "P01"}, LOOK_2, LOOK_3)
+    client, sent, _ = spark(misplaced, VALID)
+    result = plan_looks(BRIEF, state(), CATALOG, client)
+    assert (result.outcome, result.usage.calls) == (Outcome.SUCCESS, 2)
+    repair = sent[1]["messages"][-1]["content"]
+    assert "P18 is a footwear item and cannot fill the top slot" in repair
+    assert "P01 is a top item and cannot fill the footwear slot" in repair
 
 
 @pytest.mark.parametrize(
@@ -117,20 +147,100 @@ def test_provider_failures_are_retried_once_and_reported_as_such(
     client, sent, slept = spark(*outcomes)
     result = plan_looks(BRIEF, state(), CATALOG, client)
     assert (result.outcome, len(sent), result.usage.calls) == (expected, requests, 0)
+    assert result.usage.http_attempts == requests
     assert "secret-key" not in (result.error or "")
 
 
 def test_a_retry_after_a_rate_limit_succeeds() -> None:
     client, sent, slept = spark(http_error(429), VALID)
-    assert plan_looks(BRIEF, state(), CATALOG, client).outcome is Outcome.SUCCESS
+    result = plan_looks(BRIEF, state(), CATALOG, client)
+    assert result.outcome is Outcome.SUCCESS
     assert (len(sent), slept) == (2, [2])
+    assert (result.usage.calls, result.usage.http_attempts) == (1, 2)
 
 
 def test_planning_stops_at_the_deadline() -> None:
-    client, sent, _ = spark(WITH_WOOL, VALID)
-    times = iter([0.0, 0.0, 200.0, 200.0])
-    result = plan_looks(BRIEF, state(), CATALOG, client, clock=lambda: next(times))
-    assert (result.outcome, len(sent)) == (Outcome.PROVIDER_TIMEOUT, 1)
+    clock = FakeClock()
+    sent: list[dict[str, Any]] = []
+
+    def post(request: Request, timeout_s: float) -> dict[str, Any]:
+        sent.append(json.loads(request.data))
+        clock.advance(200)
+        return completion(VALID)
+
+    client = SparkClient("secret-key", post=post)
+    result = plan_looks(BRIEF, state(), CATALOG, client, clock=clock)
+    assert (result.outcome, len(sent), result.usage.http_attempts) == (
+        Outcome.PROVIDER_TIMEOUT,
+        1,
+        1,
+    )
+
+
+def test_one_deadline_covers_http_attempts_and_retry_waits() -> None:
+    clock = FakeClock()
+    requests: list[float] = []
+    slept: list[float] = []
+    outcomes: list[Any] = [http_error(429), WITH_WOOL, http_error(429), VALID]
+
+    def post(request: Request, timeout_s: float) -> dict[str, Any]:
+        requests.append(timeout_s)
+        clock.advance(min(45, timeout_s))
+        outcome = outcomes.pop(0)
+        if isinstance(outcome, BaseException):
+            raise outcome
+        return completion(outcome)
+
+    def sleep(seconds: float) -> None:
+        slept.append(seconds)
+        clock.advance(seconds)
+
+    client = SparkClient("secret-key", post=post, sleep=sleep)
+    result = plan_looks(BRIEF, state(), CATALOG, client, clock=clock)
+    assert result.outcome is Outcome.PROVIDER_TIMEOUT
+    assert result.usage.calls == 2
+    assert result.usage.http_attempts == 4
+    assert requests == [60, 60, 58, 11]
+    assert slept == [2, 2]
+    assert clock() == 150
+
+
+def test_a_truncated_model_completion_is_not_a_plan() -> None:
+    client = SparkClient(
+        "secret-key",
+        post=lambda request, timeout_s: completion(VALID, finish_reason="length"),
+    )
+    result = plan_looks(BRIEF, state(), CATALOG, client)
+    assert result.outcome is Outcome.GENERATION_FAILED
+    assert "finish_reason='length'" in result.error
+    assert (result.usage.calls, result.usage.http_attempts) == (1, 1)
+
+
+def test_http_timeout_cancels_the_full_async_request(monkeypatch: pytest.MonkeyPatch) -> None:
+    cancelled = False
+
+    class SlowClient:
+        def __init__(self, **kwargs: Any) -> None:
+            pass
+
+        async def __aenter__(self) -> Any:
+            return self
+
+        async def __aexit__(self, *args: Any) -> None:
+            pass
+
+        async def request(self, *args: Any, **kwargs: Any) -> None:
+            nonlocal cancelled
+            try:
+                await asyncio.sleep(10)
+            except asyncio.CancelledError:
+                cancelled = True
+                raise
+
+    monkeypatch.setattr("backend.app.planner.httpx2.AsyncClient", SlowClient)
+    with pytest.raises(TimeoutError):
+        _post_json(Request("https://example.test"), 0.01)
+    assert cancelled
 
 
 def test_locks_that_break_the_budget_are_infeasible_without_a_model_call() -> None:
@@ -178,6 +288,18 @@ def test_the_api_returns_a_checked_plan(tmp_path: Path) -> None:
         1,
     )
     assert len(payload["plan"]["looks"]) == 3
+    assert payload["usage"]["http_attempts"] == 1
+
+
+def test_the_api_hides_a_plan_that_still_fails_checks(tmp_path: Path) -> None:
+    client, _, _ = spark(WITH_WOOL, WITH_WOOL)
+    app = create_app(Settings(web_dist=tmp_path, catalog_file=FIXTURE), spark=client)
+    with TestClient(app) as http:
+        response = http.post("/api/plans", json=body())
+    payload = response.json()
+    assert payload["outcome"] == "generation_failed"
+    assert payload["plan"] is None
+    assert any(violation["rule"] == Rule.MATERIAL.value for violation in payload["violations"])
 
 
 def test_the_api_needs_a_key_and_stays_off_in_production(tmp_path: Path) -> None:

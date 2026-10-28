@@ -8,7 +8,9 @@ calls, latency and token usage, never prompts, briefs or profiles.
 
 from __future__ import annotations
 
+import asyncio
 import http.client
+import io
 import json
 import logging
 import time
@@ -17,12 +19,20 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Annotated, Any
 from urllib.error import HTTPError
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
+import httpx2
 from pydantic import Field
 
-from backend.app.catalog import Catalog, Offer, Record
-from backend.app.constraints import Check, Violation, check_plan, item_violations, lock_conflicts
+from backend.app.catalog import Catalog, Category, Offer, Record
+from backend.app.constraints import (
+    Check,
+    Rule,
+    Violation,
+    check_plan,
+    item_violations,
+    lock_conflicts,
+)
 from backend.app.meta_images import RETRY_STATUS, _error_detail
 from backend.app.state import ItemKind, ItemRef, Look, Plan, Slot, State
 
@@ -63,12 +73,20 @@ class Usage:
     calls: int = 0
     prompt_tokens: int = 0
     completion_tokens: int = 0
+    http_attempts: int = 0
 
-    def add(self, usage: dict[str, Any]) -> Usage:
+    def add(
+        self,
+        usage: dict[str, Any],
+        http_attempts: int,
+        *,
+        call_completed: bool = True,
+    ) -> Usage:
         return Usage(
-            self.calls + 1,
-            self.prompt_tokens + int(usage.get("prompt_tokens") or 0),
-            self.completion_tokens + int(usage.get("completion_tokens") or 0),
+            calls=self.calls + int(call_completed),
+            prompt_tokens=self.prompt_tokens + int(usage.get("prompt_tokens") or 0),
+            completion_tokens=self.completion_tokens + int(usage.get("completion_tokens") or 0),
+            http_attempts=self.http_attempts + http_attempts,
         )
 
 
@@ -83,14 +101,52 @@ class PlanResult:
 
 
 class ProviderError(RuntimeError):
-    def __init__(self, message: str, *, timed_out: bool = False) -> None:
+    def __init__(
+        self,
+        message: str,
+        *,
+        timed_out: bool = False,
+        generation_failed: bool = False,
+        http_attempts: int = 0,
+        usage: dict[str, Any] | None = None,
+        call_completed: bool = False,
+    ) -> None:
         super().__init__(message)
         self.timed_out = timed_out
+        self.generation_failed = generation_failed
+        self.http_attempts = http_attempts
+        self.usage = usage or {}
+        self.call_completed = call_completed
 
 
 def _post_json(request: Request, timeout_s: float) -> dict[str, Any]:
-    with urlopen(request, timeout=timeout_s) as response:
-        return json.load(response)
+    async def send() -> dict[str, Any]:
+        async with asyncio.timeout(timeout_s):
+            async with httpx2.AsyncClient(timeout=None) as client:
+                response = await client.request(
+                    request.get_method(),
+                    request.full_url,
+                    headers=dict(request.header_items()),
+                    content=request.data,
+                )
+        if response.status_code >= 300:
+            raise HTTPError(
+                request.full_url,
+                response.status_code,
+                response.reason_phrase,
+                response.headers,
+                io.BytesIO(response.content),
+            )
+        return response.json()
+
+    try:
+        return asyncio.run(send())
+    except TimeoutError:
+        raise
+    except httpx2.TimeoutException as error:
+        raise TimeoutError(str(error)) from None
+    except httpx2.RequestError as error:
+        raise OSError(str(error)) from None
 
 
 @dataclass(slots=True)
@@ -100,7 +156,7 @@ class SparkClient:
     api_key: str = field(repr=False)
     model: str = SPARK_MODEL
     base_url: str = BASETEN_URL
-    # urllib applies this to each network operation (connect, send, each read).
+    # Each request is cancelled after this much total wall time or the plan's remaining budget.
     timeout_s: float = 60.0
     max_attempts: int = 2
     post: Callable[[Request, float], dict[str, Any]] = _post_json
@@ -110,7 +166,13 @@ class SparkClient:
         if not self.api_key:
             raise ValueError("BASETEN_API_KEY is not set")
 
-    def complete(self, messages: Sequence[dict[str, str]]) -> tuple[str, dict[str, Any]]:
+    def complete(
+        self,
+        messages: Sequence[dict[str, str]],
+        *,
+        deadline: float,
+        clock: Callable[[], float],
+    ) -> tuple[str, dict[str, Any], int]:
         """The reply text and its token usage. Raises ProviderError."""
         body = {"model": self.model, "messages": list(messages), "max_tokens": MAX_TOKENS}
         request = Request(
@@ -119,30 +181,75 @@ class SparkClient:
             headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
             method="POST",
         )
+        http_attempts = 0
         for attempt in range(1, self.max_attempts + 1):
+            remaining_s = deadline - clock()
+            if remaining_s <= 0:
+                raise ProviderError(
+                    "Planning took too long", timed_out=True, http_attempts=http_attempts
+                )
             try:
-                payload = self.post(request, self.timeout_s)
+                http_attempts += 1
+                payload = self.post(request, min(self.timeout_s, remaining_s))
             except HTTPError as error:
                 failure = f"HTTP {error.code}{_error_detail(error, self.api_key)}"
                 timed_out = error.code in (408, 504)
                 if error.code not in RETRY_STATUS:
-                    raise ProviderError(failure) from None
+                    raise ProviderError(failure, http_attempts=http_attempts) from None
             except (OSError, http.client.HTTPException) as error:
                 reason = getattr(error, "reason", error)
                 failure = f"{type(error).__name__}: {reason}"
                 timed_out = isinstance(error, TimeoutError) or isinstance(reason, TimeoutError)
             except ValueError:
-                raise ProviderError("The response was not valid JSON") from None
+                raise ProviderError(
+                    "The response was not valid JSON", http_attempts=http_attempts
+                ) from None
             else:
+                provider_usage = payload.get("usage") or {} if isinstance(payload, dict) else {}
+                if clock() >= deadline:
+                    raise ProviderError(
+                        "Planning took too long",
+                        timed_out=True,
+                        http_attempts=http_attempts,
+                        usage=provider_usage,
+                        call_completed=True,
+                    )
                 try:
-                    reply = str(payload["choices"][0]["message"].get("content") or "")
+                    choice = payload["choices"][0]
+                    reply = str(choice["message"].get("content") or "")
+                    finish_reason = choice.get("finish_reason")
                 except (LookupError, AttributeError, TypeError):
-                    raise ProviderError("The response was not a chat completion") from None
-                return reply, payload.get("usage") or {}
+                    raise ProviderError(
+                        "The response was not a chat completion",
+                        http_attempts=http_attempts,
+                        usage=provider_usage,
+                        call_completed=True,
+                    ) from None
+                if finish_reason != "stop" or not reply.strip():
+                    raise ProviderError(
+                        "The model reply did not finish normally "
+                        f"(finish_reason={finish_reason!r})",
+                        generation_failed=True,
+                        http_attempts=http_attempts,
+                        usage=provider_usage,
+                        call_completed=True,
+                    )
+                return reply, provider_usage, http_attempts
             if attempt < self.max_attempts:
-                self.sleep(min(2**attempt, 10))
+                remaining_s = deadline - clock()
+                if remaining_s <= 0:
+                    raise ProviderError(
+                        "Planning took too long", timed_out=True, http_attempts=http_attempts
+                    )
+                self.sleep(min(2**attempt, 10, remaining_s))
+                if clock() >= deadline:
+                    raise ProviderError(
+                        "Planning took too long", timed_out=True, http_attempts=http_attempts
+                    )
         raise ProviderError(
-            f"Gave up after {self.max_attempts} attempts: {failure}", timed_out=timed_out
+            f"Gave up after {self.max_attempts} attempts: {failure}",
+            timed_out=timed_out,
+            http_attempts=http_attempts,
         )
 
 
@@ -179,30 +286,52 @@ def plan_looks(
         {"role": "user", "content": json.dumps(_request(brief, state, catalog, offers))},
     ]
     started = clock()
+    deadline = started + DEADLINE_S
     result = PlanResult(Outcome.GENERATION_FAILED, usage, error="No plan was generated")
     for _ in range(GENERATION_ATTEMPTS):
-        if clock() - started > DEADLINE_S:
+        if clock() >= deadline:
             result = PlanResult(Outcome.PROVIDER_TIMEOUT, usage, error="Planning took too long")
             break
         try:
-            reply, call_usage = client.complete(messages)
+            reply, call_usage, http_attempts = client.complete(
+                messages, deadline=deadline, clock=clock
+            )
         except ProviderError as error:
-            outcome = Outcome.PROVIDER_TIMEOUT if error.timed_out else Outcome.PROVIDER_ERROR
+            usage = usage.add(
+                error.usage,
+                error.http_attempts,
+                call_completed=error.call_completed,
+            )
+            if error.timed_out or clock() >= deadline:
+                outcome = Outcome.PROVIDER_TIMEOUT
+            elif error.generation_failed:
+                outcome = Outcome.GENERATION_FAILED
+            else:
+                outcome = Outcome.PROVIDER_ERROR
             result = PlanResult(outcome, usage, error=str(error))
             break
-        usage = usage.add(call_usage)
+        usage = usage.add(call_usage, http_attempts)
         try:
             plan = _plan_from_reply(reply, state, catalog, offers)
         except ValueError as error:
             result = PlanResult(Outcome.GENERATION_FAILED, usage, error=str(error))
             problems = str(error)
         else:
-            check = check_plan(State.model_validate({**dict(state), "plan": plan}), catalog)
+            checked_state = State.model_validate({**dict(state), "plan": plan})
+            check = check_plan(checked_state, catalog)
+            structural = _look_violations(plan, state, catalog)
+            if structural:
+                check = Check(tuple(structural) + check.violations, check.notices)
             if check.passed:
                 result = PlanResult(Outcome.SUCCESS, usage, plan=plan, check=check)
-                break
-            result = PlanResult(Outcome.GENERATION_FAILED, usage, plan=plan, check=check)
-            problems = "; ".join(violation.detail for violation in check.violations)
+            else:
+                result = PlanResult(Outcome.GENERATION_FAILED, usage, check=check)
+                problems = "; ".join(violation.detail for violation in check.violations)
+        if clock() >= deadline:
+            result = PlanResult(Outcome.PROVIDER_TIMEOUT, usage, error="Planning took too long")
+            break
+        if result.outcome is Outcome.SUCCESS:
+            break
         messages += [
             {"role": "assistant", "content": reply},
             {
@@ -212,6 +341,57 @@ def plan_looks(
             },
         ]
     return _logged(result, client, clock() - started)
+
+
+_SLOT_CATEGORIES: dict[Slot, frozenset[Category]] = {
+    Slot.TOP: frozenset({Category.TOP, Category.KNITWEAR}),
+    Slot.BOTTOM: frozenset({Category.BOTTOM}),
+    Slot.ONE_PIECE: frozenset({Category.ONE_PIECE}),
+    Slot.MID_LAYER: frozenset({Category.TOP, Category.KNITWEAR}),
+    Slot.OUTER_LAYER: frozenset({Category.OUTERWEAR}),
+    Slot.FOOTWEAR: frozenset({Category.FOOTWEAR}),
+    Slot.ACCESSORY: frozenset({Category.ACCESSORY}),
+}
+
+
+def _look_violations(plan: Plan, state: State, catalog: Catalog) -> list[Violation]:
+    """Whether every look has a complete base outfit and categories match their slots."""
+    categories = {
+        variant.id: product.category for product in catalog.products for variant in product.variants
+    }
+    owned = {item.id: item for item in state.owned_items}
+    violations = []
+    for look in plan.looks:
+        has_top = Slot.TOP in look.items
+        has_bottom = Slot.BOTTOM in look.items
+        has_one_piece = Slot.ONE_PIECE in look.items
+        separates = has_top and has_bottom and not has_one_piece
+        one_piece = has_one_piece and not has_top and not has_bottom
+        if not (separates or one_piece):
+            violations.append(
+                Violation(
+                    Rule.LOOK_COMPOSITION,
+                    f"{look.id} needs either a top and bottom or a one_piece, but not both",
+                    look_id=look.id,
+                )
+            )
+        for slot, item in look.items.items():
+            if item.kind is ItemKind.CATALOG:
+                category = categories.get(item.id)
+            else:
+                owned_item = owned.get(item.id)
+                category = owned_item.category if owned_item else None
+            if category is not None and category not in _SLOT_CATEGORIES[slot]:
+                violations.append(
+                    Violation(
+                        Rule.SLOT_CATEGORY,
+                        f"{item.id} is a {category.value} item and cannot fill "
+                        f"the {slot.value} slot",
+                        item,
+                        look.id,
+                    )
+                )
+    return violations
 
 
 def _cheapest_usable_offers(catalog: Catalog, exclusions: frozenset[str]) -> dict[str, Offer]:
@@ -309,7 +489,11 @@ def result_json(result: PlanResult) -> dict[str, Any]:
     check = result.check
     return {
         "outcome": result.outcome.value,
-        "plan": result.plan.model_dump(mode="json") if result.plan else None,
+        "plan": (
+            result.plan.model_dump(mode="json")
+            if result.outcome is Outcome.SUCCESS and result.plan
+            else None
+        ),
         "violations": [violation(v) for v in (check.violations if check else ())],
         "notices": [
             {"kind": n.kind.value, "item": n.item.model_dump(mode="json"), "material": n.material}
@@ -319,6 +503,7 @@ def result_json(result: PlanResult) -> dict[str, Any]:
         "error": result.error,
         "usage": {
             "calls": result.usage.calls,
+            "http_attempts": result.usage.http_attempts,
             "prompt_tokens": result.usage.prompt_tokens,
             "completion_tokens": result.usage.completion_tokens,
         },
@@ -327,10 +512,12 @@ def result_json(result: PlanResult) -> dict[str, Any]:
 
 def _logged(result: PlanResult, client: SparkClient, latency_s: float) -> PlanResult:
     logger.info(
-        "plan outcome=%s model=%s calls=%d prompt_tokens=%d completion_tokens=%d latency_s=%.1f",
+        "plan outcome=%s model=%s calls=%d http_attempts=%d prompt_tokens=%d "
+        "completion_tokens=%d latency_s=%.1f",
         result.outcome,
         client.model,
         result.usage.calls,
+        result.usage.http_attempts,
         result.usage.prompt_tokens,
         result.usage.completion_tokens,
         latency_s,
