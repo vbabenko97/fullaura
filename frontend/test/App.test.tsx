@@ -25,8 +25,8 @@ function apiResponse(payload: unknown, status = 200): Response {
   } as Response;
 }
 
-function successfulResponse(plan: unknown): unknown {
-  return { outcome: "success", plan, conflicts: [] };
+function successfulResponse(plan: unknown, notices: unknown[] = []): unknown {
+  return { outcome: "success", plan, notices, conflicts: [] };
 }
 
 function installApiFixtures(plans: unknown[]) {
@@ -64,6 +64,15 @@ function object(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
+function planWithOwnedItems(): unknown {
+  const plan = JSON.parse(JSON.stringify(firstPlan)) as {
+    looks: Array<{ items: Record<string, unknown> }>;
+  };
+  plan.looks[0].items.top = { kind: "owned", id: "owned-1" };
+  plan.looks[1].items.top = { kind: "owned", id: "owned-2" };
+  return plan;
+}
+
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -85,6 +94,7 @@ describe(`${FIXTURE_LABEL}: preferences-to-results flow`, () => {
     expect(screen.getByRole("heading", { name: "look 2" })).toBeTruthy();
     expect(screen.getByRole("heading", { name: "look 3" })).toBeTruthy();
     expect(screen.getAllByText("MAARKOS HEAVY WEIGHT T-SHIRT")).toHaveLength(2);
+    expect(screen.getAllByText("Stock unknown")).not.toHaveLength(0);
 
     fireEvent.click(
       screen.getByRole("button", { name: "Keep MAARKOS HEAVY WEIGHT T-SHIRT in look_1" }),
@@ -116,6 +126,76 @@ describe(`${FIXTURE_LABEL}: preferences-to-results flow`, () => {
         .getAttribute("aria-pressed"),
     ).toBe("true");
     expect(screen.getByText(/234,40/)).toBeTruthy();
+  });
+
+  it("does not change locks while an update is in flight", async () => {
+    let resolveUpdate: ((response: Response) => void) | undefined;
+    let planningCalls = 0;
+    const fetchFixture = vi.fn<typeof fetch>((input) => {
+      if (String(input) === "/api/catalog") return Promise.resolve(apiResponse(catalogFixture));
+      planningCalls += 1;
+      if (planningCalls === 1) return Promise.resolve(apiResponse(successfulResponse(firstPlan)));
+      return new Promise<Response>((resolve) => {
+        resolveUpdate = resolve;
+      });
+    });
+    vi.stubGlobal("fetch", fetchFixture);
+    render(<App />);
+    await screen.findByText("15 catalog products");
+    submitPreferences("Lock updates", "250");
+    fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+    await screen.findByText("The three looks passed the catalog and budget checks.");
+
+    fireEvent.click(screen.getByRole("button", { name: "Update three looks" }));
+    const lockButton = screen.getByRole("button", {
+      name: "Keep JAAMES LANGARMSHIRT in look_2",
+    });
+    expect((lockButton as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(lockButton);
+    expect(lockButton.getAttribute("aria-pressed")).toBe("false");
+
+    resolveUpdate?.(apiResponse(successfulResponse(reducedBudgetPlan)));
+    await waitFor(() => expect((lockButton as HTMLButtonElement).disabled).toBe(false));
+    expect(
+      screen.getByRole("button", { name: "Keep JAAMES LANGARMSHIRT in look_2" }).getAttribute("aria-pressed"),
+    ).toBe("false");
+  });
+
+  it("shows owned-item material notices and explains catalog material checks", async () => {
+    installApiFixtures([
+      successfulResponse(planWithOwnedItems(), [
+        {
+          kind: "owned_reported",
+          item: { kind: "owned", id: "owned-1" },
+          material: "wool",
+        },
+        {
+          kind: "owned_unconfirmed",
+          item: { kind: "owned", id: "owned-2" },
+          material: "wool",
+        },
+      ]),
+    ]);
+    render(<App />);
+    await screen.findByText("15 catalog products");
+    fireEvent.click(screen.getByRole("button", { name: "Add item" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add item" }));
+    const colors = screen.getAllByLabelText("Color");
+    const descriptions = screen.getAllByLabelText("Description");
+    fireEvent.change(colors[0], { target: { value: "navy" } });
+    fireEvent.change(descriptions[0], { target: { value: "merino jumper" } });
+    fireEvent.change(colors[1], { target: { value: "cream" } });
+    fireEvent.change(descriptions[1], { target: { value: "unknown knit" } });
+    fireEvent.click(screen.getByText("Avoid materials"));
+    fireEvent.click(screen.getByLabelText("wool"));
+    submitPreferences("Owned-material notices", "250");
+    fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+
+    expect(await screen.findByText("wool reported by you. It is excluded from new purchases.")).toBeTruthy();
+    expect(screen.getByText("wool is unconfirmed for this item.")).toBeTruthy();
+    expect(
+      screen.getByText(/Only materials named in a product's catalog record are checked/),
+    ).toBeTruthy();
   });
 
   it("sends the combined budget mode and shows the unique-item total", async () => {

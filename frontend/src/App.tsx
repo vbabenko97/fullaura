@@ -130,6 +130,13 @@ interface PlanResponse {
   outcome: "success" | "infeasible" | "generation_failed" | "provider_timeout" | "provider_error";
   plan: Plan | null;
   conflicts: { detail: string }[];
+  notices: OwnedNotice[];
+}
+
+interface OwnedNotice {
+  kind: "owned_reported" | "owned_unconfirmed";
+  item: ItemRef;
+  material: string;
 }
 
 interface PlanRequest {
@@ -328,10 +335,20 @@ function parsePlanResponse(value: unknown): PlanResponse {
     if (!isRecord(entry)) throw new Error("Invalid planning conflict");
     return { detail: readString(entry.detail, "conflict detail") };
   });
+  const notices = readArray(value.notices ?? [], "planning notices").map((entry) => {
+    if (!isRecord(entry) || (entry.kind !== "owned_reported" && entry.kind !== "owned_unconfirmed")) {
+      throw new Error("Invalid planning notice");
+    }
+    const item = parseItemRef(entry.item);
+    if (item.kind !== "owned") throw new Error("Invalid planning notice item");
+    const kind: OwnedNotice["kind"] = entry.kind;
+    return { kind, item, material: readString(entry.material, "planning notice material") };
+  });
   return {
     outcome,
     plan: value.plan === null ? null : parsePlan(value.plan),
     conflicts,
+    notices,
   };
 }
 
@@ -457,7 +474,9 @@ interface ProductLineProps {
   slot: Slot;
   item: ItemRef;
   ownedItems: OwnedItem[];
+  ownedNotices: OwnedNotice[];
   isLocked: boolean;
+  lockDisabled: boolean;
   onToggleLock: (lookId: string, slot: Slot, item: ItemRef) => void;
 }
 
@@ -468,11 +487,14 @@ function ProductLine({
   slot,
   item,
   ownedItems,
+  ownedNotices,
   isLocked,
+  lockDisabled,
   onToggleLock,
 }: ProductLineProps) {
   if (item.kind === "owned") {
     const owned = ownedItems.find((candidate) => candidate.id === item.id);
+    const notices = ownedNotices.filter((notice) => notice.item.id === item.id);
     return (
       <li className="look-item">
         <div className="look-item-heading">
@@ -481,6 +503,7 @@ function ProductLine({
             aria-label={`${isLocked ? "Release" : "Keep"} ${owned?.description ?? "owned item"} in ${look.id}`}
             aria-pressed={isLocked}
             className={`lock-button${isLocked ? " is-locked" : ""}`}
+            disabled={lockDisabled}
             onClick={() => onToggleLock(look.id, slot, item)}
             type="button"
           >
@@ -492,6 +515,13 @@ function ProductLine({
           {owned ? `${owned.color}, ${labelCategory(owned.category)}` : "Already owned"}
         </p>
         <p className="item-price">Already owned</p>
+        {notices.map((notice) => (
+          <p className="item-facts" key={`${notice.kind}-${notice.material}`}>
+            {notice.kind === "owned_reported"
+              ? `${notice.material} reported by you. It is excluded from new purchases.`
+              : `${notice.material} is unconfirmed for this item.`}
+          </p>
+        ))}
       </li>
     );
   }
@@ -529,6 +559,7 @@ function ProductLine({
           aria-label={`${isLocked ? "Release" : "Keep"} ${entry.product.title} in ${look.id}`}
           aria-pressed={isLocked}
             className={`lock-button${isLocked ? " is-locked" : ""}`}
+          disabled={lockDisabled}
           onClick={() => onToggleLock(look.id, slot, item)}
           type="button"
         >
@@ -538,6 +569,7 @@ function ProductLine({
       <h3>{entry.product.title}</h3>
       {facts && <p className="item-facts">{facts}</p>}
       <p className="item-facts">{composition}</p>
+      {offer?.stock === null && <p className="item-facts">Stock unknown</p>}
       <div className="item-source">
         <span className="item-price">{formatMoney(offer?.price_cents ?? null)}</span>
         {offerLink ? (
@@ -558,11 +590,22 @@ interface LookCardProps {
   look: Look;
   plan: Plan;
   ownedItems: OwnedItem[];
+  ownedNotices: OwnedNotice[];
   locks: LockedPlacement[];
+  lockDisabled: boolean;
   onToggleLock: (lookId: string, slot: Slot, item: ItemRef) => void;
 }
 
-function LookCard({ catalog, look, plan, ownedItems, locks, onToggleLock }: LookCardProps) {
+function LookCard({
+  catalog,
+  look,
+  plan,
+  ownedItems,
+  ownedNotices,
+  locks,
+  lockDisabled,
+  onToggleLock,
+}: LookCardProps) {
   const items = SLOTS.flatMap((slot) => {
     const item = look.items[slot];
     return item ? [{ slot, item }] : [];
@@ -589,9 +632,11 @@ function LookCard({ catalog, look, plan, ownedItems, locks, onToggleLock }: Look
               catalog={catalog}
               isLocked={isLocked}
               item={item}
+              lockDisabled={lockDisabled}
               look={look}
               onToggleLock={onToggleLock}
               ownedItems={ownedItems}
+              ownedNotices={ownedNotices}
               plan={plan}
               slot={slot}
             />
@@ -615,6 +660,7 @@ export function App() {
   const [locks, setLocks] = useState<LockedPlacement[]>([]);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [planOwnedItems, setPlanOwnedItems] = useState<OwnedItem[]>([]);
+  const [planNotices, setPlanNotices] = useState<OwnedNotice[]>([]);
   const [successfulPreferenceKey, setSuccessfulPreferenceKey] = useState<string | null>(null);
   const [requestState, setRequestState] = useState<RequestState>("idle");
   const [requestMessage, setRequestMessage] = useState<string | null>(null);
@@ -671,6 +717,7 @@ export function App() {
   }
 
   function toggleLock(lookId: string, slot: Slot, item: ItemRef) {
+    if (requestState === "loading") return;
     setLocks((current) => {
       const exists = current.some(
         (lock) =>
@@ -743,6 +790,7 @@ export function App() {
       if (result.outcome === "success" && result.plan) {
         setPlan(result.plan);
         setPlanOwnedItems(ownedItems);
+        setPlanNotices(result.notices);
         setSuccessfulPreferenceKey(submittedPreferenceKey);
         setRequestState("success");
         setRequestMessage("The three looks passed the catalog and budget checks.");
@@ -894,7 +942,7 @@ export function App() {
                     <span className="selection-count">{exclusions.length} selected</span>
                   </summary>
                   <p className="field-help">
-                    Exclusions apply to new purchases. A selection also removes products whose composition cannot be checked.
+                    Exclusions apply to new purchases. Only materials named in a product's catalog record are checked; unnamed or vague parts are not checked. A selection also removes products whose composition cannot be checked.
                   </p>
                   <div className="material-list">
                     {MATERIALS.map((material) => (
@@ -1047,10 +1095,12 @@ export function App() {
                     <LookCard
                       key={look.id}
                       catalog={catalog}
+                      lockDisabled={requestState === "loading"}
                       locks={locks}
                       look={look}
                       onToggleLock={toggleLock}
                       ownedItems={planOwnedItems}
+                      ownedNotices={planNotices}
                       plan={plan}
                     />
                   ))}
