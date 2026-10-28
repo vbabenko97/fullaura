@@ -40,7 +40,7 @@ A hard constraint is a rule that code checks before FullAura shows a plan. A cat
 - **Stock.** A product whose selected offer reports it out of stock fails this check; another offer of the same variant can be selected instead. When the offer gives no stock, the product can be used, and the interface shows its stock as unknown ([D-24](DECISIONS.md#d-24-an-offer-reported-out-of-stock-fails)).
 - **Locked items.** A locked item is one the person chose to keep. It stays in the look where the person locked it, in the same position, such as footwear, through every edit. The same item in another look can still change ([D-22](DECISIONS.md#d-22-a-lock-holds-one-position-in-one-look)).
 
-When no plan meets every hard constraint, for example because the locked items cost more than the budget, FullAura reports that the plan is infeasible.
+When no plan meets every hard constraint, for example because the locked items cost more than the budget, FullAura reports that the plan is infeasible. It says so only when code shows that no plan can pass. When the model's plans keep failing the checks, or the model does not answer in time, FullAura says that instead and does not call the request infeasible.
 
 The selected variants and offers, budget, exclusions, owned items and locked items are kept in structured application state, and code validates the hard constraints against that state. FullAura does not present a material exclusion as a medical assurance.
 

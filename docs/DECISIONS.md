@@ -203,3 +203,16 @@ Each decision has a number that is never reused and a status: accepted, proposed
 - **Decision:** A catalog product's composition is complete when the source names the material of every part that EU labelling covers. For clothing, that is each textile component, except a component that is not a main lining and makes up less than 30% of the weight ([Regulation (EU) 1007/2011, Article 11](https://www.legislation.gov.uk/eur/2011/1007/article/11/adopted)). For shoes, it is the upper, the lining and insole, and the sole. Trims that the regulation leaves out of the fibre composition, such as buttons, zips, labels and elastic bands at specific points ([Annex VII](https://www.legislation.gov.uk/eur/2011/1007/annex/VII/adopted)), do not decide completeness. A trim whose material the source names is still recorded and checked.
 - **Reason:** The earlier reading, under which every part had to be named, including buttons, elastic and laces, left almost no real product complete, because product pages give the labelled composition and rarely name trims. Every plan under an exclusion would then be infeasible. The labelled parts are what a seller has to state, so a page that gives them is as complete as the source can be.
 - **Consequences:** An exclusion does not check unnamed trims, such as an elastic waistband that may contain rubber, and the interface says so. A labelled part that the source leaves out or names only vaguely, such as "Synthetik", still makes the composition partial.
+
+## D-28: Muse Spark on Baseten plans, and code checks every plan
+
+- **Date:** 2026-10-28
+- **Status:** accepted
+- **Decision:** Muse Spark Open (`meta-models/muse-spark-open-1026`), served through Baseten's model API, plans the looks. The model receives the brief, the budget, the owned items, the locks and only the catalog products that pass the hard-constraint checks, and replies in JSON with item IDs. Code picks each variant's cheapest offer that passes the checks, then checks the whole plan with the same code as every other plan. A plan that fails gets one repair attempt that lists its violations. A request ends in one of five outcomes:
+  - success;
+  - infeasible: the locks alone break a hard constraint, found by code before any model call;
+  - generation failed: the model's plans failed the checks or the reply format;
+  - provider timeout;
+  - provider error.
+- **Reason:** The model is used for styling choices, and code keeps prices, offers and hard constraints exact (D-09). Separate outcomes keep a model or provider failure from being shown as an impossible request.
+- **Consequences:** A request makes at most two model calls within 150 seconds. Each call has a 60-second timeout and is retried once after a timeout, a rate limit or a server error. Token usage is returned with each result and logged without prompts or briefs. The endpoint runs only in development until T-04 adds per-session limits, the 18+ confirmation and the photo-processing notice. The model replies in JSON, not through tool calls.
