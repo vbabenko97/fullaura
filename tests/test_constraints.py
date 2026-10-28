@@ -393,6 +393,11 @@ def test_owned_items_stay_under_an_exclusion_with_labels() -> None:
         ("pure cotton tee", "PU", False),
         ("woollen scarf", "wool", True),
         ("woolly hat", "wool", False),  # a word that is not a listed name stays unconfirmed
+        ("no merino wool", "wool", False),  # the negation covers the whole longest name
+        ("without natural rubber", "rubber", False),
+        ("synthetic rubber sole", "rubber", False),  # the longest name is synthetic rubber
+        ("synthetic rubber sole", "synthetic rubber", True),
+        ("rubber sole, no wool", "rubber", True),
     ],
 )
 def test_a_description_names_a_material_as_whole_words_without_negation(
@@ -574,3 +579,31 @@ def test_checks_refuse_a_state_changed_without_validation() -> None:
     unknown = unchecked.model_copy(update={"material_exclusions": frozenset({"wol"})})
     with pytest.raises(ValidationError):
         check_plan(unknown, CATALOG)
+
+
+def test_checks_refuse_or_normalize_catalog_records_changed_without_validation() -> None:
+    looks = plan({"top": "X1", "bottom": "P05"}, {"top": "P01"}, {"top": "P01"})
+    out_of_stock = catalog_with(variant_like("P01", "X1", stock="out_of_stock"))  # plain text
+    assert found(check_plan(state(10**6, plan=looks), out_of_stock).violations) == [
+        (Rule.STOCK, "X1", None)
+    ]
+
+    raw = Component.model_construct(material="PU", percent=100, part=None)  # not "polyurethane"
+    composition = Composition.model_construct(
+        status="complete", components=(raw,), source_text=None
+    )
+    pu = variant_like("P01", "X1").model_copy(update={"composition": composition})
+    pu_state = state(10**6, material_exclusions={"polyurethane"}, plan=looks)
+    assert found(check_plan(pu_state, catalog_with(pu)).violations) == [(MATERIAL, "X1", None)]
+
+    negative = catalog_with(variant_like("P01", "X1", price_cents=-10000))
+    for check in (
+        lambda: check_plan(state(10**6, plan=looks), negative),
+        lambda: lock_conflicts(
+            state(10**6, locks=(lock("look_1", "top", "X1"),), plan=looks), negative
+        ),
+        lambda: cost(looks.looks[0].items.values(), looks.selected_offers, negative),
+        lambda: item_violations(negative.variant("X1"), negative.variant("X1").offers[0], ()),
+    ):
+        with pytest.raises(ValidationError):
+            check()

@@ -53,7 +53,7 @@ An owned item can take the place of a catalog product in a look. FullAura labels
 Material exclusions apply to new purchases, so an owned item can stay in a look while an exclusion is active:
 
 - When its composition is unknown, the interface labels it as unconfirmed for that exclusion.
-- When its description names an excluded material, such as wool, the interface shows that material as reported by the person and says that the material is excluded from new purchases. A description names a material when it contains the material's name or another name for it as whole words, as in "merino jumper". A description that negates the material, such as "wool-free scarf" or "no wool", does not name it, and the item is labeled as unconfirmed.
+- When its description names an excluded material, such as wool, the interface shows that material as reported by the person and says that the material is excluded from new purchases. A description names a material when it contains the material's name or another name for it as whole words, as in "merino jumper". Where names overlap, the longest counts, so "synthetic rubber sole" names synthetic rubber and not rubber. A description that negates the material, such as "wool-free scarf" or "no merino wool", does not name it, and the item is labeled as unconfirmed.
 
 A photo of an owned item is planned for after the first complete flow and the feasibility test (T-07 in [TASKS.md](TASKS.md)).
 

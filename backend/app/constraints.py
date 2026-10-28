@@ -11,6 +11,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from enum import StrEnum
 
+from pydantic import BaseModel
+
 from backend.app.catalog import (
     MATERIALS,
     Catalog,
@@ -25,6 +27,15 @@ from backend.app.state import Budget, BudgetMode, ItemKind, ItemRef, LockedPlace
 DELIVERY_COUNTRY = "AT"
 _WORD = re.compile(r"[a-z]+(?:'[a-z]+)*")
 _NEGATIONS = frozenset({"no", "non", "not", "without"})
+# Every listed name as words, longest first, so "synthetic rubber" wins over "rubber".
+_NAMES_LONGEST_FIRST = sorted(
+    (
+        (tuple(name.split()), material)
+        for material, others in MATERIALS.items()
+        for name in (material, *others)
+    ),
+    key=lambda entry: -len(entry[0]),
+)
 
 
 class Rule(StrEnum):
@@ -74,26 +85,46 @@ class Check:
 
 def names_material(description: str, material: str) -> bool:
     """Whether a person's description names the material, by its generic name or another name
-    in MATERIALS, as whole words and not negated. "Red wool scarf" and "merino jumper" name
-    wool; "wool-free scarf", "no wool" and "pure cotton" do not."""
+    in MATERIALS, as whole words and not negated. Where listed names overlap, the longest one
+    counts, and a negation applies to all of it. "Red wool scarf" and "merino jumper" name wool;
+    "wool-free scarf", "no merino wool" and "pure cotton" do not, and "synthetic rubber sole"
+    names synthetic rubber, not rubber."""
+    return generic_material(material) in _named_materials(description)
+
+
+def _named_materials(description: str) -> set[str]:
     words = _WORD.findall(description.casefold().replace("’", "'"))
-    material = generic_material(material)
-    for name in (material, *MATERIALS[material]):
-        name_words = name.split()
-        for start in range(len(words) - len(name_words) + 1):
+    named = set()
+    start = 0
+    while start < len(words):
+        for name_words, material in _NAMES_LONGEST_FIRST:
             end = start + len(name_words)
-            if words[start:end] != name_words:
-                continue
-            before = words[start - 1] if start else ""
-            after = words[end] if end < len(words) else ""
-            if before not in _NEGATIONS and after != "free":
-                return True
-    return False
+            if tuple(words[start:end]) == name_words:
+                before = words[start - 1] if start else ""
+                after = words[end] if end < len(words) else ""
+                if before not in _NEGATIONS and after != "free":
+                    named.add(material)
+                start = end
+                break
+        else:
+            start += 1
+    return named
+
+
+def revalidated[M: BaseModel](model: M) -> M:
+    """The model rebuilt through validation. A frozen model can still hold a dict that changes in
+    place, and model_copy(update=...) skips validation; either could otherwise bring a check a
+    value that validation refuses or would normalize. Raises ValidationError for such a model."""
+    return type(model).model_validate(model.model_dump(warnings=False))
 
 
 def item_violations(variant: Variant, offer: Offer, exclusions: Iterable[str]) -> list[Violation]:
     """Why this variant, bought through this offer, cannot appear in any plan; empty if it can.
     The checks hold for every look, so a planner can use them to filter the catalog."""
+    return _item_violations(revalidated(variant), revalidated(offer), exclusions)
+
+
+def _item_violations(variant: Variant, offer: Offer, exclusions: Iterable[str]) -> list[Violation]:
     item = ItemRef(kind=ItemKind.CATALOG, id=variant.id)
     violations = []
     exclusions = sorted({generic_material(material) for material in exclusions})
@@ -131,7 +162,7 @@ def cost(
     offer's price. Owned items cost nothing. None when a price is unknown or does not resolve.
 
     For one look this is the look's cost; for all three looks, the whole plan's."""
-    prices = _prices(items, selected_offers, catalog)
+    prices = _prices(items, selected_offers, revalidated(catalog))
     return None if None in prices else sum(prices)
 
 
@@ -147,16 +178,9 @@ def _prices(
     return prices
 
 
-def revalidated(state: State) -> State:
-    """The state rebuilt through validation. A frozen model still holds dicts that can change in
-    place, and model_copy(update=...) skips validation; either could otherwise reach a check
-    with a structure that validation refuses. Raises ValidationError for such a state."""
-    return State.model_validate(state.model_dump())
-
-
 def check_plan(state: State, catalog: Catalog) -> Check:
     """Every hard-constraint violation in the state's plan, and the owned-item labels."""
-    state = revalidated(state)
+    state, catalog = revalidated(state), revalidated(catalog)
     plan = state.plan
     if plan is None:
         raise ValueError("The state has no plan to check")
@@ -192,7 +216,7 @@ def check_plan(state: State, catalog: Catalog) -> Check:
                 Violation(Rule.OFFER, f"No offer {offer_id!r} of {item.id} is selected", item)
             )
             continue
-        violations.extend(item_violations(variant, offer, state.material_exclusions))
+        violations.extend(_item_violations(variant, offer, state.material_exclusions))
 
     # Known prices alone can exceed the budget even when another price is unknown.
     if state.budget.mode is BudgetMode.PER_LOOK:
@@ -225,7 +249,7 @@ def lock_conflicts(state: State, catalog: Catalog) -> list[Violation]:
     A locked catalog item counts at its cheapest usable offer, so a budget violation here is
     a lower bound that no choice of the other items can fix. Owned items cost nothing and
     never conflict."""
-    state = revalidated(state)
+    state, catalog = revalidated(state), revalidated(catalog)
     violations: list[Violation] = []
     prices: dict[str, int] = {}
     for item in dict.fromkeys(lock.item for lock in state.locks):
@@ -236,7 +260,7 @@ def lock_conflicts(state: State, catalog: Catalog) -> list[Violation]:
             violations.append(Violation(Rule.UNKNOWN_ITEM, f"No catalog record {item.id}", item))
             continue
         options = [
-            item_violations(variant, offer, state.material_exclusions) for offer in variant.offers
+            _item_violations(variant, offer, state.material_exclusions) for offer in variant.offers
         ]
         usable = [
             offer.price_cents
