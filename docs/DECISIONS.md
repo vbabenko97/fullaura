@@ -179,3 +179,19 @@ Each decision has a number that is never reused and a status: accepted, proposed
 - **Decision:** A catalog product fails the checks when its selected offer reports it out of stock. A plan can select another offer of the same variant instead. An offer that gives no stock can be used, and the interface shows its stock as unknown. [SPEC.md](SPEC.md#hard-constraints) has the rule.
 - **Reason:** A retailer cannot sell a product it reports as out of stock, so a plan that includes it cannot be bought as shown. Failing unknown stock as well would leave out every product whose source gives no stock.
 - **Consequences:** The first version has five hard constraints. When FullAura tests whether the locked items alone make a plan infeasible, a locked variant whose offers are all out of stock is a conflict.
+
+## D-25: Product facts and product images need different rights
+
+- **Date:** 2026-10-28
+- **Status:** accepted
+- **Decision:** A catalog source for product facts, such as price, composition and delivery, needs terms of use that allow FullAura to record those facts; it does not need an individual permission from each brand or retailer. Product images need a license, a feed whose terms permit display, or photos that FullAura takes itself. The consent of people whose photos FullAura processes is a separate requirement and does not change. [DATA.md](DATA.md) has the rules for recording each source.
+- **Reason:** Copyright protects images but not individual facts such as a price or a composition. A site's terms of use and the EU database right can still forbid copying a large part of its catalog, so the terms are checked and only a few products are recorded by hand. Treating facts and images as one permission made T-02 and T-03 wait for replies from brands that might not arrive before the deadline.
+- **Consequences:** T-03 depends on choosing a source and checking its terms. The feasibility test (T-02) can use photos that the author takes of real garments. This is the project's working rule for the prototype, not legal advice; a lawyer should review it before FullAura is offered to the public.
+
+## D-26: The first catalog records facts from Zalando and Armedangels, without images
+
+- **Date:** 2026-10-28
+- **Status:** accepted
+- **Decision:** The first catalog records product facts by hand from two sources: about 15 to 20 variants from Zalando.at and about 5 to 10 from the Austrian Armedangels store. Their terms of use, checked on 2026-10-28, contain no clause on using the site's content ([Zalando](https://www.zalando.at/agb/), [Armedangels](https://www.armedangels.com/at-de/agb)). The catalog holds no retailer images; the interface shows a placeholder and a link to the retailer.
+- **Reason:** Both sites show prices in EUR, delivery to Austria and material composition, and neither needs a sign-up. No openly licensed product images were found, and an affiliate feed that allows images needs each retailer's approval, which might not arrive before the deadline. H&M, COS and Zara were left out, because the terms found for them restrict the use of site content.
+- **Consequences:** Zalando refuses automated requests, so the author records its facts; an agent records the Armedangels facts, because that site's robots.txt allows crawlers. Zalando shows no stock, so its offers have unknown stock. Without a product image, a preview of a catalog product cannot show the real garment and is approximate ([SPEC.md](SPEC.md#previews)).

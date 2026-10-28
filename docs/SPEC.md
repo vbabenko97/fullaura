@@ -61,7 +61,7 @@ A photo of an owned item is planned for after the first complete flow and the fe
 
 A preview is a generated image of the person wearing a look, or with a hair or beard style. FullAura labels every preview as a preview. A preview cannot establish fit, measurements, composition, price or availability, and a generated garment is not evidence that a product is sold or available. FullAura does not promise exact clothing fit or an achievable hair density.
 
-A preview that shows an owned item draws it from the text description only, and FullAura presents that preview as approximate.
+A preview that shows an owned item draws it from the text description only, and FullAura presents that preview as approximate. The same holds for a catalog product that has no product image FullAura may use ([D-26](DECISIONS.md#d-26-the-first-catalog-records-facts-from-zalando-and-armedangels-without-images)).
 
 If previews fail the feasibility test, a person can still complete a sourced style plan, and FullAura states the visual limitation ([D-11](DECISIONS.md#d-11-test-previews-first-and-keep-the-plan-useful-without-them)).
 
