@@ -471,6 +471,13 @@
   gap: var(--space-xs);
 }
 
+.look-item-actions {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--space-xs);
+}
+
 .slot-name {
   color: var(--color-muted);
   font-size: var(--text-sm);

@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
 import firstPlanJson from "./fixtures/plan-success-initial.fixture.json?raw";
+import replacementPlanJson from "./fixtures/plan-success-replacement.fixture.json?raw";
 import reducedBudgetPlanJson from "./fixtures/plan-success-reduced-budget.fixture.json?raw";
 
 /* The catalog fixture is the checked-in non-synthetic catalog. Plan responses below are
@@ -15,6 +16,7 @@ const catalogJson = readFileSync(
 const catalogFixture: unknown = JSON.parse(catalogJson);
 const FIXTURE_LABEL = "Deterministic API fixture";
 const firstPlan: unknown = JSON.parse(firstPlanJson);
+const replacementPlan: unknown = JSON.parse(replacementPlanJson);
 const reducedBudgetPlan: unknown = JSON.parse(reducedBudgetPlanJson);
 
 function apiResponse(payload: unknown, status = 200): Response {
@@ -128,6 +130,116 @@ describe(`${FIXTURE_LABEL}: preferences-to-results flow`, () => {
     expect(screen.getByText(/234,40/)).toBeTruthy();
   });
 
+  it("replaces one item while keeping every other position and the user's locks", async () => {
+    const requests = installApiFixtures([
+      successfulResponse(firstPlan),
+      successfulResponse(replacementPlan),
+    ]);
+    render(<App />);
+    await screen.findByText("15 catalog products");
+    submitPreferences("Relaxed office outfits", "250");
+    fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+    await screen.findByText("The three looks passed the catalog and budget checks.");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Keep JAAMES LANGARMSHIRT in look_2" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Replace MAARKOS HEAVY WEIGHT T-SHIRT in look_1" }),
+    );
+
+    expect(
+      await screen.findByText(
+        "The item was replaced. All three looks passed the catalog and budget checks.",
+      ),
+    ).toBeTruthy();
+    expect(screen.getAllByText("JAAMES LANGARMSHIRT")).toHaveLength(2);
+    expect(screen.getByText("MAARKOS HEAVY WEIGHT T-SHIRT")).toBeTruthy();
+    expect(
+      (
+        screen.getByRole("button", { name: "Release JAAMES LANGARMSHIRT in look_2" }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(false);
+    expect(
+      (
+        screen.getByRole("button", { name: "Replace JAAMES LANGARMSHIRT in look_2" }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
+
+    const request = object(requests[1]);
+    expect(request.replacement).toEqual({
+      look_id: "look_1",
+      slot: "top",
+      item: { kind: "catalog", id: "ae-maarkos-moonshadow-m" },
+    });
+    const state = object(request.state);
+    const expectedPlan = { ...object(firstPlan) };
+    delete expectedPlan.fixture_label;
+    expect(state.plan).toEqual(expectedPlan);
+    const keptPositions = (state.locks as Array<Record<string, unknown>>)
+      .map((lock) => `${lock.look_id}:${lock.slot}`)
+      .sort();
+    expect(keptPositions).toEqual([
+      "look_1:bottom",
+      "look_2:bottom",
+      "look_2:top",
+      "look_3:bottom",
+      "look_3:top",
+    ]);
+  });
+
+  it("leaves the previous plan visible when replacement fails", async () => {
+    installApiFixtures([
+      successfulResponse(firstPlan),
+      { outcome: "generation_failed", plan: null, conflicts: [] },
+    ]);
+    render(<App />);
+    await screen.findByText("15 catalog products");
+    submitPreferences("A replacement failure fixture", "250");
+    fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+    await screen.findByText("The three looks passed the catalog and budget checks.");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Replace MAARKOS HEAVY WEIGHT T-SHIRT in look_1" }),
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "No replacement passed the catalog checks.",
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "The displayed looks are from the previous successful request.",
+    );
+    expect(screen.getAllByText("MAARKOS HEAVY WEIGHT T-SHIRT")).toHaveLength(2);
+    expect(screen.getByRole("heading", { name: "look 1" })).toBeTruthy();
+  });
+
+  it("rejects a success fixture that changes a position outside the replacement target", async () => {
+    const changedPlan = JSON.parse(JSON.stringify(replacementPlan)) as {
+      looks: Array<{ items: Record<string, unknown> }>;
+    };
+    changedPlan.looks[1].items.bottom = {
+      kind: "catalog",
+      id: "ae-rehmaa-velvet-red-m",
+    };
+    installApiFixtures([successfulResponse(firstPlan), successfulResponse(changedPlan)]);
+    render(<App />);
+    await screen.findByText("15 catalog products");
+    submitPreferences("A replacement contract fixture", "250");
+    fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+    await screen.findByText("The three looks passed the catalog and budget checks.");
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Replace MAARKOS HEAVY WEIGHT T-SHIRT in look_1" }),
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "The planner did not replace only this item.",
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "The displayed looks are from the previous successful request.",
+    );
+    expect(screen.getAllByText("MAARKOS HEAVY WEIGHT T-SHIRT")).toHaveLength(2);
+    expect(screen.getAllByText("JAAMES LANGARMSHIRT")).toHaveLength(1);
+  });
+
   it("does not change locks while an update is in flight", async () => {
     let resolveUpdate: ((response: Response) => void) | undefined;
     let planningCalls = 0;
@@ -151,6 +263,11 @@ describe(`${FIXTURE_LABEL}: preferences-to-results flow`, () => {
       name: "Keep JAAMES LANGARMSHIRT in look_2",
     });
     expect((lockButton as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      (
+        screen.getByRole("button", { name: "Replace JAAMES LANGARMSHIRT in look_2" }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
     fireEvent.click(lockButton);
     expect(lockButton.getAttribute("aria-pressed")).toBe("false");
 

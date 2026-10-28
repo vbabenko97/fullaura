@@ -6,7 +6,7 @@ Personal style plans built around your preferences, budget, and existing wardrob
 
 FullAura aims to combine outfits, optional hair and beard previews, and links to real products. A plan should remain consistent when you keep an item, change a preference, or lower the budget.
 
-**Status: local planning screen in progress.** The React interface reads a catalog of 15 real products and collects a style goal, colors, budget, material exclusions, and up to three owned items. It displays successful plans checked against the hard constraints and lets a person keep items before requesting an update. The planning screen and catalog route are development-only. Photo uploads, product images, personalized previews, public access, and hosting are not implemented. The formal preview feasibility test is pending.
+**Status: local planning screen in progress.** The React interface reads a catalog of 15 real products and collects a style goal, colors, budget, material exclusions, and up to three owned items. It displays successful plans checked against the hard constraints, lets a person keep items before an update, and replaces one unlocked item while preserving every other position. The backend rechecks all three looks after a replacement. The planning screen and catalog route are development-only. Photo uploads, product images, personalized previews, public access, and hosting are not implemented. The formal preview feasibility test is pending.
 
 ## Run locally
 
@@ -51,7 +51,7 @@ npm --prefix frontend run build
 
 CI runs these checks, builds the container, and checks its HTTP endpoints. It does not deploy or call Meta.
 
-Frontend tests drive the preference form with deterministic planning API fixtures. They use the checked-in non-synthetic catalog, label scripted plans as test data, and do not call a model provider.
+Frontend tests drive the preference form and single-item replacement with deterministic planning API fixtures. They use the checked-in non-synthetic catalog, label scripted plans as test data, and do not call a model provider.
 
 With the development servers running, `/test/fixture.html` drives the successful plan, lock and reduced-budget flow for visual review. Its banner marks the scripted plans as fixtures; it fetches the real catalog and never calls a model provider.
 

@@ -50,6 +50,8 @@ A hard constraint is a rule that code checks before FullAura shows a plan. A cat
 
 When no plan meets every hard constraint, for example because the locked items cost more than the budget, FullAura reports that the plan is infeasible. It says so only when code shows that no plan can pass. When the model's plans keep failing the checks, or the model does not answer in time, FullAura says that instead and does not call the request infeasible.
 
+When a person replaces an item, the request identifies the current item, look and slot. The person cannot replace a locked item. Every other position in all three looks, including empty positions, stays as it was. Code requires a different item in the selected position and checks the complete returned plan against the current budget, exclusions, delivery, stock, composition and locks. If replacement fails, the previous plan remains displayed.
+
 The selected variants and offers, budget, exclusions, owned items and locked items are kept in structured application state, and code validates the hard constraints against that state. FullAura does not present a material exclusion as a medical assurance.
 
 ## Owned items
