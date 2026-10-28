@@ -52,6 +52,11 @@ def create_app(settings: Settings | None = None, spark: SparkClient | None = Non
     if settings.environment == "development":
         catalog = Catalog.model_validate_json(settings.catalog_file.read_text(encoding="utf-8"))
 
+        @app.get("/api/catalog", tags=["catalog"])
+        def get_catalog() -> JSONResponse:
+            """Expose catalog facts only in development."""
+            return JSONResponse(catalog.model_dump(mode="json"))
+
         @app.post("/api/plans", tags=["planning"])
         def create_plan(request: PlanRequest) -> JSONResponse:
             """Three looks from the catalog, checked against every hard constraint."""

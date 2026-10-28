@@ -1,6 +1,6 @@
 # Specification
 
-This file describes what the first version of FullAura does, the rules it keeps, and what it leaves out. Most of it is planned. The catalog record format, a first catalog of 15 real products and the code that checks the hard constraints exist; the interface does not use them yet (see the [README](../README.md)). The build order is in [TASKS.md](TASKS.md), and the reasons behind each choice are in [DECISIONS.md](DECISIONS.md).
+This file describes what the first version of FullAura does, the rules it keeps, and what it leaves out. Most of it is planned. The catalog record format, a first catalog of 15 real products, the hard-constraint checks, and a local development screen for preferences and sourced look results exist. Photo upload and previews do not exist yet (see the [README](../README.md)). The build order is in [TASKS.md](TASKS.md), and the reasons behind each choice are in [DECISIONS.md](DECISIONS.md).
 
 ## What a person does
 

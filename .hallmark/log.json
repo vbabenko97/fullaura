@@ -1,0 +1,24 @@
+[
+ {
+  "date": "2026-10-28",
+  "mode": "build",
+  "scope": "app",
+  "shape": "app screen",
+  "theme": "Bloom (deal 1/3)",
+  "axes": "light/grotesk-sans/chromatic-green",
+  "hero": "not applicable",
+  "nav": "top bar with FullAura wordmark and development state",
+  "footer": "none; working screen",
+  "imagery": "catalog facts and source links; no photographs",
+  "entry": "style goal, colors, budget and material exclusions",
+  "fingerprint": "preferences-form/three-look-results/inline-locks",
+  "sections": [
+   "preference form",
+   "catalog-backed look results"
+  ],
+  "signature": "three catalog-backed looks with per-item locks",
+  "photos": [],
+  "waived": [],
+  "prompt": "FullAura local planning screen for collecting preferences and showing three sourced looks"
+ }
+]
