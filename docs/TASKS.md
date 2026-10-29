@@ -60,6 +60,8 @@ The submission deadline is 2026-11-04 21:00 ET, which is 2026-11-05 03:00 in Vie
 
 Compare the full workflow with a simple baseline on the same cases. Record constraint failures and human judgments separately. Prepare the demo video and the public contribution summary. Three minutes is the working target for the video; check the final format in the submission form.
 
+The fixed cases, deterministic baseline, aggregate planner metrics and human-score sheet are prepared in [EVALUATION.md](EVALUATION.md). The live comparison has not run, so T-06 remains planned.
+
 Done when: the submission is sent and its confirmation is received. Being ready to submit does not finish the task, so record each step on its own line:
 
 - Ready to submit:

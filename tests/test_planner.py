@@ -115,6 +115,9 @@ def test_a_valid_plan_succeeds_with_offers_chosen_by_code() -> None:
     client, sent, _ = spark(VALID)
     result = plan_looks(BRIEF, state(), CATALOG, client)
     assert result.outcome is Outcome.SUCCESS and result.check.passed
+    assert result.proposal_metrics.completed == 1
+    assert result.proposal_metrics.format_failures == 0
+    assert result.proposal_metrics.constraint_failures == 0
     assert result.plan.selected_offers == {
         variant_id: f"offer_{variant_id}_AT" for variant_id in ("P01", "P03", "P05", "P09", "P18")
     }
@@ -246,6 +249,13 @@ def test_a_failing_plan_gets_one_repair_that_lists_its_violations() -> None:
     client, sent, _ = spark(WITH_WOOL, VALID)
     result = plan_looks(BRIEF, state(), CATALOG, client)
     assert (result.outcome, result.usage.calls) == (Outcome.SUCCESS, 2)
+    assert result.proposal_metrics.completed == 2
+    assert result.proposal_metrics.constraint_failures == 1
+    assert result.proposal_metrics.constraint_violations == 2
+    assert result.proposal_metrics.constraint_violations_by_rule == (
+        (Rule.BUDGET.value, 1),
+        (Rule.MATERIAL.value, 1),
+    )
     assert "P02 contains wool" in sent[1]["messages"][-1]["content"]
 
 
@@ -275,10 +285,19 @@ def test_plans_that_still_fail_end_as_generation_failed(replies: tuple, rule: Ru
     client, _, _ = spark(*replies)
     result = plan_looks(BRIEF, state(), CATALOG, client)
     assert result.outcome is Outcome.GENERATION_FAILED  # never reported as infeasible
+    assert result.proposal_metrics.completed == 2
     if rule:
         assert rule in {violation.rule for violation in result.check.violations}
+        assert result.proposal_metrics.constraint_failures == 2
+        assert result.proposal_metrics.format_failures == 0
     else:
         assert "JSON" in result.error
+        assert result.proposal_metrics.constraint_failures == 1
+        assert result.proposal_metrics.format_failures == 1
+        assert result.proposal_metrics.constraint_violations_by_rule == (
+            (Rule.BUDGET.value, 1),
+            (Rule.MATERIAL.value, 1),
+        )
 
 
 @pytest.mark.parametrize(

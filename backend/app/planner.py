@@ -15,7 +15,7 @@ import json
 import logging
 import time
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import Annotated, Any, Self
 from urllib.error import HTTPError
@@ -120,6 +120,15 @@ class Usage:
 
 
 @dataclass(frozen=True, slots=True)
+class ProposalMetrics:
+    completed: int = 0
+    format_failures: int = 0
+    constraint_failures: int = 0
+    constraint_violations: int = 0
+    constraint_violations_by_rule: tuple[tuple[str, int], ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
 class PlanResult:
     outcome: Outcome
     usage: Usage
@@ -127,6 +136,7 @@ class PlanResult:
     check: Check | None = None  # the last plan's check, also when generation failed
     conflicts: tuple[Violation, ...] = ()  # why the plan is infeasible
     error: str | None = None
+    proposal_metrics: ProposalMetrics = field(default_factory=ProposalMetrics)
 
 
 class ProviderError(RuntimeError):
@@ -330,6 +340,8 @@ def plan_looks(
     started = clock()
     deadline = started + DEADLINE_S
     result = PlanResult(Outcome.GENERATION_FAILED, usage, error="No plan was generated")
+    completed = format_failures = constraint_failures = constraint_violations = 0
+    violations_by_rule: dict[str, int] = {}
     for _ in range(GENERATION_ATTEMPTS):
         if clock() >= deadline:
             result = PlanResult(Outcome.PROVIDER_TIMEOUT, usage, error="Planning took too long")
@@ -353,9 +365,11 @@ def plan_looks(
             result = PlanResult(outcome, usage, error=str(error))
             break
         usage = usage.add(call_usage, http_attempts)
+        completed += 1
         try:
             plan = _plan_from_reply(reply, state, catalog, offers)
         except ValueError as error:
+            format_failures += 1
             result = PlanResult(Outcome.GENERATION_FAILED, usage, error=str(error))
             problems = str(error)
         else:
@@ -369,6 +383,11 @@ def plan_looks(
             if check.passed:
                 result = PlanResult(Outcome.SUCCESS, usage, plan=plan, check=check)
             else:
+                constraint_failures += 1
+                constraint_violations += len(check.violations)
+                for violation in check.violations:
+                    rule = violation.rule.value
+                    violations_by_rule[rule] = violations_by_rule.get(rule, 0) + 1
                 result = PlanResult(Outcome.GENERATION_FAILED, usage, check=check)
                 problems = "; ".join(violation.detail for violation in check.violations)
         if clock() >= deadline:
@@ -384,6 +403,16 @@ def plan_looks(
                 "plan, as JSON only.",
             },
         ]
+    result = replace(
+        result,
+        proposal_metrics=ProposalMetrics(
+            completed=completed,
+            format_failures=format_failures,
+            constraint_failures=constraint_failures,
+            constraint_violations=constraint_violations,
+            constraint_violations_by_rule=tuple(sorted(violations_by_rule.items())),
+        ),
+    )
     return _logged(result, client, clock() - started)
 
 
@@ -676,13 +705,18 @@ def result_json(result: PlanResult) -> dict[str, Any]:
 def _logged(result: PlanResult, client: SparkClient, latency_s: float) -> PlanResult:
     logger.info(
         "plan outcome=%s model=%s calls=%d http_attempts=%d prompt_tokens=%d "
-        "completion_tokens=%d latency_s=%.1f",
+        "completion_tokens=%d proposals=%d format_failures=%d constraint_failures=%d "
+        "constraint_violations=%d latency_s=%.1f",
         result.outcome,
         client.model,
         result.usage.calls,
         result.usage.http_attempts,
         result.usage.prompt_tokens,
         result.usage.completion_tokens,
+        result.proposal_metrics.completed,
+        result.proposal_metrics.format_failures,
+        result.proposal_metrics.constraint_failures,
+        result.proposal_metrics.constraint_violations,
         latency_s,
     )
     return result
