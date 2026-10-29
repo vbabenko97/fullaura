@@ -7,7 +7,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-01](#t-01-foundation) Foundation | done | 2026-10-26 |
 | [T-02](#t-02-feasibility-test) Feasibility test | next | |
 | [T-03](#t-03-catalog-and-hard-constraints) Catalog and hard constraints | done | 2026-10-28 |
-| [T-04](#t-04-one-complete-flow) One complete flow | next | |
+| [T-04](#t-04-one-complete-flow) One complete flow | done | 2026-10-29 |
 | [T-05](#t-05-azure-demo) Azure demo | planned | |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |

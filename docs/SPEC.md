@@ -52,6 +52,8 @@ When no plan meets every hard constraint, for example because the locked items c
 
 When a person replaces an item, the request identifies the current item, look and slot. The person cannot replace a locked item. Every other position in all three looks, including empty positions, stays as it was. Code requires a different item in the selected position and checks the complete returned plan against the current budget, exclusions, delivery, stock, composition and locks. If replacement fails, the previous plan remains displayed.
 
+The interface disables replacement when no other catalog variant or owned item has a category that can fill the position. Current constraints can still leave no valid replacement.
+
 The selected variants and offers, budget, exclusions, owned items and locked items are kept in structured application state, and code validates the hard constraints against that state. FullAura does not present a material exclusion as a medical assurance.
 
 ## Owned items

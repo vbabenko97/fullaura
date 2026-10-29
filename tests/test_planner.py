@@ -143,7 +143,7 @@ def test_replacement_changes_only_the_target_and_checks_the_whole_plan(tmp_path:
     )
     request_state = state(material_exclusions=frozenset(), plan=current_plan, locks=locks)
     request = PlanRequest(brief=BRIEF, state=request_state, replacement=target)
-    changed_look_2 = {**LOOK_2, "top": "P16"}
+    changed_look_2 = {**LOOK_2, "top": "P16", "bottom": "P09"}
     client, sent, _ = spark(reply(LOOK_1, changed_look_2, LOOK_3))
     app = create_app(Settings(web_dist=tmp_path, catalog_file=FIXTURE), spark=client)
 
@@ -154,6 +154,7 @@ def test_replacement_changes_only_the_target_and_checks_the_whole_plan(tmp_path:
     assert response.status_code == 200 and payload["outcome"] == "success"
     assert payload["violations"] == []
     assert payload["plan"]["looks"][1]["items"]["top"]["id"] == "P16"
+    assert payload["plan"]["looks"][1]["items"]["bottom"]["id"] == "P05"
     submitted = json.loads(sent[0]["messages"][1]["content"])
     assert submitted["replacement"] == {
         "look_id": "look_2",
@@ -191,6 +192,30 @@ def test_replacement_retries_when_the_target_or_another_position_is_unchanged() 
     repair = sent[1]["messages"][-1]["content"]
     assert "Replace look_2 top with a different item" in repair
     assert "changed the unrelated look_2 bottom position" in repair
+
+
+def test_replacement_does_not_restore_an_item_twice_in_the_same_look() -> None:
+    current_look_2 = {**LOOK_2, "mid_layer": "P01"}
+    current_plan = plan_from_looks(LOOK_1, current_look_2, LOOK_3)
+    target = Replacement(
+        look_id="look_2",
+        slot=Slot.TOP,
+        item=ItemRef(kind=ItemKind.CATALOG, id="P03"),
+    )
+    proposed_look_2 = {**current_look_2, "top": "P01", "mid_layer": "P03"}
+    invalid = reply(LOOK_1, proposed_look_2, LOOK_3)
+    client, _, _ = spark(invalid, invalid)
+
+    result = plan_looks(
+        BRIEF,
+        state(50_000, material_exclusions=frozenset(), plan=current_plan),
+        CATALOG,
+        client,
+        replacement=target,
+    )
+
+    assert result.outcome is Outcome.GENERATION_FAILED
+    assert result.check and Rule.REPLACEMENT in {issue.rule for issue in result.check.violations}
 
 
 def test_replacement_target_must_be_unlocked_and_match_the_current_plan() -> None:

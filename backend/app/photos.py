@@ -339,8 +339,10 @@ async def wait_for_preview_or_disconnect(
     """Cancel provider work when the caller disconnects or the shared deadline expires."""
 
     async def wait_for_disconnect() -> None:
-        while not await request.is_disconnected():
-            await asyncio.sleep(0.05)
+        while True:
+            message = await request.receive()
+            if message.get("type") == "http.disconnect":
+                return
 
     preview_task = asyncio.create_task(
         create_preview_async(prompt, portrait, full_body, editor, deadline=deadline)

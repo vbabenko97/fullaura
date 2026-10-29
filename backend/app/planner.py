@@ -359,6 +359,7 @@ def plan_looks(
             result = PlanResult(Outcome.GENERATION_FAILED, usage, error=str(error))
             problems = str(error)
         else:
+            plan = _preserve_replacement_positions(plan, state, replacement, catalog, offers)
             checked_state = State.model_validate({**dict(state), "plan": plan})
             check = check_plan(checked_state, catalog)
             structural = _look_violations(plan, state, catalog)
@@ -384,6 +385,61 @@ def plan_looks(
             },
         ]
     return _logged(result, client, clock() - started)
+
+
+def _preserve_replacement_positions(
+    proposed: Plan,
+    state: State,
+    replacement: Replacement | None,
+    catalog: Catalog,
+    offers: dict[str, Offer],
+) -> Plan:
+    """Apply the model's replacement choice to the current plan's exact positions."""
+    current = state.plan
+    if replacement is None or current is None:
+        return proposed
+
+    current_looks = {look.id: look for look in current.looks}
+    proposed_looks = {look.id: look for look in proposed.looks}
+    target_look = proposed_looks.get(replacement.look_id)
+    if current_looks.keys() != proposed_looks.keys() or target_look is None:
+        return proposed
+    replacement_item = target_look.items.get(replacement.slot)
+    if replacement_item is None or replacement_item == replacement.item:
+        return proposed
+    current_target_look = current_looks[replacement.look_id]
+    if any(
+        slot is not replacement.slot and item == replacement_item
+        for slot, item in current_target_look.items.items()
+    ):
+        return proposed
+
+    looks = []
+    for look in current.looks:
+        items = dict(look.items)
+        if look.id == replacement.look_id:
+            items[replacement.slot] = replacement_item
+        looks.append(Look(id=look.id, items=items))
+
+    catalog_items = {
+        item.id for look in looks for item in look.items.values() if item.kind is ItemKind.CATALOG
+    }
+    selected_offers = {}
+    for variant_id in catalog_items:
+        offer = offers.get(variant_id)
+        if offer is not None:
+            selected_offers[variant_id] = offer.id
+            continue
+        variant = catalog.variant(variant_id)
+        selected_offers[variant_id] = (
+            variant.offers[0].id
+            if variant is not None
+            else proposed.selected_offers.get(
+                variant_id, current.selected_offers.get(variant_id, "none")
+            )
+        )
+
+    return Plan(looks=tuple(looks), selected_offers=selected_offers)
 
 
 _SLOT_CATEGORIES: dict[Slot, frozenset[Category]] = {

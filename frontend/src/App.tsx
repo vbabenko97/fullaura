@@ -44,6 +44,16 @@ const SLOTS = [
   "accessory",
 ] as const;
 
+const SLOT_CATEGORIES: Record<Slot, readonly Category[]> = {
+  top: ["top", "knitwear"],
+  bottom: ["bottom"],
+  one_piece: ["one_piece"],
+  mid_layer: ["top", "knitwear"],
+  outer_layer: ["outerwear"],
+  footwear: ["footwear"],
+  accessory: ["accessory"],
+};
+
 type Material = (typeof MATERIALS)[number];
 type Category = (typeof CATEGORIES)[number];
 type Slot = (typeof SLOTS)[number];
@@ -146,6 +156,15 @@ interface PreviewOption {
   id: string;
   label: string;
   prompt: string;
+  sourceKey: string;
+}
+
+interface PreviewResult {
+  url: string;
+  optionId: string;
+  sourceKey: string;
+  portrait: File;
+  fullBody: File;
 }
 
 interface OwnedNotice {
@@ -441,6 +460,25 @@ function catalogItem(catalog: Catalog, variantId: string): { product: Product; v
   return null;
 }
 
+function hasReplacementAlternative(
+  catalog: Catalog,
+  ownedItems: OwnedItem[],
+  currentItem: ItemRef,
+  slot: Slot,
+): boolean {
+  const categories = SLOT_CATEGORIES[slot];
+  return (
+    ownedItems.some((item) => item.id !== currentItem.id && categories.includes(item.category)) ||
+    catalog.products.some(
+      (product) =>
+        categories.includes(product.category) &&
+        product.variants.some(
+          (variant) => variant.id !== currentItem.id && variant.offers.length > 0,
+        ),
+    )
+  );
+}
+
 function selectedOffer(plan: Plan, variant: Variant): Offer | null {
   const offerId = plan.selected_offers[variant.id];
   return variant.offers.find((offer) => offer.id === offerId) ?? null;
@@ -583,6 +621,7 @@ function ProductLine({
   onToggleLock,
   onReplaceItem,
 }: ProductLineProps) {
+  const hasAlternative = hasReplacementAlternative(catalog, ownedItems, item, slot);
   if (item.kind === "owned") {
     const owned = ownedItems.find((candidate) => candidate.id === item.id);
     const notices = ownedNotices.filter((notice) => notice.item.id === item.id);
@@ -594,7 +633,7 @@ function ProductLine({
             <button
               aria-label={`Replace ${owned?.description ?? "owned item"} in ${look.id}`}
               className="secondary-button replace-button"
-              disabled={replaceDisabled || isLocked}
+              disabled={replaceDisabled || isLocked || !hasAlternative}
               onClick={() => onReplaceItem(look.id, slot, item)}
               type="button"
             >
@@ -612,6 +651,7 @@ function ProductLine({
             </button>
           </div>
         </div>
+        {!hasAlternative && <p className="item-facts">No other catalog or owned item can fill this position.</p>}
         <h3>{owned?.description ?? "Your item"}</h3>
         <p className="item-facts">
           {owned ? `${owned.color}, ${labelCategory(owned.category)}` : "Already owned"}
@@ -661,7 +701,7 @@ function ProductLine({
           <button
             aria-label={`Replace ${entry.product.title} in ${look.id}`}
             className="secondary-button replace-button"
-            disabled={replaceDisabled || isLocked}
+            disabled={replaceDisabled || isLocked || !hasAlternative}
             onClick={() => onReplaceItem(look.id, slot, item)}
             type="button"
           >
@@ -679,6 +719,7 @@ function ProductLine({
           </button>
         </div>
       </div>
+      {!hasAlternative && <p className="item-facts">No other catalog or owned item can fill this position.</p>}
       <h3>{entry.product.title}</h3>
       {facts && <p className="item-facts">{facts}</p>}
       <p className="item-facts">{composition}</p>
@@ -791,6 +832,10 @@ function previewOptionsForPlan(
     return {
       id: look.id,
       label: look.id.replaceAll("_", " "),
+      sourceKey: JSON.stringify({
+        items: SLOTS.map((slot) => [slot, look.items[slot] ?? null]),
+        describedItems,
+      }),
       prompt:
         `Create an approximate style preview of the person in the supplied portrait and full-body photos. ` +
         `Dress them in this outfit, using the text descriptions as references: ${describedItems.join("; ")}. ` +
@@ -813,25 +858,46 @@ function PreviewPanel({ enabled, detail, loadingStatus, options }: PreviewPanelP
   const [lookId, setLookId] = useState(options[0]?.id ?? "");
   const [requestState, setRequestState] = useState<RequestState>("idle");
   const [message, setMessage] = useState<string | null>(null);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null);
   const requestController = useRef<AbortController | null>(null);
+  const requestVersion = useRef(0);
 
-  useEffect(() => () => requestController.current?.abort(), []);
+  useEffect(() => () => {
+    requestVersion.current += 1;
+    requestController.current?.abort();
+  }, []);
   useEffect(() => {
     return () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      if (previewResult) URL.revokeObjectURL(previewResult.url);
     };
-  }, [previewUrl]);
+  }, [previewResult]);
 
-  function setPhoto(setter: (photo: File | null) => void, file: File | undefined) {
-    setter(file ?? null);
-    setPreviewUrl(null);
+  const selectedLook = options.find((option) => option.id === lookId);
+  const previewUrl =
+    previewResult &&
+    selectedLook &&
+    previewResult.optionId === selectedLook.id &&
+    previewResult.sourceKey === selectedLook.sourceKey &&
+    previewResult.portrait === portrait &&
+    previewResult.fullBody === fullBody
+      ? previewResult.url
+      : null;
+
+  function invalidatePreview() {
+    requestVersion.current += 1;
+    requestController.current?.abort();
+    requestController.current = null;
+    setPreviewResult(null);
     setRequestState("idle");
     setMessage(null);
   }
 
+  function setPhoto(setter: (photo: File | null) => void, file: File | undefined) {
+    invalidatePreview();
+    setter(file ?? null);
+  }
+
   async function generatePreview() {
-    const selectedLook = options.find((option) => option.id === lookId);
     if (!enabled || !selectedLook || !portrait || !fullBody) return;
     if ([portrait, fullBody].some((file) => file.type !== "image/jpeg" || file.size <= 0)) {
       setRequestState("error");
@@ -844,6 +910,9 @@ function PreviewPanel({ enabled, detail, loadingStatus, options }: PreviewPanelP
       return;
     }
 
+    requestVersion.current += 1;
+    const requestId = requestVersion.current;
+    setPreviewResult(null);
     const controller = new AbortController();
     requestController.current = controller;
     setRequestState("loading");
@@ -858,6 +927,7 @@ function PreviewPanel({ enabled, detail, loadingStatus, options }: PreviewPanelP
         body: form,
         signal: controller.signal,
       });
+      if (requestId !== requestVersion.current || controller.signal.aborted) return;
       if (!response.ok) {
         let responseMessage = `The preview request failed (${response.status}).`;
         try {
@@ -871,6 +941,7 @@ function PreviewPanel({ enabled, detail, loadingStatus, options }: PreviewPanelP
         throw new Error(responseMessage);
       }
       const image = await response.blob();
+      if (requestId !== requestVersion.current || controller.signal.aborted) return;
       if (
         !["image/png", "image/jpeg", "image/webp"].includes(image.type) ||
         image.size === 0 ||
@@ -878,10 +949,17 @@ function PreviewPanel({ enabled, detail, loadingStatus, options }: PreviewPanelP
       ) {
         throw new Error("The preview response was not a supported image.");
       }
-      setPreviewUrl(URL.createObjectURL(image));
+      setPreviewResult({
+        url: URL.createObjectURL(image),
+        optionId: selectedLook.id,
+        sourceKey: selectedLook.sourceKey,
+        portrait,
+        fullBody,
+      });
       setRequestState("success");
       setMessage("Approximate preview generated. It cannot establish fit or product availability.");
     } catch (error) {
+      if (requestId !== requestVersion.current) return;
       setRequestState("error");
       setMessage(isRecord(error) && error.name === "AbortError"
         ? "Preview generation cancelled."
@@ -889,8 +967,22 @@ function PreviewPanel({ enabled, detail, loadingStatus, options }: PreviewPanelP
           ? error.message
           : "The preview request could not be completed.");
     } finally {
-      requestController.current = null;
+      if (requestId === requestVersion.current) requestController.current = null;
     }
+  }
+
+  function cancelPreview() {
+    requestVersion.current += 1;
+    requestController.current?.abort();
+    requestController.current = null;
+    setPreviewResult(null);
+    setRequestState("error");
+    setMessage("Preview generation cancelled.");
+  }
+
+  function selectLook(nextLookId: string) {
+    invalidatePreview();
+    setLookId(nextLookId);
   }
 
   return (
@@ -925,14 +1017,14 @@ function PreviewPanel({ enabled, detail, loadingStatus, options }: PreviewPanelP
         <select
           disabled={!enabled || requestState === "loading"}
           id="preview-look"
-          onChange={(event) => setLookId(event.target.value)}
+          onChange={(event) => selectLook(event.target.value)}
           value={lookId}
         >
           {options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
         </select>
         <div className="preview-actions">
           {requestState === "loading" ? (
-            <button className="secondary-button" onClick={() => requestController.current?.abort()} type="button">
+            <button className="secondary-button" onClick={cancelPreview} type="button">
               Cancel preview
             </button>
           ) : (
@@ -1223,6 +1315,11 @@ export function App() {
         ? wholePlanCost(plan, catalog)
         : totalLookCosts(plan, catalog)
       : null;
+  const previewOptions =
+    plan && catalog ? previewOptionsForPlan(plan, catalog, planOwnedItems) : [];
+  const previewSourceKey = previewOptions
+    .map((option) => `${option.id}:${option.sourceKey}`)
+    .join("|");
 
   return (
     <main className="app-shell">
@@ -1498,6 +1595,7 @@ export function App() {
                   ))}
                 </div>
                 <PreviewPanel
+                  key={previewSourceKey}
                   enabled={previewStatus.enabled && planCurrent}
                   detail={
                     !planCurrent
@@ -1505,7 +1603,7 @@ export function App() {
                       : previewStatus.detail
                   }
                   loadingStatus={previewStatusState === "loading"}
-                  options={previewOptionsForPlan(plan, catalog, planOwnedItems)}
+                  options={previewOptions}
                 />
               </>
             ) : requestState === "error" && requestMessage ? (
