@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import traceback
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Protocol
@@ -39,6 +40,24 @@ class PreviewImage:
         self.data.clear()
 
 
+def _clear_exception_frames(error: BaseException) -> None:
+    pending = [error]
+    visited: set[int] = set()
+    while pending:
+        current = pending.pop()
+        if id(current) in visited:
+            continue
+        visited.add(id(current))
+        if current.__traceback__ is not None:
+            traceback.clear_frames(current.__traceback__)
+        if current.__cause__ is not None:
+            pending.append(current.__cause__)
+        if current.__context__ is not None:
+            pending.append(current.__context__)
+        if isinstance(current, BaseExceptionGroup):
+            pending.extend(current.exceptions)
+
+
 def create_preview(
     prompt: str,
     portrait: bytearray,
@@ -47,6 +66,9 @@ def create_preview(
 ) -> PreviewImage:
     """Edit two upright JPEGs and release every input buffer when the provider returns."""
     prepared: list[InputImage] = []
+    cleaned: bytes | None = None
+    result: ImageResult | None = None
+    actual_mime_type: str | None = None
     try:
         if not prompt.strip():
             raise PhotoInputError("A preview prompt is required")
@@ -70,10 +92,16 @@ def create_preview(
         ):
             raise PhotoProcessingError("The provider returned an invalid preview image")
         return PreviewImage(bytearray(result.image), result.mime_type)
+    except BaseException as error:
+        _clear_exception_frames(error)
+        raise
     finally:
         portrait.clear()
         full_body.clear()
         prepared.clear()
+        cleaned = None
+        result = None
+        actual_mime_type = None
 
 
 class PreviewResponse(Response):

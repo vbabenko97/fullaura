@@ -46,6 +46,8 @@ Planning exists on the backend: `POST /api/plans`, switched on in development on
 
 Before enabling photo uploads, wire the request-scoped processor into the preview route and interface; keep it gated until T-02 passes. Before model calls are open to the public, add per-session limits on requests and images, a timeout path for the provider, the 18+ confirmation and the photo-processing notice ([SPEC.md](SPEC.md#photographs)).
 
+An end-to-end deadline and cancellation path for preview processing remain unfinished in T-04. The Muse Image client's `urllib` timeout bounds individual network operations, not the full request across reads and retries; timing out a caller waiting on synchronous processing would not stop that processing. Complete this before enabling photo uploads.
+
 Done when: a person can go through the whole flow locally, from inputs to an edited plan. If previews failed the feasibility test, the person can still complete a sourced style plan, and the interface states the visual limitation ([D-11](DECISIONS.md#d-11-test-previews-first-and-keep-the-plan-useful-without-them)).
 
 ## T-05: Azure demo

@@ -1,6 +1,7 @@
 """Failure handling of the Muse Image client, without network calls."""
 
 import base64
+import copy
 import http.client
 import importlib.util
 import io
@@ -54,18 +55,18 @@ def http_error(code: int, body: bytes = b"{}") -> HTTPError:
     return HTTPError("https://api.meta.ai/v1/images/edits", code, "error", {}, io.BytesIO(body))
 
 
-def client(*outcomes: Any) -> tuple[MuseImageClient, list[Request], list[float]]:
+def client(*outcomes: Any) -> tuple[MuseImageClient, list[bytes], list[float]]:
     """A client whose transport returns or raises each outcome in turn."""
-    sent: list[Request] = []
+    sent: list[bytes] = []
     slept: list[float] = []
     queue = list(outcomes)
 
     def post(request: Request, timeout_s: float) -> dict[str, Any]:
-        sent.append(request)
+        sent.append(request.data or b"")
         outcome = queue.pop(0)
         if isinstance(outcome, BaseException):
             raise outcome
-        return outcome
+        return copy.deepcopy(outcome)
 
     return MuseImageClient(KEY, "muse-image-1.0", post=post, sleep=slept.append), sent, slept
 
@@ -75,7 +76,7 @@ def test_retries_a_rate_limit_then_returns_the_image_and_usage() -> None:
     result = images.edit("Swap the shirt", [InputImage(jpeg(), "image/jpeg")])
     assert (result.image, result.mime_type, result.extension) == (WEBP, "image/webp", "webp")
     assert (result.attempts, result.usage, len(sent), slept) == (2, {"total_tokens": 7}, 2, [2])
-    body = json.loads(sent[0].data)
+    body = json.loads(sent[0])
     assert body["response_format"] == "b64_json"
     assert body["images"][0]["image_url"].startswith("data:image/jpeg;base64,")
 
@@ -89,7 +90,7 @@ def test_sends_jpeg_pixels_without_location_or_other_metadata() -> None:
     photo = jpeg(jfif, exif(1), iptc, color_profile, comment, tables, tail=b"\xff\xd8gain map")
     images, sent, _ = client(OK)
     images.edit("Swap the shirt", [InputImage(photo, "image/jpeg")])
-    data_uri = json.loads(sent[0].data)["images"][0]["image_url"]
+    data_uri = json.loads(sent[0])["images"][0]["image_url"]
     assert base64.b64decode(data_uri.split(",", 1)[1]) == jpeg(jfif, color_profile, tables)
 
 
@@ -119,9 +120,7 @@ def test_strips_markers_between_progressive_scans_and_preserves_decodability() -
     photo = PROGRESSIVE_JPEG[:first_scan_end] + private + PROGRESSIVE_JPEG[first_scan_end:]
     images, sent, _ = client(OK)
     images.edit("Swap the shirt", [InputImage(photo, "image/jpeg")])
-    sanitized = base64.b64decode(
-        json.loads(sent[0].data)["images"][0]["image_url"].split(",", 1)[1]
-    )
+    sanitized = base64.b64decode(json.loads(sent[0])["images"][0]["image_url"].split(",", 1)[1])
     assert sanitized == PROGRESSIVE_JPEG
     assert b"private-between-scans" not in sanitized
     assert b"private-xmp" not in sanitized
@@ -139,9 +138,7 @@ def test_sanitizes_app0_and_app14_payloads() -> None:
     photo = PROGRESSIVE_JPEG[:2] + private_app0 + private_app14 + PROGRESSIVE_JPEG[2:]
     images, sent, _ = client(OK)
     images.edit("Swap the shirt", [InputImage(photo, "image/jpeg")])
-    sanitized = base64.b64decode(
-        json.loads(sent[0].data)["images"][0]["image_url"].split(",", 1)[1]
-    )
+    sanitized = base64.b64decode(json.loads(sent[0])["images"][0]["image_url"].split(",", 1)[1])
     expected = (
         PROGRESSIVE_JPEG[:2]
         + segment(0xE0, b"JFIF\x00\x01\x01\x00\x00\x01\x00\x01\x00\x00")
@@ -162,9 +159,7 @@ def test_drops_unrecognized_app0_and_app14_segments() -> None:
     )
     images, sent, _ = client(OK)
     images.edit("Swap the shirt", [InputImage(photo, "image/jpeg")])
-    sanitized = base64.b64decode(
-        json.loads(sent[0].data)["images"][0]["image_url"].split(",", 1)[1]
-    )
+    sanitized = base64.b64decode(json.loads(sent[0])["images"][0]["image_url"].split(",", 1)[1])
     assert sanitized == PROGRESSIVE_JPEG
 
 

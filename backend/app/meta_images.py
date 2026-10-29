@@ -257,60 +257,104 @@ class MuseImageClient:
     ) -> ImageResult:
         if not images:
             raise ValueError("An edit needs at least one input image")
-        items = []
-        for image in images:
-            data = image.data
-            if image.mime_type == "image/jpeg":
-                data = strip_jpeg_metadata(data)  # location and device never leave the machine
-            encoded = base64.b64encode(data).decode()
-            items.append({"image_url": f"data:{image.mime_type};base64,{encoded}"})
-        return self._call("images/edits", {"prompt": prompt, "images": items}, size)
+        items: list[dict[str, str]] = []
+        fields: dict[str, Any] = {}
+        data = b""
+        encoded = ""
+        image: InputImage | None = None
+        try:
+            for image in images:
+                data = image.data
+                if image.mime_type == "image/jpeg":
+                    data = strip_jpeg_metadata(data)  # location and device never leave the machine
+                encoded = base64.b64encode(data).decode()
+                items.append({"image_url": f"data:{image.mime_type};base64,{encoded}"})
+            fields = {"prompt": prompt, "images": items}
+            return self._call("images/edits", fields, size)
+        finally:
+            items.clear()
+            fields.clear()
+            image = None
+            data = b""
+            encoded = ""
+            images = ()
 
     def _call(self, path: str, fields: dict[str, Any], size: str | None) -> ImageResult:
         # b64_json keeps signed image URLs out of results and logs.
-        body = {"model": self.model, "n": 1, "response_format": "b64_json", **fields}
-        if size:
-            body["size"] = size
-        request = Request(
-            f"{API_URL}/{path}",
-            data=json.dumps(body).encode(),
-            headers={"Authorization": f"Bearer {self.api_key}", "Content-Type": "application/json"},
-            method="POST",
-        )
-        started = time.monotonic()
-        for attempt in range(1, self.max_attempts + 1):
-            try:
-                payload = self.post(request, self.timeout_s)
-            except HTTPError as error:
-                failure = f"HTTP {error.code}{_error_detail(error, self.api_key)}"
-                if error.code not in RETRY_STATUS:
-                    raise ImageRequestError(failure, attempt) from None
-            except (OSError, http.client.HTTPException) as error:
-                # Timeouts, refused connections, and resets while the reply is read,
-                # which urllib raises without wrapping them in URLError.
-                failure = f"{type(error).__name__}: {getattr(error, 'reason', error)}"
-            except ValueError:
-                raise ImageRequestError("The response was not valid JSON", attempt) from None
-            else:
-                return self._result(payload, attempt, time.monotonic() - started)
-            if attempt < self.max_attempts:
-                self.sleep(min(2**attempt, 20))
-        raise ImageRequestError(f"Gave up after {self.max_attempts} attempts: {failure}", attempt)
+        body: dict[str, Any] = {}
+        request: Request | None = None
+        payload: dict[str, Any] | None = None
+        try:
+            body = {"model": self.model, "n": 1, "response_format": "b64_json", **fields}
+            if size:
+                body["size"] = size
+            request = Request(
+                f"{API_URL}/{path}",
+                data=json.dumps(body).encode(),
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            started = time.monotonic()
+            for attempt in range(1, self.max_attempts + 1):
+                try:
+                    payload = self.post(request, self.timeout_s)
+                except HTTPError as error:
+                    failure = f"HTTP {error.code}{_error_detail(error, self.api_key)}"
+                    if error.code not in RETRY_STATUS:
+                        raise ImageRequestError(failure, attempt) from None
+                except (OSError, http.client.HTTPException) as error:
+                    # Timeouts, refused connections, and resets while the reply is read,
+                    # which urllib raises without wrapping them in URLError.
+                    failure = f"{type(error).__name__}: {getattr(error, 'reason', error)}"
+                except ValueError:
+                    raise ImageRequestError("The response was not valid JSON", attempt) from None
+                else:
+                    return self._result(payload, attempt, time.monotonic() - started)
+                if attempt < self.max_attempts:
+                    self.sleep(min(2**attempt, 20))
+            raise ImageRequestError(
+                f"Gave up after {self.max_attempts} attempts: {failure}", attempt
+            )
+        finally:
+            if request is not None:
+                request.data = None
+                request.headers.clear()
+                request.unredirected_hdrs.clear()
+            body.clear()
+            fields.clear()
+            if payload is not None:
+                payload.clear()
+            payload = None
 
     @staticmethod
     def _result(payload: dict[str, Any], attempts: int, latency_s: float) -> ImageResult:
-        data = payload.get("data") or []
-        if not data or not data[0].get("b64_json"):
-            raise ImageRequestError("The response contained no image", attempts)
-        image = base64.b64decode(data[0]["b64_json"])
-        mime_type = image_mime_type(image)
-        if mime_type is None:
-            raise ImageRequestError("The response image is not PNG, JPEG or WebP", attempts)
-        return ImageResult(
-            image=image,
-            mime_type=mime_type,
-            attempts=attempts,
-            latency_s=round(latency_s, 2),
-            usage=payload.get("usage") or {},
-            revised_prompt=data[0].get("revised_prompt"),
-        )
+        data: Any = None
+        first: dict[str, Any] | None = None
+        image: bytes | None = None
+        try:
+            data = payload.get("data") or []
+            if not data or not data[0].get("b64_json"):
+                raise ImageRequestError("The response contained no image", attempts)
+            first = data[0]
+            image = base64.b64decode(first["b64_json"])
+            mime_type = image_mime_type(image)
+            if mime_type is None:
+                raise ImageRequestError("The response image is not PNG, JPEG or WebP", attempts)
+            return ImageResult(
+                image=image,
+                mime_type=mime_type,
+                attempts=attempts,
+                latency_s=round(latency_s, 2),
+                usage=payload.get("usage") or {},
+                revised_prompt=first.get("revised_prompt"),
+            )
+        finally:
+            if first is not None:
+                first.clear()
+            if isinstance(data, list):
+                data.clear()
+            payload.clear()
+            image = None
