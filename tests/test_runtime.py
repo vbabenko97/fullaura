@@ -26,6 +26,32 @@ def test_development_catalog_route_returns_catalog_facts_without_provider_creden
     assert len(response.json()["products"]) == 15
 
 
+@pytest.mark.parametrize("environment", ["development", "production"])
+def test_preview_route_is_hard_disabled_without_reading_an_upload_body(
+    tmp_path: Path, environment: str
+) -> None:
+    if environment == "production":
+        (tmp_path / "index.html").write_text("<html>FullAura</html>", encoding="utf-8")
+    settings = Settings(environment=environment, web_dist=tmp_path)
+    with TestClient(create_app(settings)) as client:
+        response = client.post(
+            "/api/previews",
+            content=b"{not valid JSON",
+            headers={"Content-Type": "application/json"},
+        )
+        if environment == "development":
+            operation = client.get("/api/openapi.json").json()["paths"]["/api/previews"]["post"]
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "detail": "Photo previews are unavailable pending the T-02 feasibility result"
+    }
+    assert response.headers["cache-control"] == "no-store"
+    if environment == "development":
+        assert "requestBody" not in operation
+        assert "503" in operation["responses"]
+
+
 @pytest.mark.parametrize("method", ["get", "post", "put", "patch", "delete", "options"])
 def test_unknown_api_routes_never_return_the_frontend(tmp_path: Path, method: str) -> None:
     (tmp_path / "index.html").write_text("<html>FullAura</html>", encoding="utf-8")

@@ -48,7 +48,7 @@ class ImageResult:
         return self.mime_type.removeprefix("image/")
 
 
-def image_mime_type(data: bytes) -> str | None:
+def image_mime_type(data: bytes | bytearray) -> str | None:
     """PNG, JPEG or WebP from the file's first bytes, which the API cannot mislabel."""
     if data.startswith(b"\x89PNG"):
         return "image/png"
@@ -65,11 +65,26 @@ def _exif_orientation(segment: bytes) -> int | None:
     if not body.startswith(b"Exif\x00\x00"):
         return None
     tiff = body[6:]
+    if len(tiff) < 8 or tiff[:2] not in (b"II", b"MM"):
+        raise ValueError("Malformed JPEG Exif metadata")
     order = "big" if tiff[:2] == b"MM" else "little"
+    if int.from_bytes(tiff[2:4], order) != 42:
+        raise ValueError("Malformed JPEG Exif metadata")
     ifd = int.from_bytes(tiff[4:8], order)
-    for entry in range(int.from_bytes(tiff[ifd : ifd + 2], order)):
+    if ifd < 8 or ifd + 2 > len(tiff):
+        raise ValueError("Malformed JPEG Exif metadata")
+    entry_count = int.from_bytes(tiff[ifd : ifd + 2], order)
+    entries_end = ifd + 2 + 12 * entry_count
+    if entries_end + 4 > len(tiff):
+        raise ValueError("Malformed JPEG Exif metadata")
+    for entry in range(entry_count):
         start = ifd + 2 + 12 * entry
-        if int.from_bytes(tiff[start : start + 2], order) == 0x0112:
+        tag = int.from_bytes(tiff[start : start + 2], order)
+        if tag == 0x0112:
+            field_type = int.from_bytes(tiff[start + 2 : start + 4], order)
+            value_count = int.from_bytes(tiff[start + 4 : start + 8], order)
+            if field_type != 3 or value_count != 1:
+                raise ValueError("Malformed JPEG Exif orientation")
             return int.from_bytes(tiff[start + 8 : start + 10], order)
     return None
 
@@ -78,7 +93,7 @@ def _jpeg_marker_segment(marker: int, payload: bytes) -> bytes:
     return b"\xff" + bytes([marker]) + (len(payload) + 2).to_bytes(2, "big") + payload
 
 
-def strip_jpeg_metadata(data: bytes) -> bytes:
+def strip_jpeg_metadata(data: bytes | bytearray) -> bytes:
     """Keep JPEG coding data and recognized display metadata; remove other metadata.
 
     JPEG markers can occur between scans, so each entropy-coded scan is copied only up

@@ -192,6 +192,16 @@ def test_refuses_exif_orientation_after_marker_fill_bytes() -> None:
     assert sent == []
 
 
+def test_refuses_truncated_exif_before_reading_an_unbounded_entry_count() -> None:
+    images, sent, _ = client(OK)
+    photo = jpeg(segment(0xE1, b"Exif\x00\x00MM"))
+
+    with pytest.raises(ValueError, match="Malformed JPEG Exif"):
+        images.edit("Swap the shirt", [InputImage(photo, "image/jpeg")])
+
+    assert sent == []
+
+
 def test_retries_a_connection_reset_while_reading_the_reply() -> None:
     reset = http.client.RemoteDisconnected("Remote end closed connection")
     images, sent, _ = client(reset, http.client.IncompleteRead(b""), OK)
