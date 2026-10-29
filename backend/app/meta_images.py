@@ -6,15 +6,19 @@ inputs lose their metadata, such as GPS location, before they are sent.
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import http.client
+import io
 import json
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
+
+import httpx2
 
 API_URL = "https://api.meta.ai/v1"
 # Rate limits, timeouts and server errors are worth another attempt; other errors are not.
@@ -23,9 +27,10 @@ JPEG_SEGMENT_MARKERS = frozenset({*range(0xC0, 0xC8), *range(0xC9, 0xD0), 0xCC, 
 
 
 class ImageRequestError(RuntimeError):
-    def __init__(self, message: str, attempts: int) -> None:
+    def __init__(self, message: str, attempts: int, *, timed_out: bool = False) -> None:
         super().__init__(message)
         self.attempts = attempts
+        self.timed_out = timed_out
 
 
 @dataclass(frozen=True, slots=True)
@@ -212,6 +217,33 @@ def _post_json(request: Request, timeout_s: float) -> dict[str, Any]:
         return json.load(response)
 
 
+async def _post_json_async(request: Request, timeout_s: float) -> dict[str, Any]:
+    try:
+        async with asyncio.timeout(timeout_s):
+            async with httpx2.AsyncClient(timeout=None) as client:
+                response = await client.request(
+                    request.get_method(),
+                    request.full_url,
+                    headers=dict(request.header_items()),
+                    content=request.data,
+                )
+    except TimeoutError:
+        raise
+    except httpx2.TimeoutException as error:
+        raise TimeoutError(str(error)) from None
+    except httpx2.RequestError as error:
+        raise OSError(str(error)) from None
+    if response.status_code >= 300:
+        raise HTTPError(
+            request.full_url,
+            response.status_code,
+            response.reason_phrase,
+            response.headers,
+            io.BytesIO(response.content),
+        )
+    return response.json()
+
+
 def _error_detail(error: HTTPError, api_key: str) -> str:
     """The provider's error type, code and a short message; never the request body, and
     never the API key, even when the provider repeats it in the message."""
@@ -238,6 +270,7 @@ class MuseImageClient:
     max_attempts: int = 3
     post: Callable[[Request, float], dict[str, Any]] = _post_json
     sleep: Callable[[float], None] = time.sleep
+    async_post: Callable[[Request, float], Awaitable[dict[str, Any]]] = _post_json_async
 
     def __post_init__(self) -> None:
         if not self.api_key:
@@ -275,6 +308,113 @@ class MuseImageClient:
             items.clear()
             fields.clear()
             image = None
+            data = b""
+            encoded = ""
+            images = ()
+
+    async def edit_async(
+        self,
+        prompt: str,
+        images: Sequence[InputImage],
+        *,
+        deadline: float,
+        size: str | None = None,
+    ) -> ImageResult:
+        """Edit images with a shared monotonic deadline and cancellable HTTP requests."""
+        if not images:
+            raise ValueError("An edit needs at least one input image")
+        items: list[dict[str, str]] = []
+        fields: dict[str, Any] = {}
+        data = b""
+        encoded = ""
+        request: Request | None = None
+        payload: dict[str, Any] | None = None
+        started = time.monotonic()
+        attempt = 0
+        failure = "The image request failed"
+        timed_out = False
+        try:
+            for image in images:
+                data = image.data
+                if image.mime_type == "image/jpeg":
+                    data = strip_jpeg_metadata(data)
+                encoded = base64.b64encode(data).decode()
+                items.append({"image_url": f"data:{image.mime_type};base64,{encoded}"})
+            fields = {"prompt": prompt, "images": items}
+            body: dict[str, Any] = {
+                "model": self.model,
+                "n": 1,
+                "response_format": "b64_json",
+                **fields,
+            }
+            if size:
+                body["size"] = size
+            request = Request(
+                f"{API_URL}/images/edits",
+                data=json.dumps(body).encode(),
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json",
+                },
+                method="POST",
+            )
+            body.clear()
+
+            for attempt in range(1, self.max_attempts + 1):
+                remaining_s = deadline - time.monotonic()
+                if remaining_s <= 0:
+                    raise ImageRequestError(
+                        "Preview generation took too long", attempt - 1, timed_out=True
+                    )
+                try:
+                    async with asyncio.timeout(remaining_s):
+                        payload = await self.async_post(request, remaining_s)
+                except HTTPError as error:
+                    failure = f"HTTP {error.code}{_error_detail(error, self.api_key)}"
+                    timed_out = error.code in (408, 504)
+                    if error.code not in RETRY_STATUS:
+                        raise ImageRequestError(failure, attempt) from None
+                except (TimeoutError, OSError, http.client.HTTPException) as error:
+                    reason = getattr(error, "reason", error)
+                    failure = f"{type(error).__name__}: {reason}"
+                    timed_out = isinstance(error, TimeoutError) or isinstance(reason, TimeoutError)
+                except ValueError:
+                    raise ImageRequestError("The response was not valid JSON", attempt) from None
+                else:
+                    if time.monotonic() >= deadline:
+                        raise ImageRequestError(
+                            "Preview generation took too long",
+                            attempt,
+                            timed_out=True,
+                        )
+                    return self._result(payload, attempt, time.monotonic() - started)
+
+                if attempt < self.max_attempts:
+                    remaining_s = deadline - time.monotonic()
+                    if remaining_s <= 0:
+                        raise ImageRequestError(
+                            "Preview generation took too long", attempt, timed_out=True
+                        )
+                    await asyncio.sleep(min(2**attempt, 20, remaining_s))
+                    if time.monotonic() >= deadline:
+                        raise ImageRequestError(
+                            "Preview generation took too long", attempt, timed_out=True
+                        )
+            raise ImageRequestError(
+                f"Gave up after {self.max_attempts} attempts: {failure}",
+                attempt,
+                timed_out=timed_out,
+            )
+        finally:
+            if request is not None:
+                request.data = None
+                request.headers.clear()
+                request.unredirected_hdrs.clear()
+            fields.clear()
+            items.clear()
+            if payload is not None:
+                payload.clear()
+            payload = None
             data = b""
             encoded = ""
             images = ()

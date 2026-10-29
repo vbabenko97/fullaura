@@ -31,7 +31,7 @@ function successfulResponse(plan: unknown, notices: unknown[] = []): unknown {
   return { outcome: "success", plan, notices, conflicts: [] };
 }
 
-function installApiFixtures(plans: unknown[]) {
+function installApiFixtures(plans: unknown[], previewsEnabled = false, previewFetch?: typeof fetch) {
   if (object(catalogFixture).synthetic !== false) {
     throw new Error("The UI fixture must use the checked-in non-synthetic catalog");
   }
@@ -39,6 +39,12 @@ function installApiFixtures(plans: unknown[]) {
   const fetchFixture = vi.fn<typeof fetch>(async (input, init) => {
     const url = String(input);
     if (url === "/api/catalog") return apiResponse(catalogFixture);
+    if (url === "/api/previews/status") {
+      return apiResponse({
+        enabled: previewsEnabled,
+        detail: previewsEnabled ? null : "Photo previews are unavailable pending the T-02 feasibility result",
+      });
+    }
     if (url === "/api/plans") {
       const request: unknown = JSON.parse(String(init?.body));
       requests.push(request);
@@ -46,6 +52,7 @@ function installApiFixtures(plans: unknown[]) {
       if (plan === undefined) throw new Error(`${FIXTURE_LABEL} has no queued plan response`);
       return apiResponse(plan);
     }
+    if (url === "/api/previews" && previewFetch) return previewFetch(input, init);
     throw new Error(`${FIXTURE_LABEL} does not define ${url}`);
   });
   vi.stubGlobal("fetch", fetchFixture);
@@ -191,7 +198,13 @@ describe(`${FIXTURE_LABEL}: preferences-to-results flow`, () => {
   it("leaves the previous plan visible when replacement fails", async () => {
     installApiFixtures([
       successfulResponse(firstPlan),
-      { outcome: "generation_failed", plan: null, conflicts: [] },
+      {
+        outcome: "generation_failed",
+        plan: null,
+        conflicts: [],
+        violations: [{ rule: "budget", detail: "The proposed look exceeded the budget." }],
+        error: null,
+      },
     ]);
     render(<App />);
     await screen.findByText("15 catalog products");
@@ -206,10 +219,62 @@ describe(`${FIXTURE_LABEL}: preferences-to-results flow`, () => {
       "No replacement passed the catalog checks.",
     );
     expect((await screen.findByRole("alert")).textContent).toContain(
+      "The proposed look exceeded the budget.",
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain(
       "The displayed looks are from the previous successful request.",
     );
     expect(screen.getAllByText("MAARKOS HEAVY WEIGHT T-SHIRT")).toHaveLength(2);
     expect(screen.getByRole("heading", { name: "look 1" })).toBeTruthy();
+  });
+
+  it("shows preview controls but keeps them disabled until T-02 passes", async () => {
+    installApiFixtures([successfulResponse(firstPlan)]);
+    render(<App />);
+    await screen.findByText("15 catalog products");
+    submitPreferences("Relaxed office outfits", "250");
+    fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+    await screen.findByText("The three looks passed the catalog and budget checks.");
+
+    expect(screen.getByRole("heading", { name: "Approximate photo preview" })).toBeTruthy();
+    expect(screen.getByText("Photo previews are unavailable pending the T-02 feasibility result")).toBeTruthy();
+    expect((screen.getByLabelText("Portrait photo") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Full-body photo") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Generate approximate preview" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("cancels an in-flight preview request from the interface", async () => {
+    const previewSignal: { current: AbortSignal | null } = { current: null };
+    const previewFetch = vi.fn<typeof fetch>((_input, init) => {
+      previewSignal.current = init?.signal ?? null;
+      return new Promise<Response>((_resolve, reject) => {
+        previewSignal.current?.addEventListener(
+          "abort",
+          () => reject(new DOMException("Aborted", "AbortError")),
+          { once: true },
+        );
+      });
+    });
+    installApiFixtures([successfulResponse(firstPlan)], true, previewFetch);
+    render(<App />);
+    await screen.findByText("15 catalog products");
+    submitPreferences("Relaxed office outfits", "250");
+    fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+    await screen.findByText("The three looks passed the catalog and budget checks.");
+    await waitFor(() => expect((screen.getByLabelText("Portrait photo") as HTMLInputElement).disabled).toBe(false));
+    fireEvent.change(screen.getByLabelText("Portrait photo"), {
+      target: { files: [new File(["portrait"], "portrait.jpg", { type: "image/jpeg" })] },
+    });
+    fireEvent.change(screen.getByLabelText("Full-body photo"), {
+      target: { files: [new File(["full-body"], "full-body.jpg", { type: "image/jpeg" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Generate approximate preview" }));
+    await waitFor(() => expect(previewFetch).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("button", { name: "Cancel preview" }));
+
+    const cancellationAlert = await screen.findByRole("alert");
+    expect(cancellationAlert.textContent).toBe("Preview generation cancelled.");
+    expect(previewSignal.current?.aborted).toBe(true);
   });
 
   it("rejects a success fixture that changes a position outside the replacement target", async () => {
@@ -245,6 +310,9 @@ describe(`${FIXTURE_LABEL}: preferences-to-results flow`, () => {
     let planningCalls = 0;
     const fetchFixture = vi.fn<typeof fetch>((input) => {
       if (String(input) === "/api/catalog") return Promise.resolve(apiResponse(catalogFixture));
+      if (String(input) === "/api/previews/status") {
+        return Promise.resolve(apiResponse({ enabled: false, detail: "Pending T-02" }));
+      }
       planningCalls += 1;
       if (planningCalls === 1) return Promise.resolve(apiResponse(successfulResponse(firstPlan)));
       return new Promise<Response>((resolve) => {
@@ -348,6 +416,9 @@ describe(`${FIXTURE_LABEL}: preferences-to-results flow`, () => {
   it("labels an unconfigured development model after the API fixture returns 503", async () => {
     const fetchFixture = vi.fn<typeof fetch>(async (input) => {
       if (String(input) === "/api/catalog") return apiResponse(catalogFixture);
+      if (String(input) === "/api/previews/status") {
+        return apiResponse({ enabled: false, detail: "Pending T-02" });
+      }
       return apiResponse({ detail: "BASETEN_API_KEY is not set" }, 503);
     });
     vi.stubGlobal("fetch", fetchFixture);

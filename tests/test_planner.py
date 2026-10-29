@@ -17,6 +17,8 @@ from backend.app.config import Settings
 from backend.app.constraints import Rule
 from backend.app.main import create_app
 from backend.app.planner import (
+    MAX_TOKENS,
+    REASONING_EFFORT,
     Brief,
     Outcome,
     PlanRequest,
@@ -117,6 +119,8 @@ def test_a_valid_plan_succeeds_with_offers_chosen_by_code() -> None:
         variant_id: f"offer_{variant_id}_AT" for variant_id in ("P01", "P03", "P05", "P09", "P18")
     }
     assert (result.usage.calls, result.usage.prompt_tokens) == (1, 1000)
+    assert sent[0]["max_tokens"] == MAX_TOKENS
+    assert sent[0]["reasoning_effort"] == REASONING_EFFORT == "medium"
     request = json.loads(sent[0]["messages"][1]["content"])
     candidates = {candidate["id"] for candidate in request["candidates"]}
     # Wool, compositions that cannot be checked and unconfirmed delivery never reach the model.

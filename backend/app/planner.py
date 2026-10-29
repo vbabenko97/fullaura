@@ -40,8 +40,9 @@ BASETEN_URL = "https://inference.baseten.co/v1"  # Baseten Model APIs docs, chec
 SPARK_MODEL = "meta-models/muse-spark-open-1026"
 DEADLINE_S = 150.0  # for the whole request, across every call
 GENERATION_ATTEMPTS = 2  # the first plan and one repair
-# The model reasons before it replies, and its reasoning counts against max_tokens.
+# Keep reasoning bounded so the model can finish its JSON plan within the token cap.
 MAX_TOKENS = 6000
+REASONING_EFFORT = "medium"
 
 logger = logging.getLogger(__name__)
 
@@ -202,7 +203,12 @@ class SparkClient:
         clock: Callable[[], float],
     ) -> tuple[str, dict[str, Any], int]:
         """The reply text and its token usage. Raises ProviderError."""
-        body = {"model": self.model, "messages": list(messages), "max_tokens": MAX_TOKENS}
+        body = {
+            "model": self.model,
+            "messages": list(messages),
+            "max_tokens": MAX_TOKENS,
+            "reasoning_effort": REASONING_EFFORT,
+        }
         request = Request(
             f"{self.base_url.rstrip('/')}/chat/completions",
             data=json.dumps(body).encode(),

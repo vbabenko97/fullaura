@@ -237,6 +237,22 @@ Each decision has a number that is never reused and a status: accepted, proposed
 
 - **Date:** 2026-10-28
 - **Status:** accepted
-- **Decision:** When photo upload is implemented, FullAura keeps originals, metadata-stripped inputs and generated previews in memory only for the request. It stores no server copy, cache, backup, database record or raw provider response. It deletes any required temporary files in `finally` on every success and failure path, and removes leftovers from interrupted processes during startup before accepting uploads. If cleanup or the startup sweep fails, photo processing stays blocked until cleanup succeeds. [DATA.md](DATA.md#photo-handling-for-upload-support) describes the cleanup order.
+- **Decision:** When photo uploads are enabled, FullAura keeps originals, metadata-stripped inputs and generated previews in memory only for the request. It stores no server copy, cache, backup, database record or raw provider response. It deletes any required temporary files in `finally` on every success and failure path, and removes leftovers from interrupted processes during startup before accepting uploads. If cleanup or the startup sweep fails, photo processing stays blocked until cleanup succeeds. [DATA.md](DATA.md#photo-handling-for-upload-support) describes the cleanup order.
 - **Reason:** A short server retention period is unnecessary for the first flow and increases the amount of personal data that needs storage, access control and deletion handling.
-- **Consequences:** This is not implemented until upload support exists. The browser may retain a returned preview according to its own behavior, and a model provider's retention remains governed by its published terms and the user-facing processing notice.
+- **Consequences:** The request-scoped route and interface are implemented, but the route returns 503 before reading the body until T-02 passes and `FULLAURA_T02_PREVIEWS_PASSED=true` is set. The route remains development-only. The browser holds selected photos and may retain a returned preview according to its own behavior; a model provider's retention remains governed by its published terms and the user-facing processing notice.
+
+## D-32: Preview requests have one deadline and cancel on disconnect
+
+- **Date:** 2026-10-29
+- **Status:** accepted
+- **Decision:** One monotonic 120-second deadline covers receiving the bounded multipart request, provider attempts and retry waits. The asynchronous HTTP request receives only the remaining time and is cancelled when the deadline expires. If the browser disconnects while the provider is working, the server cancels that task. Request and preview buffers are cleared on success, timeout, disconnect and failure. Preview uploads remain disabled until the formal T-02 result passes and `FULLAURA_T02_PREVIEWS_PASSED=true` is set; production stays disabled.
+- **Reason:** Per-operation network timeouts do not bound upload plus retry duration, and a synchronous request cannot be reliably cancelled when the caller leaves.
+- **Consequences:** A local preview request ends with HTTP 504 at the shared deadline. A disconnected browser receives no response, and no provider work continues after the server detects the disconnect. Public model access still needs the T-04 safeguards described in [TASKS.md](TASKS.md#t-04-one-complete-flow).
+
+## D-33: Bound Muse Spark reasoning for plan generation
+
+- **Date:** 2026-10-29
+- **Status:** accepted
+- **Decision:** Send `reasoning_effort=medium` with planning requests and keep the 6,000-token completion cap. Code remains authoritative for budget, catalog, lock and look-structure checks.
+- **Reason:** Muse Spark's default `xhigh` reasoning exhausted the completion cap before returning JSON in a live planning request. Meta documents `medium` as the general agentic setting and says lower reasoning effort uses fewer generated tokens; reasoning and the answer share the completion budget ([recommended settings](https://dev.meta.ai/docs/muse-spark-open/settings), [inference guidance](https://dev.meta.ai/docs/muse-spark-open/deploy)).
+- **Consequences:** More of the bounded completion budget remains available for the structured plan. The checked plan still has to pass the same hard constraints.
