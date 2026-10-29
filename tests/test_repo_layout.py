@@ -24,6 +24,7 @@ ROOT_ENTRIES = {
     "backend",
     "docs",
     "frontend",
+    "infra",
     "pyproject.toml",
     "scripts",
     "tests",
