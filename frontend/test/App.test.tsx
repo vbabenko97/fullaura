@@ -31,7 +31,7 @@ function successfulResponse(plan: unknown, notices: unknown[] = []): unknown {
   return { outcome: "success", plan, notices, conflicts: [] };
 }
 
-function installApiFixtures(plans: unknown[]) {
+function installApiFixtures(plans: unknown[], previewsEnabled = false, previewFetch?: typeof fetch) {
   if (object(catalogFixture).synthetic !== false) {
     throw new Error("The UI fixture must use the checked-in non-synthetic catalog");
   }
@@ -39,6 +39,12 @@ function installApiFixtures(plans: unknown[]) {
   const fetchFixture = vi.fn<typeof fetch>(async (input, init) => {
     const url = String(input);
     if (url === "/api/catalog") return apiResponse(catalogFixture);
+    if (url === "/api/previews/status") {
+      return apiResponse({
+        enabled: previewsEnabled,
+        detail: previewsEnabled ? null : "Photo previews are unavailable pending the T-02 feasibility result",
+      });
+    }
     if (url === "/api/plans") {
       const request: unknown = JSON.parse(String(init?.body));
       requests.push(request);
@@ -46,10 +52,43 @@ function installApiFixtures(plans: unknown[]) {
       if (plan === undefined) throw new Error(`${FIXTURE_LABEL} has no queued plan response`);
       return apiResponse(plan);
     }
+    if (url === "/api/previews" && previewFetch) return previewFetch(input, init);
     throw new Error(`${FIXTURE_LABEL} does not define ${url}`);
   });
   vi.stubGlobal("fetch", fetchFixture);
   return requests;
+}
+
+function installObjectUrlMocks() {
+  const mocks = {
+    createObjectURL: vi.fn(() => "blob:preview"),
+    revokeObjectURL: vi.fn(),
+  };
+  vi.stubGlobal("URL", mocks);
+  return mocks;
+}
+
+function previewResponse(): Response {
+  return {
+    ok: true,
+    status: 200,
+    blob: async () => new Blob(["preview"], { type: "image/png" }),
+  } as Response;
+}
+
+async function prepareEnabledPreviewFlow(plans: unknown[], previewFetch: typeof fetch) {
+  installApiFixtures(plans, true, previewFetch);
+  render(<App />);
+  await screen.findByText("15 catalog products");
+  submitPreferences("Preview source identity", "250");
+  fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+  await screen.findByText("The three looks passed the catalog and budget checks.");
+  fireEvent.change(screen.getByLabelText("Portrait photo"), {
+    target: { files: [new File(["portrait"], "portrait.jpg", { type: "image/jpeg" })] },
+  });
+  fireEvent.change(screen.getByLabelText("Full-body photo"), {
+    target: { files: [new File(["full-body"], "full-body.jpg", { type: "image/jpeg" })] },
+  });
 }
 
 function submitPreferences(styleGoal: string, budget: string) {
@@ -72,6 +111,33 @@ function planWithOwnedItems(): unknown {
   };
   plan.looks[0].items.top = { kind: "owned", id: "owned-1" };
   plan.looks[1].items.top = { kind: "owned", id: "owned-2" };
+  return plan;
+}
+
+function planWithSingleOnePiece(): unknown {
+  const plan = JSON.parse(JSON.stringify(firstPlan)) as {
+    looks: Array<{ id: string; items: Record<string, { kind: string; id: string }> }>;
+    selected_offers: Record<string, string>;
+  };
+  const look = plan.looks.find((candidate) => candidate.id === "look_3");
+  if (!look) throw new Error("Expected the fixture to include look_3");
+  const removedBottom = look.items.bottom;
+  delete look.items.top;
+  delete look.items.bottom;
+  look.items.one_piece = {
+    kind: "catalog",
+    id: "ae-cord-mini-dress-velvet-ember-m",
+  };
+  plan.selected_offers["ae-cord-mini-dress-velvet-ember-m"] =
+    "ae-cord-mini-dress-velvet-ember-m-offer";
+  if (
+    removedBottom &&
+    !plan.looks.some((candidate) =>
+      Object.values(candidate.items).some((item) => item.id === removedBottom.id),
+    )
+  ) {
+    delete plan.selected_offers[removedBottom.id];
+  }
   return plan;
 }
 
@@ -191,7 +257,13 @@ describe(`${FIXTURE_LABEL}: preferences-to-results flow`, () => {
   it("leaves the previous plan visible when replacement fails", async () => {
     installApiFixtures([
       successfulResponse(firstPlan),
-      { outcome: "generation_failed", plan: null, conflicts: [] },
+      {
+        outcome: "generation_failed",
+        plan: null,
+        conflicts: [],
+        violations: [{ rule: "budget", detail: "The proposed look exceeded the budget." }],
+        error: null,
+      },
     ]);
     render(<App />);
     await screen.findByText("15 catalog products");
@@ -206,10 +278,166 @@ describe(`${FIXTURE_LABEL}: preferences-to-results flow`, () => {
       "No replacement passed the catalog checks.",
     );
     expect((await screen.findByRole("alert")).textContent).toContain(
+      "The proposed look exceeded the budget.",
+    );
+    expect((await screen.findByRole("alert")).textContent).toContain(
       "The displayed looks are from the previous successful request.",
     );
     expect(screen.getAllByText("MAARKOS HEAVY WEIGHT T-SHIRT")).toHaveLength(2);
     expect(screen.getByRole("heading", { name: "look 1" })).toBeTruthy();
+  });
+
+  it("shows preview controls but keeps them disabled until T-02 passes", async () => {
+    installApiFixtures([successfulResponse(firstPlan)]);
+    render(<App />);
+    await screen.findByText("15 catalog products");
+    submitPreferences("Relaxed office outfits", "250");
+    fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+    await screen.findByText("The three looks passed the catalog and budget checks.");
+
+    expect(screen.getByRole("heading", { name: "Approximate photo preview" })).toBeTruthy();
+    expect(screen.getByText("Photo previews are unavailable pending the T-02 feasibility result")).toBeTruthy();
+    expect((screen.getByLabelText("Portrait photo") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Full-body photo") as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByRole("button", { name: "Generate approximate preview" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("disables replacement when the catalog has no other item for that position", async () => {
+    installApiFixtures([successfulResponse(planWithSingleOnePiece())]);
+    render(<App />);
+    await screen.findByText("15 catalog products");
+    submitPreferences("A look with a one-piece", "250");
+    fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+    await screen.findByText("The three looks passed the catalog and budget checks.");
+
+    const replaceButton = screen.getByRole("button", {
+      name: "Replace CORD-MINI-KLEID MIT RUNDHALS in look_3",
+    });
+    expect((replaceButton as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("No other catalog or owned item can fill this position.")).toBeTruthy();
+  });
+
+  it("clears a generated preview when either source photo changes", async () => {
+    const objectUrls = installObjectUrlMocks();
+    const previewFetch = vi.fn<typeof fetch>(async () => previewResponse());
+    await prepareEnabledPreviewFlow([successfulResponse(firstPlan)], previewFetch);
+    fireEvent.click(screen.getByRole("button", { name: "Generate approximate preview" }));
+    expect(
+      await screen.findByRole("img", { name: "Approximate generated preview for look 1" }),
+    ).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Portrait photo"), {
+      target: { files: [new File(["new portrait"], "new-portrait.jpg", { type: "image/jpeg" })] },
+    });
+
+    expect(screen.queryByRole("img", { name: "Approximate generated preview for look 1" })).toBeNull();
+    await waitFor(() => expect(objectUrls.revokeObjectURL).toHaveBeenCalledWith("blob:preview"));
+  });
+
+  it("clears a generated preview when a different look is selected", async () => {
+    const objectUrls = installObjectUrlMocks();
+    const previewFetch = vi.fn<typeof fetch>(async () => previewResponse());
+    await prepareEnabledPreviewFlow([successfulResponse(firstPlan)], previewFetch);
+    fireEvent.click(screen.getByRole("button", { name: "Generate approximate preview" }));
+    expect(
+      await screen.findByRole("img", { name: "Approximate generated preview for look 1" }),
+    ).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText("Look to preview"), { target: { value: "look_2" } });
+
+    expect(screen.queryByRole("img", { name: "Approximate generated preview for look 2" })).toBeNull();
+    expect((screen.getByLabelText("Look to preview") as HTMLSelectElement).value).toBe("look_2");
+    await waitFor(() => expect(objectUrls.revokeObjectURL).toHaveBeenCalledWith("blob:preview"));
+  });
+
+  it("clears a preview after replacement changes its source look", async () => {
+    const objectUrls = installObjectUrlMocks();
+    const previewFetch = vi.fn<typeof fetch>(async () => previewResponse());
+    await prepareEnabledPreviewFlow(
+      [successfulResponse(firstPlan), successfulResponse(replacementPlan)],
+      previewFetch,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Generate approximate preview" }));
+    expect(
+      await screen.findByRole("img", { name: "Approximate generated preview for look 1" }),
+    ).toBeTruthy();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Replace MAARKOS HEAVY WEIGHT T-SHIRT in look_1" }),
+    );
+    await screen.findByText(
+      "The item was replaced. All three looks passed the catalog and budget checks.",
+    );
+
+    expect(screen.queryByRole("img")).toBeNull();
+    expect((screen.getByLabelText("Portrait photo") as HTMLInputElement).files).toHaveLength(0);
+    await waitFor(() => expect(objectUrls.revokeObjectURL).toHaveBeenCalledWith("blob:preview"));
+  });
+
+  it("aborts and ignores a preview response that arrives after replacement", async () => {
+    installObjectUrlMocks();
+    const previewSignal: { current: AbortSignal | null } = { current: null };
+    const previewResolver: { current: ((response: Response) => void) | null } = { current: null };
+    const previewFetch = vi.fn<typeof fetch>((_input, init) => {
+      previewSignal.current = init?.signal ?? null;
+      return new Promise<Response>((resolve) => {
+        previewResolver.current = resolve;
+      });
+    });
+    await prepareEnabledPreviewFlow(
+      [successfulResponse(firstPlan), successfulResponse(replacementPlan)],
+      previewFetch,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Generate approximate preview" }));
+    await waitFor(() => expect(previewFetch).toHaveBeenCalledOnce());
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Replace MAARKOS HEAVY WEIGHT T-SHIRT in look_1" }),
+    );
+    await screen.findByText(
+      "The item was replaced. All three looks passed the catalog and budget checks.",
+    );
+    expect(previewSignal.current?.aborted).toBe(true);
+
+    const resolvePreview = previewResolver.current;
+    if (!resolvePreview) throw new Error("Expected the preview request to remain pending");
+    resolvePreview(previewResponse());
+    await waitFor(() => expect(screen.queryByRole("img")).toBeNull());
+    expect(screen.queryByText("Approximate preview generated. It cannot establish fit or product availability.")).toBeNull();
+  });
+
+  it("cancels an in-flight preview request from the interface", async () => {
+    const previewSignal: { current: AbortSignal | null } = { current: null };
+    const previewFetch = vi.fn<typeof fetch>((_input, init) => {
+      previewSignal.current = init?.signal ?? null;
+      return new Promise<Response>((_resolve, reject) => {
+        previewSignal.current?.addEventListener(
+          "abort",
+          () => reject(new DOMException("Aborted", "AbortError")),
+          { once: true },
+        );
+      });
+    });
+    installApiFixtures([successfulResponse(firstPlan)], true, previewFetch);
+    render(<App />);
+    await screen.findByText("15 catalog products");
+    submitPreferences("Relaxed office outfits", "250");
+    fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+    await screen.findByText("The three looks passed the catalog and budget checks.");
+    await waitFor(() => expect((screen.getByLabelText("Portrait photo") as HTMLInputElement).disabled).toBe(false));
+    fireEvent.change(screen.getByLabelText("Portrait photo"), {
+      target: { files: [new File(["portrait"], "portrait.jpg", { type: "image/jpeg" })] },
+    });
+    fireEvent.change(screen.getByLabelText("Full-body photo"), {
+      target: { files: [new File(["full-body"], "full-body.jpg", { type: "image/jpeg" })] },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Generate approximate preview" }));
+    await waitFor(() => expect(previewFetch).toHaveBeenCalledOnce());
+    fireEvent.click(screen.getByRole("button", { name: "Cancel preview" }));
+
+    const cancellationAlert = await screen.findByRole("alert");
+    expect(cancellationAlert.textContent).toBe("Preview generation cancelled.");
+    expect(previewSignal.current?.aborted).toBe(true);
   });
 
   it("rejects a success fixture that changes a position outside the replacement target", async () => {
@@ -245,6 +473,9 @@ describe(`${FIXTURE_LABEL}: preferences-to-results flow`, () => {
     let planningCalls = 0;
     const fetchFixture = vi.fn<typeof fetch>((input) => {
       if (String(input) === "/api/catalog") return Promise.resolve(apiResponse(catalogFixture));
+      if (String(input) === "/api/previews/status") {
+        return Promise.resolve(apiResponse({ enabled: false, detail: "Pending T-02" }));
+      }
       planningCalls += 1;
       if (planningCalls === 1) return Promise.resolve(apiResponse(successfulResponse(firstPlan)));
       return new Promise<Response>((resolve) => {
@@ -348,6 +579,9 @@ describe(`${FIXTURE_LABEL}: preferences-to-results flow`, () => {
   it("labels an unconfigured development model after the API fixture returns 503", async () => {
     const fetchFixture = vi.fn<typeof fetch>(async (input) => {
       if (String(input) === "/api/catalog") return apiResponse(catalogFixture);
+      if (String(input) === "/api/previews/status") {
+        return apiResponse({ enabled: false, detail: "Pending T-02" });
+      }
       return apiResponse({ detail: "BASETEN_API_KEY is not set" }, 503);
     });
     vi.stubGlobal("fetch", fetchFixture);

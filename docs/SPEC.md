@@ -1,6 +1,6 @@
 # Specification
 
-This file describes what the first version of FullAura does, the rules it keeps, and what it leaves out. Most of it is planned. The catalog record format, a first catalog of 15 real products, the hard-constraint checks, and a local development screen for preferences and sourced look results exist. Photo upload and previews do not exist yet (see the [README](../README.md)). The build order is in [TASKS.md](TASKS.md), and the reasons behind each choice are in [DECISIONS.md](DECISIONS.md).
+This file describes what the first version of FullAura does, the rules it keeps, and what it leaves out. Most of it is planned. The catalog record format, a first catalog of 15 real products, the hard-constraint checks, and a local development screen for preferences and sourced look results exist. The request-scoped preview route and interface exist, but photo uploads stay disabled until T-02 passes (see the [README](../README.md)). The build order is in [TASKS.md](TASKS.md), and the reasons behind each choice are in [DECISIONS.md](DECISIONS.md).
 
 ## What a person does
 
@@ -52,6 +52,8 @@ When no plan meets every hard constraint, for example because the locked items c
 
 When a person replaces an item, the request identifies the current item, look and slot. The person cannot replace a locked item. Every other position in all three looks, including empty positions, stays as it was. Code requires a different item in the selected position and checks the complete returned plan against the current budget, exclusions, delivery, stock, composition and locks. If replacement fails, the previous plan remains displayed.
 
+The interface disables replacement when no other catalog variant or owned item has a category that can fill the position. Current constraints can still leave no valid replacement.
+
 The selected variants and offers, budget, exclusions, owned items and locked items are kept in structured application state, and code validates the hard constraints against that state. FullAura does not present a material exclusion as a medical assurance.
 
 ## Owned items
@@ -75,11 +77,13 @@ A preview that shows an owned item draws it from the text description only, and 
 
 If previews fail the feasibility test, a person can still complete a sourced style plan, and FullAura states the visual limitation ([D-11](DECISIONS.md#d-11-test-previews-first-and-keep-the-plan-useful-without-them)).
 
+The development preview route accepts a portrait and a full-body JPEG only after the formal T-02 evaluation passes and `FULLAURA_T02_PREVIEWS_PASSED=true` is set. Production keeps the route off. The request has one 120-second deadline from upload through provider response. The server cancels provider work when that deadline expires or the browser disconnects, and it keeps photo data in memory only for that request ([D-31](DECISIONS.md#d-31-no-persistent-server-copies-of-personal-photos), [D-32](DECISIONS.md#d-32-preview-requests-have-one-deadline-and-cancel-on-disconnect)).
+
 ## Photographs
 
 FullAura does not infer health, ethnicity, personality or other sensitive traits from photographs.
 
-Photo upload and storage are not implemented. Before FullAura accepts uploads, it will remove image metadata and apply the accepted no-persistent-server-copy policy in [DATA.md](DATA.md#photo-handling-for-upload-support). Before model access is open to the public, FullAura asks each person to confirm that they are 18 or older and shows a notice that explains how their photos are processed. Meta's Standard mode keeps content out of model training but does not mean zero retention ([D-07](DECISIONS.md#d-07-standard-mode-for-personal-photographs)), so the notice cannot rely on it.
+Photo uploads remain disabled until T-02 passes; production keeps them off. The development route removes image metadata and applies the no-persistent-server-copy policy in [DATA.md](DATA.md#photo-handling-for-upload-support). Before model access is open to the public, FullAura asks each person to confirm that they are 18 or older and shows a notice that explains how their photos are processed. Meta's Standard mode keeps content out of model training but does not mean zero retention ([D-07](DECISIONS.md#d-07-standard-mode-for-personal-photographs)), so the notice cannot rely on it.
 
 ## Out of scope
 

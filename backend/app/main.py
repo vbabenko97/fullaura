@@ -2,12 +2,28 @@
 
 from __future__ import annotations
 
+import asyncio
+import time
+
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.requests import Request
+from starlette.responses import Response
 
 from backend.app.catalog import Catalog
 from backend.app.config import Settings
+from backend.app.meta_images import ImageRequestError, MuseImageClient
+from backend.app.photos import (
+    PREVIEW_DEADLINE_S,
+    AsyncImageEditor,
+    PhotoInputError,
+    PhotoProcessingError,
+    PhotoTooLargeError,
+    PreviewResponse,
+    read_preview_uploads,
+    wait_for_preview_or_disconnect,
+)
 from backend.app.planner import (
     BASETEN_URL,
     SPARK_MODEL,
@@ -18,9 +34,22 @@ from backend.app.planner import (
 )
 
 PREVIEW_DISABLED_DETAIL = "Photo previews are unavailable pending the T-02 feasibility result"
+PREVIEW_CONFIG_DETAIL = "Photo previews need MODEL_API_KEY in the development environment"
 
 
-def create_app(settings: Settings | None = None, spark: SparkClient | None = None) -> FastAPI:
+def _preview_error(detail: str, status_code: int) -> JSONResponse:
+    return JSONResponse(
+        {"detail": detail},
+        status_code=status_code,
+        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+    )
+
+
+def create_app(
+    settings: Settings | None = None,
+    spark: SparkClient | None = None,
+    image_editor: AsyncImageEditor | None = None,
+) -> FastAPI:
     settings = settings or Settings.from_env()
     index_file = settings.web_dist / "index.html"
     assets_dir = settings.web_dist / "assets"
@@ -49,14 +78,91 @@ def create_app(settings: Settings | None = None, spark: SparkClient | None = Non
             status_code=200 if usable else 503,
         )
 
-    @app.post("/api/previews", tags=["previews"], status_code=503)
-    def previews_disabled() -> JSONResponse:
-        """Keep photo processing unavailable pending the formal T-02 result."""
+    def preview_status() -> tuple[bool, str | None]:
+        if settings.environment != "development":
+            return False, "Photo previews are available only in development"
+        if not settings.t02_previews_passed:
+            return False, PREVIEW_DISABLED_DETAIL
+        if not settings.model_api_key and image_editor is None:
+            return False, PREVIEW_CONFIG_DETAIL
+        return True, None
+
+    @app.get("/api/previews/status", tags=["previews"])
+    def get_preview_status() -> JSONResponse:
+        """Report whether local photo previews are available without receiving photos."""
+        enabled, detail = preview_status()
         return JSONResponse(
-            {"detail": PREVIEW_DISABLED_DETAIL},
-            status_code=503,
+            {"enabled": enabled, "detail": detail},
             headers={"Cache-Control": "no-store"},
         )
+
+    @app.post(
+        "/api/previews",
+        tags=["previews"],
+        openapi_extra={
+            "requestBody": {
+                "required": True,
+                "content": {
+                    "multipart/form-data": {
+                        "schema": {
+                            "type": "object",
+                            "required": ["portrait", "full_body", "prompt"],
+                            "properties": {
+                                "portrait": {"type": "string", "format": "binary"},
+                                "full_body": {"type": "string", "format": "binary"},
+                                "prompt": {"type": "string", "maxLength": 3000},
+                            },
+                        }
+                    }
+                },
+            }
+        },
+    )
+    async def create_preview(request: Request) -> Response:
+        """Create one request-scoped preview when T-02 is enabled in development."""
+        enabled, detail = preview_status()
+        if not enabled:
+            return _preview_error(detail or PREVIEW_DISABLED_DETAIL, 503)
+
+        editor = image_editor
+        if editor is None:
+            editor = MuseImageClient(settings.model_api_key, settings.meta_image_model)
+
+        deadline = time.monotonic() + PREVIEW_DEADLINE_S
+        portrait: bytearray | None = None
+        full_body: bytearray | None = None
+        try:
+            async with asyncio.timeout_at(deadline):
+                prompt, portrait, full_body = await read_preview_uploads(request)
+                preview = await wait_for_preview_or_disconnect(
+                    request,
+                    prompt,
+                    portrait,
+                    full_body,
+                    editor,
+                    deadline=deadline,
+                )
+        except PhotoTooLargeError as error:
+            return _preview_error(str(error), 413)
+        except PhotoInputError as error:
+            return _preview_error(str(error), 400)
+        except TimeoutError:
+            return _preview_error("Preview generation took too long", 504)
+        except ImageRequestError as error:
+            if error.timed_out:
+                return _preview_error("Preview generation took too long", 504)
+            return _preview_error("The image provider could not complete this preview", 502)
+        except PhotoProcessingError:
+            return _preview_error("The image provider returned an unusable preview", 502)
+        finally:
+            if portrait is not None:
+                portrait.clear()
+            if full_body is not None:
+                full_body.clear()
+
+        if preview is None:
+            return Response(status_code=499, headers={"Cache-Control": "no-store"})
+        return PreviewResponse(preview)
 
     # Planning calls a paid model, so it stays off in production until T-04 adds per-session
     # limits, the 18+ confirmation and the photo-processing notice (docs/TASKS.md).

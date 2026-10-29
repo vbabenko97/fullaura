@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent } from "react";
 
 const MATERIALS = [
@@ -43,6 +43,16 @@ const SLOTS = [
   "footwear",
   "accessory",
 ] as const;
+
+const SLOT_CATEGORIES: Record<Slot, readonly Category[]> = {
+  top: ["top", "knitwear"],
+  bottom: ["bottom"],
+  one_piece: ["one_piece"],
+  mid_layer: ["top", "knitwear"],
+  outer_layer: ["outerwear"],
+  footwear: ["footwear"],
+  accessory: ["accessory"],
+};
 
 type Material = (typeof MATERIALS)[number];
 type Category = (typeof CATEGORIES)[number];
@@ -132,7 +142,29 @@ interface PlanResponse {
   outcome: "success" | "infeasible" | "generation_failed" | "provider_timeout" | "provider_error";
   plan: Plan | null;
   conflicts: { detail: string }[];
+  violations: { rule: string; detail: string }[];
+  error: string | null;
   notices: OwnedNotice[];
+}
+
+interface PreviewStatus {
+  enabled: boolean;
+  detail: string | null;
+}
+
+interface PreviewOption {
+  id: string;
+  label: string;
+  prompt: string;
+  sourceKey: string;
+}
+
+interface PreviewResult {
+  url: string;
+  optionId: string;
+  sourceKey: string;
+  portrait: File;
+  fullBody: File;
 }
 
 interface OwnedNotice {
@@ -163,6 +195,7 @@ type OwnedItemDraft = OwnedItem;
 
 type CatalogState = "loading" | "ready" | "error";
 type RequestState = "idle" | "loading" | "success" | "error";
+type PreviewStatusState = "loading" | "ready" | "error";
 
 class ApiResponseError extends Error {
   constructor(readonly status: number) {
@@ -338,6 +371,14 @@ function parsePlanResponse(value: unknown): PlanResponse {
     if (!isRecord(entry)) throw new Error("Invalid planning conflict");
     return { detail: readString(entry.detail, "conflict detail") };
   });
+  const violations = readArray(value.violations ?? [], "planning violations").map((entry) => {
+    if (!isRecord(entry)) throw new Error("Invalid planning violation");
+    return {
+      rule: readString(entry.rule, "planning violation rule"),
+      detail: readString(entry.detail, "planning violation detail"),
+    };
+  });
+  const error = value.error == null ? null : readString(value.error, "planning error");
   const notices = readArray(value.notices ?? [], "planning notices").map((entry) => {
     if (!isRecord(entry) || (entry.kind !== "owned_reported" && entry.kind !== "owned_unconfirmed")) {
       throw new Error("Invalid planning notice");
@@ -351,7 +392,19 @@ function parsePlanResponse(value: unknown): PlanResponse {
     outcome,
     plan: value.plan === null ? null : parsePlan(value.plan),
     conflicts,
+    violations,
+    error,
     notices,
+  };
+}
+
+function parsePreviewStatus(value: unknown): PreviewStatus {
+  if (!isRecord(value) || typeof value.enabled !== "boolean") {
+    throw new Error("Invalid preview status response");
+  }
+  return {
+    enabled: value.enabled,
+    detail: readNullableString(value.detail, "preview status detail"),
   };
 }
 
@@ -405,6 +458,25 @@ function catalogItem(catalog: Catalog, variantId: string): { product: Product; v
     if (variant) return { product, variant };
   }
   return null;
+}
+
+function hasReplacementAlternative(
+  catalog: Catalog,
+  ownedItems: OwnedItem[],
+  currentItem: ItemRef,
+  slot: Slot,
+): boolean {
+  const categories = SLOT_CATEGORIES[slot];
+  return (
+    ownedItems.some((item) => item.id !== currentItem.id && categories.includes(item.category)) ||
+    catalog.products.some(
+      (product) =>
+        categories.includes(product.category) &&
+        product.variants.some(
+          (variant) => variant.id !== currentItem.id && variant.offers.length > 0,
+        ),
+    )
+  );
 }
 
 function selectedOffer(plan: Plan, variant: Variant): Offer | null {
@@ -549,6 +621,7 @@ function ProductLine({
   onToggleLock,
   onReplaceItem,
 }: ProductLineProps) {
+  const hasAlternative = hasReplacementAlternative(catalog, ownedItems, item, slot);
   if (item.kind === "owned") {
     const owned = ownedItems.find((candidate) => candidate.id === item.id);
     const notices = ownedNotices.filter((notice) => notice.item.id === item.id);
@@ -560,7 +633,7 @@ function ProductLine({
             <button
               aria-label={`Replace ${owned?.description ?? "owned item"} in ${look.id}`}
               className="secondary-button replace-button"
-              disabled={replaceDisabled || isLocked}
+              disabled={replaceDisabled || isLocked || !hasAlternative}
               onClick={() => onReplaceItem(look.id, slot, item)}
               type="button"
             >
@@ -578,6 +651,7 @@ function ProductLine({
             </button>
           </div>
         </div>
+        {!hasAlternative && <p className="item-facts">No other catalog or owned item can fill this position.</p>}
         <h3>{owned?.description ?? "Your item"}</h3>
         <p className="item-facts">
           {owned ? `${owned.color}, ${labelCategory(owned.category)}` : "Already owned"}
@@ -627,7 +701,7 @@ function ProductLine({
           <button
             aria-label={`Replace ${entry.product.title} in ${look.id}`}
             className="secondary-button replace-button"
-            disabled={replaceDisabled || isLocked}
+            disabled={replaceDisabled || isLocked || !hasAlternative}
             onClick={() => onReplaceItem(look.id, slot, item)}
             type="button"
           >
@@ -645,6 +719,7 @@ function ProductLine({
           </button>
         </div>
       </div>
+      {!hasAlternative && <p className="item-facts">No other catalog or owned item can fill this position.</p>}
       <h3>{entry.product.title}</h3>
       {facts && <p className="item-facts">{facts}</p>}
       <p className="item-facts">{composition}</p>
@@ -732,6 +807,255 @@ function LookCard({
   );
 }
 
+function previewOptionsForPlan(
+  plan: Plan,
+  catalog: Catalog,
+  ownedItems: OwnedItem[],
+): PreviewOption[] {
+  return plan.looks.map((look) => {
+    const describedItems = SLOTS.flatMap((slot) => {
+      const item = look.items[slot];
+      if (!item) return [];
+      if (item.kind === "owned") {
+        const owned = ownedItems.find((candidate) => candidate.id === item.id);
+        return owned
+          ? [`${labelSlot(slot).toLowerCase()}: ${owned.color} ${owned.description}`]
+          : [];
+      }
+      const entry = catalogItem(catalog, item.id);
+      if (!entry) return [];
+      const details = [entry.product.brand, entry.product.title, entry.variant.color]
+        .filter((value): value is string => value !== null)
+        .join(" ");
+      return [`${labelSlot(slot).toLowerCase()}: ${details}`];
+    });
+    return {
+      id: look.id,
+      label: look.id.replaceAll("_", " "),
+      sourceKey: JSON.stringify({
+        items: SLOTS.map((slot) => [slot, look.items[slot] ?? null]),
+        describedItems,
+      }),
+      prompt:
+        `Create an approximate style preview of the person in the supplied portrait and full-body photos. ` +
+        `Dress them in this outfit, using the text descriptions as references: ${describedItems.join("; ")}. ` +
+        "Keep their identity, face, hair, skin tone and body proportions. Plain light background. " +
+        "Do not infer sensitive traits. The result is an approximate preview, not proof of fit or product availability.",
+    };
+  });
+}
+
+interface PreviewPanelProps {
+  enabled: boolean;
+  detail: string | null;
+  loadingStatus: boolean;
+  options: PreviewOption[];
+}
+
+function PreviewPanel({ enabled, detail, loadingStatus, options }: PreviewPanelProps) {
+  const [portrait, setPortrait] = useState<File | null>(null);
+  const [fullBody, setFullBody] = useState<File | null>(null);
+  const [lookId, setLookId] = useState(options[0]?.id ?? "");
+  const [requestState, setRequestState] = useState<RequestState>("idle");
+  const [message, setMessage] = useState<string | null>(null);
+  const [previewResult, setPreviewResult] = useState<PreviewResult | null>(null);
+  const requestController = useRef<AbortController | null>(null);
+  const requestVersion = useRef(0);
+
+  useEffect(() => () => {
+    requestVersion.current += 1;
+    requestController.current?.abort();
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (previewResult) URL.revokeObjectURL(previewResult.url);
+    };
+  }, [previewResult]);
+
+  const selectedLook = options.find((option) => option.id === lookId);
+  const previewUrl =
+    previewResult &&
+    selectedLook &&
+    previewResult.optionId === selectedLook.id &&
+    previewResult.sourceKey === selectedLook.sourceKey &&
+    previewResult.portrait === portrait &&
+    previewResult.fullBody === fullBody
+      ? previewResult.url
+      : null;
+
+  function invalidatePreview() {
+    requestVersion.current += 1;
+    requestController.current?.abort();
+    requestController.current = null;
+    setPreviewResult(null);
+    setRequestState("idle");
+    setMessage(null);
+  }
+
+  function setPhoto(setter: (photo: File | null) => void, file: File | undefined) {
+    invalidatePreview();
+    setter(file ?? null);
+  }
+
+  async function generatePreview() {
+    if (!enabled || !selectedLook || !portrait || !fullBody) return;
+    if ([portrait, fullBody].some((file) => file.type !== "image/jpeg" || file.size <= 0)) {
+      setRequestState("error");
+      setMessage("Choose two non-empty JPEG photos.");
+      return;
+    }
+    if ([portrait, fullBody].some((file) => file.size > 10 * 1024 * 1024)) {
+      setRequestState("error");
+      setMessage("Each photo must be no larger than 10 MiB.");
+      return;
+    }
+
+    requestVersion.current += 1;
+    const requestId = requestVersion.current;
+    setPreviewResult(null);
+    const controller = new AbortController();
+    requestController.current = controller;
+    setRequestState("loading");
+    setMessage(`Creating an approximate preview for ${selectedLook.label}.`);
+    try {
+      const form = new FormData();
+      form.append("portrait", portrait);
+      form.append("full_body", fullBody);
+      form.append("prompt", selectedLook.prompt);
+      const response = await fetch("/api/previews", {
+        method: "POST",
+        body: form,
+        signal: controller.signal,
+      });
+      if (requestId !== requestVersion.current || controller.signal.aborted) return;
+      if (!response.ok) {
+        let responseMessage = `The preview request failed (${response.status}).`;
+        try {
+          const payload: unknown = await response.json();
+          if (isRecord(payload) && typeof payload.detail === "string") {
+            responseMessage = payload.detail;
+          }
+        } catch {
+          // Keep the status-based message when the server did not return JSON.
+        }
+        throw new Error(responseMessage);
+      }
+      const image = await response.blob();
+      if (requestId !== requestVersion.current || controller.signal.aborted) return;
+      if (
+        !["image/png", "image/jpeg", "image/webp"].includes(image.type) ||
+        image.size === 0 ||
+        image.size > 16 * 1024 * 1024
+      ) {
+        throw new Error("The preview response was not a supported image.");
+      }
+      setPreviewResult({
+        url: URL.createObjectURL(image),
+        optionId: selectedLook.id,
+        sourceKey: selectedLook.sourceKey,
+        portrait,
+        fullBody,
+      });
+      setRequestState("success");
+      setMessage("Approximate preview generated. It cannot establish fit or product availability.");
+    } catch (error) {
+      if (requestId !== requestVersion.current) return;
+      setRequestState("error");
+      setMessage(isRecord(error) && error.name === "AbortError"
+        ? "Preview generation cancelled."
+        : error instanceof Error
+          ? error.message
+          : "The preview request could not be completed.");
+    } finally {
+      if (requestId === requestVersion.current) requestController.current = null;
+    }
+  }
+
+  function cancelPreview() {
+    requestVersion.current += 1;
+    requestController.current?.abort();
+    requestController.current = null;
+    setPreviewResult(null);
+    setRequestState("error");
+    setMessage("Preview generation cancelled.");
+  }
+
+  function selectLook(nextLookId: string) {
+    invalidatePreview();
+    setLookId(nextLookId);
+  }
+
+  return (
+    <section className="preview-panel" aria-labelledby="preview-title">
+      <div className="preview-panel-heading">
+        <div>
+          <h2 id="preview-title">Approximate photo preview</h2>
+          <p>
+            Product images are unavailable, so the model uses text descriptions. A preview cannot
+            establish fit, exact product details or availability.
+          </p>
+        </div>
+      </div>
+      <div className="preview-form">
+        <label htmlFor="preview-portrait">Portrait photo</label>
+        <input
+          accept="image/jpeg"
+          disabled={!enabled || requestState === "loading"}
+          id="preview-portrait"
+          onChange={(event) => setPhoto(setPortrait, event.currentTarget.files?.[0])}
+          type="file"
+        />
+        <label htmlFor="preview-full-body">Full-body photo</label>
+        <input
+          accept="image/jpeg"
+          disabled={!enabled || requestState === "loading"}
+          id="preview-full-body"
+          onChange={(event) => setPhoto(setFullBody, event.currentTarget.files?.[0])}
+          type="file"
+        />
+        <label htmlFor="preview-look">Look to preview</label>
+        <select
+          disabled={!enabled || requestState === "loading"}
+          id="preview-look"
+          onChange={(event) => selectLook(event.target.value)}
+          value={lookId}
+        >
+          {options.map((option) => <option key={option.id} value={option.id}>{option.label}</option>)}
+        </select>
+        <div className="preview-actions">
+          {requestState === "loading" ? (
+            <button className="secondary-button" onClick={cancelPreview} type="button">
+              Cancel preview
+            </button>
+          ) : (
+            <button
+              className="secondary-button"
+              disabled={!enabled || !portrait || !fullBody || options.length === 0}
+              onClick={() => void generatePreview()}
+              type="button"
+            >
+              Generate approximate preview
+            </button>
+          )}
+        </div>
+      </div>
+      <p className="preview-privacy">
+        {enabled
+          ? "Metadata is removed before photos are sent to the configured Meta image model. The server does not retain the photos or result."
+          : loadingStatus
+            ? "Checking preview availability…"
+            : detail ?? "Photo previews are unavailable."}
+      </p>
+      {message && (
+        <p className={`preview-status${requestState === "error" ? " is-error" : ""}`} role={requestState === "error" ? "alert" : "status"}>
+          {message}
+        </p>
+      )}
+      {previewUrl && <img className="preview-image" src={previewUrl} alt={`Approximate generated preview for ${lookId.replaceAll("_", " ")}`} />}
+    </section>
+  );
+}
+
 export function App() {
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [catalogState, setCatalogState] = useState<CatalogState>("loading");
@@ -749,6 +1073,8 @@ export function App() {
   const [successfulPreferenceKey, setSuccessfulPreferenceKey] = useState<string | null>(null);
   const [requestState, setRequestState] = useState<RequestState>("idle");
   const [requestMessage, setRequestMessage] = useState<string | null>(null);
+  const [previewStatus, setPreviewStatus] = useState<PreviewStatus>({ enabled: false, detail: null });
+  const [previewStatusState, setPreviewStatusState] = useState<PreviewStatusState>("loading");
 
   useEffect(() => {
     const controller = new AbortController();
@@ -765,6 +1091,23 @@ export function App() {
       }
     }
     void loadCatalog();
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    async function loadPreviewStatus() {
+      try {
+        const response = await fetch("/api/previews/status", { signal: controller.signal });
+        setPreviewStatus(parsePreviewStatus(await readJson(response)));
+        setPreviewStatusState("ready");
+      } catch {
+        if (controller.signal.aborted) return;
+        setPreviewStatus({ enabled: false, detail: "Preview availability could not be checked." });
+        setPreviewStatusState("error");
+      }
+    }
+    void loadPreviewStatus();
     return () => controller.abort();
   }, []);
 
@@ -930,11 +1273,12 @@ export function App() {
         );
       } else {
         setRequestState("error");
-        setRequestMessage(
-          replacement
-            ? "No replacement passed the catalog checks."
-            : "No plan passed the catalog checks. Adjust your preferences and try again.",
-        );
+        const summary = replacement
+          ? "No replacement passed the catalog checks."
+          : "No plan passed the catalog checks. Adjust your preferences and try again.";
+        const violations = result.violations.slice(0, 3).map((item) => item.detail).join(" ");
+        const diagnostic = violations || result.error?.slice(0, 300) || "";
+        setRequestMessage(diagnostic ? `${summary} ${diagnostic}` : summary);
       }
     } catch (error) {
       setRequestState("error");
@@ -971,6 +1315,11 @@ export function App() {
         ? wholePlanCost(plan, catalog)
         : totalLookCosts(plan, catalog)
       : null;
+  const previewOptions =
+    plan && catalog ? previewOptionsForPlan(plan, catalog, planOwnedItems) : [];
+  const previewSourceKey = previewOptions
+    .map((option) => `${option.id}:${option.sourceKey}`)
+    .join("|");
 
   return (
     <main className="app-shell">
@@ -1245,9 +1594,17 @@ export function App() {
                     />
                   ))}
                 </div>
-                <p className="preview-note">
-                  Product photos and personal photo previews are not part of this development screen.
-                </p>
+                <PreviewPanel
+                  key={previewSourceKey}
+                  enabled={previewStatus.enabled && planCurrent}
+                  detail={
+                    !planCurrent
+                      ? "Update the plan before generating a preview."
+                      : previewStatus.detail
+                  }
+                  loadingStatus={previewStatusState === "loading"}
+                  options={previewOptions}
+                />
               </>
             ) : requestState === "error" && requestMessage ? (
               <div className="empty-state is-error" role="alert">{requestMessage}</div>

@@ -1,11 +1,13 @@
 """Failure handling of the Muse Image client, without network calls."""
 
+import asyncio
 import base64
 import copy
 import http.client
 import importlib.util
 import io
 import json
+import time
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request
@@ -243,6 +245,35 @@ def test_a_reply_that_is_not_json_is_an_error() -> None:
     with pytest.raises(ImageRequestError, match="not valid JSON"):
         images.generate("A navy sweater")
     assert len(sent) == 1
+
+
+def test_async_edit_cancels_http_and_cleans_request_at_deadline() -> None:
+    requests: list[Request] = []
+    cancelled = False
+
+    async def post(request: Request, timeout_s: float) -> dict[str, Any]:
+        nonlocal cancelled
+        requests.append(request)
+        try:
+            await asyncio.Future()
+        except asyncio.CancelledError:
+            cancelled = True
+            raise
+
+    images = MuseImageClient(KEY, "muse-image-1.0", async_post=post)
+    with pytest.raises(ImageRequestError, match="too long") as failure:
+        asyncio.run(
+            images.edit_async(
+                "Use the selected look",
+                [InputImage(jpeg(), "image/jpeg")],
+                deadline=time.monotonic() + 0.01,
+            )
+        )
+
+    assert failure.value.timed_out
+    assert cancelled
+    assert requests[0].data is None
+    assert requests[0].headers == {}
 
 
 @pytest.mark.parametrize(

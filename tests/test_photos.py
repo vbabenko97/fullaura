@@ -3,11 +3,13 @@
 import asyncio
 import base64
 import io
+import time
 from collections.abc import Sequence
 from urllib.error import HTTPError
 from urllib.request import Request
 
 import pytest
+from starlette.requests import Request as StarletteRequest
 
 from backend.app.meta_images import ImageRequestError, ImageResult, InputImage, MuseImageClient
 from backend.app.photos import (
@@ -18,6 +20,9 @@ from backend.app.photos import (
     PreviewImage,
     PreviewResponse,
     create_preview,
+    create_preview_async,
+    read_preview_uploads,
+    wait_for_preview_or_disconnect,
 )
 
 PREVIEW = b"\x89PNG\r\n\x1a\npreview"
@@ -56,6 +61,73 @@ class FailingEditor:
         self, prompt: str, images: Sequence[InputImage], *, size: str | None = None
     ) -> ImageResult:
         raise self.failure
+
+
+class FakeAsyncEditor:
+    def __init__(self, result: ImageResult | BaseException) -> None:
+        self.result = result
+        self.prompt: str | None = None
+        self.images: list[InputImage] = []
+
+    async def edit_async(
+        self,
+        prompt: str,
+        images: Sequence[InputImage],
+        *,
+        deadline: float,
+    ) -> ImageResult:
+        self.prompt = prompt
+        self.images = list(images)
+        if isinstance(self.result, BaseException):
+            raise self.result
+        return self.result
+
+
+def preview_request(body: bytes, boundary: str = "test-boundary") -> Request:
+    messages = [
+        {"type": "http.request", "body": body, "more_body": False},
+        {"type": "http.disconnect"},
+    ]
+
+    async def receive() -> dict[str, object]:
+        return messages.pop(0)
+
+    return StarletteRequest(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/previews",
+            "headers": [
+                (b"content-type", f"multipart/form-data; boundary={boundary}".encode()),
+                (b"content-length", str(len(body)).encode()),
+            ],
+            "query_string": b"",
+            "server": ("test", 80),
+            "client": ("test", 1),
+            "scheme": "http",
+        },
+        receive,
+    )
+
+
+def preview_multipart(
+    parts: Sequence[tuple[str, bytes, str | None]], boundary: str = "test-boundary"
+) -> bytes:
+    body = bytearray()
+    for name, value, content_type in parts:
+        body.extend(f"--{boundary}\r\n".encode())
+        if content_type:
+            body.extend(
+                f'Content-Disposition: form-data; name="{name}"; filename="{name}.jpg"\r\n'.encode()
+            )
+            body.extend(f"Content-Type: {content_type}\r\n".encode())
+        else:
+            body.extend(f'Content-Disposition: form-data; name="{name}"\r\n'.encode())
+        body.extend(b"\r\n")
+        body.extend(value)
+        body.extend(b"\r\n")
+    body.extend(f"--{boundary}--\r\n".encode())
+    return bytes(body)
 
 
 def _traceback_locals(error: BaseException) -> list[dict[str, object]]:
@@ -131,6 +203,30 @@ def test_create_preview_strips_metadata_and_discards_inputs_after_success() -> N
     assert preview.data == PREVIEW
     preview.discard()
     assert preview.data == bytearray()
+
+
+def test_async_preview_strips_metadata_and_discards_inputs_after_success() -> None:
+    tiff = b"MM\x00*\x00\x00\x00\x08\x00\x00\x00\x00\x00\x00private location"
+    private = segment(0xE1, b"Exif\x00\x00" + tiff)
+    portrait = jpeg(private)
+    full_body = jpeg(private)
+    editor = FakeAsyncEditor(result())
+
+    preview = asyncio.run(
+        create_preview_async(
+            "Use the selected look",
+            portrait,
+            full_body,
+            editor,
+            deadline=time.monotonic() + 1,
+        )
+    )
+
+    assert editor.prompt == "Use the selected look"
+    assert all(b"private location" not in image.data for image in editor.images)
+    assert portrait == bytearray() and full_body == bytearray()
+    assert preview.data == PREVIEW
+    preview.discard()
 
 
 @pytest.mark.parametrize(
@@ -272,3 +368,153 @@ def test_preview_response_discards_image_after_send_or_send_failure(send_failure
     assert sent[0]["type"] == "http.response.start"
     assert sent[1]["body"] == PREVIEW
     assert (b"cache-control", b"no-store") in sent[0]["headers"]
+
+
+def test_preview_upload_parser_keeps_jpegs_in_memory() -> None:
+    photo = bytes(jpeg())
+    body = preview_multipart(
+        [
+            ("portrait", photo, "image/jpeg"),
+            ("full_body", photo, "image/jpeg"),
+            ("prompt", b"Use the selected look", None),
+        ]
+    )
+
+    prompt, portrait, full_body = asyncio.run(read_preview_uploads(preview_request(body)))
+
+    assert prompt == "Use the selected look"
+    assert portrait == photo and full_body == photo
+    portrait.clear()
+    full_body.clear()
+
+
+def test_preview_upload_parser_rejects_oversized_photo(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("backend.app.photos.MAX_PHOTO_BYTES", 4)
+    body = preview_multipart(
+        [
+            ("portrait", b"12345", "image/jpeg"),
+            ("full_body", b"1", "image/jpeg"),
+            ("prompt", b"look", None),
+        ]
+    )
+
+    with pytest.raises(PhotoInputError, match="no larger than 10 MiB"):
+        asyncio.run(read_preview_uploads(preview_request(body)))
+
+
+def test_preview_task_is_cancelled_when_browser_disconnects() -> None:
+    class DisconnectingRequest:
+        def __init__(self) -> None:
+            self.checks = 0
+
+        async def receive(self) -> dict[str, str]:
+            self.checks += 1
+            return {"type": "http.disconnect" if self.checks > 1 else "http.request"}
+
+    class WaitingEditor:
+        def __init__(self) -> None:
+            self.started = asyncio.Event()
+            self.cancelled = False
+
+        async def edit_async(
+            self,
+            prompt: str,
+            images: Sequence[InputImage],
+            *,
+            deadline: float,
+        ) -> ImageResult:
+            self.started.set()
+            try:
+                await asyncio.Future()
+            except asyncio.CancelledError:
+                self.cancelled = True
+                raise
+
+    async def run() -> tuple[PreviewImage | None, WaitingEditor, bytearray, bytearray]:
+        editor = WaitingEditor()
+        portrait = jpeg()
+        full_body = jpeg()
+        response = await wait_for_preview_or_disconnect(
+            DisconnectingRequest(),
+            "Use the selected look",
+            portrait,
+            full_body,
+            editor,
+            deadline=time.monotonic() + 1,
+        )
+        return response, editor, portrait, full_body
+
+    preview, editor, portrait, full_body = asyncio.run(run())
+
+    assert preview is None
+    assert editor.cancelled
+    assert portrait == bytearray() and full_body == bytearray()
+
+
+def test_fast_preview_returns_before_deadline_with_a_starlette_request() -> None:
+    photo = bytes(jpeg())
+    body = preview_multipart(
+        [
+            ("portrait", photo, "image/jpeg"),
+            ("full_body", photo, "image/jpeg"),
+            ("prompt", b"Use the selected look", None),
+        ]
+    )
+    messages = [{"type": "http.request", "body": body, "more_body": False}]
+    receive_started = asyncio.Event()
+    allow_disconnect = asyncio.Event()
+
+    async def receive() -> dict[str, object]:
+        if messages:
+            return messages.pop(0)
+        receive_started.set()
+        await allow_disconnect.wait()
+        return {"type": "http.disconnect"}
+
+    request = StarletteRequest(
+        {
+            "type": "http",
+            "method": "POST",
+            "path": "/api/previews",
+            "headers": [
+                (b"content-type", b"multipart/form-data; boundary=test-boundary"),
+                (b"content-length", str(len(body)).encode()),
+            ],
+            "query_string": b"",
+            "server": ("test", 80),
+            "client": ("test", 1),
+            "scheme": "http",
+        },
+        receive,
+    )
+
+    class FastEditor:
+        async def edit_async(
+            self,
+            prompt: str,
+            images: Sequence[InputImage],
+            *,
+            deadline: float,
+        ) -> ImageResult:
+            await receive_started.wait()
+            return ImageResult(PREVIEW, "image/png", 1, 0.0, {}, None)
+
+    async def run() -> tuple[PreviewImage, float, bytearray, bytearray]:
+        prompt, portrait, full_body = await read_preview_uploads(request)
+        started_at = time.monotonic()
+        preview = await wait_for_preview_or_disconnect(
+            request,
+            prompt,
+            portrait,
+            full_body,
+            FastEditor(),
+            deadline=started_at + 0.2,
+        )
+        assert preview is not None
+        return preview, time.monotonic() - started_at, portrait, full_body
+
+    preview, elapsed_s, portrait, full_body = asyncio.run(run())
+
+    assert preview.data == PREVIEW
+    assert elapsed_s < 0.1
+    assert portrait == bytearray() and full_body == bytearray()
