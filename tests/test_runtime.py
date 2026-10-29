@@ -170,3 +170,24 @@ def test_production_serves_assets_and_reports_missing_entrypoint(tmp_path: Path)
         assert client.get("/api/catalog").status_code == 404
         index.unlink()
         assert client.get("/api/ready").status_code == 503
+
+
+def test_production_demo_requires_explicit_opt_in_and_keeps_previews_off(tmp_path: Path) -> None:
+    (tmp_path / "index.html").write_text("<html>FullAura</html>", encoding="utf-8")
+    settings = Settings(
+        environment="production",
+        public_demo_enabled=True,
+        web_dist=tmp_path,
+    )
+    with TestClient(create_app(settings), base_url="https://testserver") as client:
+        session = client.get("/api/session")
+        assert session.status_code == 200
+        assert session.json()["enabled"] is True
+        assert "secure" in session.headers["set-cookie"].lower()
+        assert client.get("/api/catalog").status_code == 200
+        assert client.get("/api/previews/status").json() == {
+            "enabled": False,
+            "detail": "Photo previews are available only in development",
+        }
+        assert client.post("/api/session/confirm-age", json={"over_18": True}).status_code == 200
+        assert client.post("/api/plans", json={}).status_code == 422

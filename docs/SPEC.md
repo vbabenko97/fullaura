@@ -85,6 +85,12 @@ FullAura does not infer health, ethnicity, personality or other sensitive traits
 
 Photo uploads remain disabled until T-02 passes; production keeps them off. The development route removes image metadata and applies the no-persistent-server-copy policy in [DATA.md](DATA.md#photo-handling-for-upload-support). Before model access is open to the public, FullAura asks each person to confirm that they are 18 or older and shows a notice that explains how their photos are processed. Meta's Standard mode keeps content out of model training but does not mean zero retention ([D-07](DECISIONS.md#d-07-standard-mode-for-personal-photographs)), so the notice cannot rely on it.
 
+## Public demo access
+
+Production exposes the catalog and planning routes only when `FULLAURA_PUBLIC_DEMO_ENABLED=true`. The default keeps them closed. A browser session receives an opaque, HTTP-only cookie; the server stores its 18+ confirmation and request count in memory for up to 24 hours of inactivity. Each session can submit three planning requests. Initial generation, budget updates and item replacements each count. The browser shows the remaining count before another request.
+
+This limit applies to one browser session. It does not set a total or account-wide spending ceiling, and process restarts reset the in-memory count. The production pilot therefore also needs verified Azure and model-provider spending controls before the opt-in flag is enabled ([D-34](DECISIONS.md#d-34-open-the-pilot-with-anonymous-limited-sessions)).
+
 ## Out of scope
 
 The first version leaves out full wardrobe ingestion, city-wide stock search, payments, booking, social features, and more than one agent service.

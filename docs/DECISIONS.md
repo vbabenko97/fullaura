@@ -256,3 +256,11 @@ Each decision has a number that is never reused and a status: accepted, proposed
 - **Decision:** Send `reasoning_effort=medium` with planning requests and keep the 6,000-token completion cap. Code remains authoritative for budget, catalog, lock and look-structure checks.
 - **Reason:** Muse Spark's default `xhigh` reasoning exhausted the completion cap before returning JSON in a live planning request. Meta documents `medium` as the general agentic setting and says lower reasoning effort uses fewer generated tokens; reasoning and the answer share the completion budget ([recommended settings](https://dev.meta.ai/docs/muse-spark-open/settings), [inference guidance](https://dev.meta.ai/docs/muse-spark-open/deploy)).
 - **Consequences:** More of the bounded completion budget remains available for the structured plan. The checked plan still has to pass the same hard constraints.
+
+## D-34: Open the pilot with anonymous limited sessions
+
+- **Date:** 2026-10-29
+- **Status:** accepted
+- **Decision:** Production exposes the catalog and planning routes only when `FULLAURA_PUBLIC_DEMO_ENABLED=true`. Each browser session uses a random opaque `HttpOnly`, `Secure`, `SameSite=Lax` cookie. The server stores age confirmation and planning-request count in memory and expires inactive sessions after 24 hours. Planning requires an explicit 18+ confirmation and permits three requests per session; initial plans, updates and replacements count. Photo previews stay disabled in production pending T-02.
+- **Reason:** A small link-accessible pilot needs a clear age gate and a bounded number of paid planning submissions without adding accounts or a database.
+- **Consequences:** The session limit assumes one process, one worker and one replica. A process restart resets request counts, and a person can start a new browser session. This is not an aggregate spending ceiling or abuse-proof access control. Verify Azure and provider account-level spending controls before enabling the public routes. The interface explains the current photo state and the processing that would apply if the T-02 gate is later passed.

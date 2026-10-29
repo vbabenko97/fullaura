@@ -5,12 +5,29 @@ import "../src/styles.css";
 import "./fixture.css";
 import firstPlanJson from "./fixtures/plan-success-initial.fixture.json?raw";
 import reducedBudgetPlanJson from "./fixtures/plan-success-reduced-budget.fixture.json?raw";
+import reducedBudgetReplacementPlanJson from "./fixtures/plan-success-reduced-budget-replacement.fixture.json?raw";
 
 const firstPlan: unknown = JSON.parse(firstPlanJson);
 const reducedBudgetPlan: unknown = JSON.parse(reducedBudgetPlanJson);
+const reducedBudgetReplacementPlan: unknown = JSON.parse(reducedBudgetReplacementPlanJson);
 const fixtureBanner =
   "Deterministic test fixture. Scripted plan; not live model output or server-validated.";
 const liveFetch = window.fetch.bind(window);
+let ageConfirmed = false;
+let planRequestsUsed = 0;
+
+function sessionResponse(): Response {
+  return new Response(
+    JSON.stringify({
+      enabled: true,
+      age_confirmed: ageConfirmed,
+      plan_requests_used: planRequestsUsed,
+      plan_requests_limit: 3,
+      plan_requests_remaining: 3 - planRequestsUsed,
+    }),
+    { headers: { "Content-Type": "application/json" } },
+  );
+}
 
 window.fetch = async (input, init) => {
   const url =
@@ -19,15 +36,41 @@ window.fetch = async (input, init) => {
       : input instanceof URL
         ? input
         : new URL(input.url);
+  if (url.pathname === "/api/session") return sessionResponse();
+  if (url.pathname === "/api/session/confirm-age") {
+    const confirmation: unknown = JSON.parse(String(init?.body));
+    if (asRecord(confirmation).over_18 !== true) {
+      return new Response(JSON.stringify({ detail: "Age confirmation required" }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    ageConfirmed = true;
+    return sessionResponse();
+  }
   if (url.pathname !== "/api/plans") return liveFetch(input, init);
+  if (!ageConfirmed) {
+    return new Response(JSON.stringify({ detail: "Age confirmation required" }), {
+      status: 403,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
 
   const requestBody: unknown = JSON.parse(String(init?.body));
   const request = asRecord(requestBody);
   const state = asRecord(request.state);
   const budget = asRecord(state.budget);
-  const plan = Number(budget.amount_cents) <= 16000 ? reducedBudgetPlan : firstPlan;
+  const plan = request.replacement
+    ? reducedBudgetReplacementPlan
+    : Number(budget.amount_cents) <= 16000
+      ? reducedBudgetPlan
+      : firstPlan;
+  planRequestsUsed += 1;
   return new Response(JSON.stringify({ outcome: "success", plan, conflicts: [] }), {
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-Plan-Requests-Remaining": String(3 - planRequestsUsed),
+    },
   });
 };
 
@@ -77,12 +120,13 @@ async function runFixtureFlow(): Promise<void> {
   await waitFor(() => document.querySelector(".catalog-status")?.textContent?.includes("15 catalog products") ?? false);
   setValue("#style-goal", "Relaxed office outfits");
   setValue("#budget-amount", "250");
+  document.querySelector<HTMLInputElement>("#confirm-over-18")?.click();
   document.querySelector<HTMLButtonElement>('button[type="submit"]')?.click();
   await waitFor(() => document.querySelectorAll(".look-card").length === 3);
 
   document
     .querySelector<HTMLButtonElement>(
-      'button[aria-label="Keep MAARKOS HEAVY WEIGHT T-SHIRT in look_1"]',
+      'button[aria-label="Keep JAAMES LANGARMSHIRT in look_2"]',
     )
     ?.click();
   setValue("#budget-amount", "160");
@@ -92,9 +136,19 @@ async function runFixtureFlow(): Promise<void> {
       document.querySelector(".plan-total strong")?.textContent?.includes("234,40") === true &&
       document
         .querySelector<HTMLButtonElement>(
-          'button[aria-label="Release MAARKOS HEAVY WEIGHT T-SHIRT in look_1"]',
+          'button[aria-label="Release JAAMES LANGARMSHIRT in look_2"]',
         )
         ?.getAttribute("aria-pressed") === "true",
+  );
+  document
+    .querySelector<HTMLButtonElement>(
+      'button[aria-label="Replace REHMAA LEGGINGS in look_1"]',
+    )
+    ?.click();
+  await waitFor(
+    () =>
+      document.querySelector(".request-message")?.textContent?.includes("The item was replaced.") ??
+      false,
   );
   document.body.dataset.fixtureState = "ready";
 }

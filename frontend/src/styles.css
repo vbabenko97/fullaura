@@ -380,6 +380,28 @@
   margin-top: calc(-1 * var(--space-xs));
 }
 
+.demo-consent {
+  display: grid;
+  gap: var(--space-xs);
+  border-top: 1px solid var(--color-rule);
+  padding-top: var(--space-md);
+}
+
+.demo-consent .check-choice {
+  align-items: flex-start;
+  text-transform: none;
+}
+
+.demo-consent .check-choice input {
+  margin-top: 2px;
+}
+
+.session-quota {
+  color: var(--color-ink-2);
+  font-size: var(--text-sm);
+  font-weight: 650;
+}
+
 .notice-error {
   border: 1px solid var(--color-error);
   border-radius: var(--radius-inner);
