@@ -1,6 +1,6 @@
 # Planning evaluation
 
-The T-06 protocol compares Muse Spark's complete planning flow with a deterministic baseline on the same fixed, non-personal cases. The baseline and machine checks are prepared; the live comparison, human scoring, demo video and submission remain outstanding.
+The T-06 protocol compares Muse Spark's generated and code-checked plans with a deterministic baseline on the same fixed, non-personal cases. The live comparison ran once on 2026-10-29 against code commit `2ade8433a27b8dd6c6873a765aedcb805d467b3d`. Human scoring, demo video and submission remain outstanding.
 
 ## Cases
 
@@ -29,6 +29,20 @@ The offline run on catalog `fullaura-catalog-2026-10-28` selected a plan that pa
 | `wool-free-whole-plan` | €219.55 across distinct items | Passes €220 for the whole plan |
 
 These amounts describe selected catalog products, not Baseten usage or remaining hackathon credit.
+
+## Live comparison
+
+One sequential run used `meta-models/muse-spark-open-1026` at `https://inference.baseten.co/v1` on code commit `2ade8433a27b8dd6c6873a765aedcb805d467b3d`. Each case returned a checked plan on its first proposal. The run used 3 of the 12 allowed HTTP attempts and wrote three raw responses to the ignored `runs/t06/20261029T183234323281Z/provider_responses.jsonl` file.
+
+| Case | Baseline price | Muse Spark price | Rejected proposals / hard violations | Final violations | Calls / HTTP | Input / output tokens | Latency | Estimated API cost |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
+| `wool-free-per-look` | €414.25 | €499.45 | 0 / 0 | 0 | 1 / 1 | 1,165 / 2,397 | 7.753 s | $0.011644 |
+| `open-materials-per-look` | €414.25 | €694.25 | 0 / 0 | 0 | 1 / 1 | 1,417 / 1,917 | 5.779 s | $0.009919 |
+| `wool-free-whole-plan` | €219.55 | €219.55 | 0 / 0 | 0 | 1 / 1 | 1,165 / 3,371 | 14.153 s | $0.015783 |
+
+All three model plans passed hard checks and contained three distinct looks. Across the run, Muse Spark used 3,747 input tokens, 7,685 output tokens and 3 HTTP attempts, with 27.685 seconds of summed planner latency. The estimated cost from total reported tokens is $0.037345, assuming all input tokens use the uncached rate; the raw responses report 384 cached input tokens, so this estimate does not apply Baseten's cache discount. It also cannot account for any billable timed-out request without returned usage.
+
+The model-selected catalog price exceeded the baseline in two cases and matched it in the whole-plan case. This is a comparison with a price heuristic on these three fixed cases. No human judgments were recorded, and the results do not establish general planning quality or user preference.
 
 ## Measures
 
