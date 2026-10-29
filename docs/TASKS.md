@@ -8,7 +8,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-02](#t-02-feasibility-test) Feasibility test | next | |
 | [T-03](#t-03-catalog-and-hard-constraints) Catalog and hard constraints | done | 2026-10-28 |
 | [T-04](#t-04-one-complete-flow) One complete flow | done | 2026-10-29 |
-| [T-05](#t-05-azure-demo) Azure demo | planned | |
+| [T-05](#t-05-azure-demo) Azure demo | done | 2026-10-29 |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -52,7 +52,7 @@ Done when: a person can go through the whole flow locally, from inputs to an edi
 
 Deploy the tested container with secrets kept on the backend only, access controls that fit the pilot, and monitoring that excludes personal inputs. The code requires an explicit opt-in flag for public planning and limits each browser session to three requests. This does not provide an account-wide cost cap. [DEPLOYMENT.md](DEPLOYMENT.md) has the settings and the steps. Azure Container Apps is the accepted direction ([D-12](DECISIONS.md#d-12-one-azure-container-app-for-the-demo)). Before deploying, validate the region quota, the credit balance and the cost controls, as step 2 of the deployment sequence says.
 
-Done when: the checks in step 5 of the deployment sequence pass, and the URL, commit, resource names and rollback image digest are recorded in DEPLOYMENT.md, as step 7 says.
+Done when: the checks in step 5 of the deployment sequence pass, and the URL, source commit, resource names and deployed image digest are recorded in DEPLOYMENT.md. Record a previous working rollback digest when one exists; the first deployment has no earlier working image.
 
 ## T-06: Evaluation and submission
 
