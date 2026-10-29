@@ -13,11 +13,14 @@ Use one Azure Container App on a Consumption workload profile. FastAPI serves th
 | Ingress | External HTTPS; target port 8000 |
 | Revisions | Single active revision |
 | Replicas | Minimum 0, maximum 1 |
+| Public planning | `FULLAURA_PUBLIC_DEMO_ENABLED=false` until account-level spending controls are verified |
 | Probes | HTTP `/api/health` for liveness; `/api/ready` for readiness, port 8000 |
 | Container image | Built from a recorded Git commit; deploy by immutable image digest |
 | Secrets | Container App secrets; inject into backend environment variables |
 
 Scaling to zero reduces idle application usage but introduces a cold start. A replica limit is not a spending cap. Logging, storage, registry, and network charges must also be checked. The Azure and Meta credits are separate budgets; neither balance has been verified.
+
+The app stores anonymous 18+ confirmations and three-request session quotas in process memory. Keep one Uvicorn worker and one active replica. A process restart resets those counts, and browser users can create another session. The session limit does not cap aggregate Azure or provider spend.
 
 Use a public GHCR image containing code and compiled assets if available. Never bake `.env`, customer images, or provider keys into an image. No publishing or deployment workflow runs automatically in this repository.
 
@@ -28,6 +31,7 @@ Use a public GHCR image containing code and compiled assets if available. Never 
 - An authenticated Azure session with permission to create Container Apps resources.
 - A reachable container image and the tested commit/digest.
 - For model features: Meta API access, Standard-mode model IDs, confirmed credits, and a backend secret named `MODEL_API_KEY`. Enter secret values directly in local configuration or Azure secret settings.
+- Before opening planning: verify Azure and Baseten spending controls, then set `FULLAURA_PUBLIC_DEMO_ENABLED=true`. Each browser session allows three planning requests and expires after 24 hours of inactivity; this does not cap total pilot spend.
 
 ## Deployment sequence
 
@@ -36,7 +40,7 @@ Use a public GHCR image containing code and compiled assets if available. Never 
 3. Publish the image to the chosen registry and record its digest.
 4. Create the dedicated Container Apps environment and app with the settings above. Configure explicit HTTP probes; Docker `HEALTHCHECK` alone does not configure Azure probes.
 5. Verify the HTTPS root page, frontend assets, `/api/health`, `/api/ready`, and a JSON 404 for an unknown `/api` route.
-6. Add model secrets only when the provider adapter exists. Before public model access, implement bounded request/image usage and the photo retention/deletion flow.
+6. Add model secrets only when the provider adapter exists. Keep the public planning flag false until Azure and provider account-level spending controls are verified. The app requires an 18+ confirmation and limits each anonymous session to three plan requests; updates and replacements count. Photo previews remain disabled pending T-02 and the route remains development-only.
 7. Record the URL, commit, resource names, and rollback image digest in this document. Review usage after the first real session and after the demo.
 
 Container-local files are ephemeral. The scaffold stores no photographs. If the MVP needs persistent image storage, add private Azure Blob Storage with short-lived access and explicit deletion, then document that behavior before accepting uploads.

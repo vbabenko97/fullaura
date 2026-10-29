@@ -12,6 +12,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 @dataclass(frozen=True, slots=True)
 class Settings:
     environment: str = "development"
+    public_demo_enabled: bool = False
     web_dist: Path = PROJECT_ROOT / "frontend" / "dist"
     catalog_file: Path = PROJECT_ROOT / "backend" / "data" / "catalog.json"
     # Muse Spark on Baseten; empty values fall back to the planner's defaults.
@@ -32,6 +33,7 @@ class Settings:
         web_dist = os.getenv("FULLAURA_WEB_DIST")
         return cls(
             environment=os.getenv("FULLAURA_ENV", "development"),
+            public_demo_enabled=os.getenv("FULLAURA_PUBLIC_DEMO_ENABLED", "").lower() == "true",
             web_dist=Path(web_dist).resolve() if web_dist else cls().web_dist,
             baseten_api_key=os.getenv("BASETEN_API_KEY", ""),
             baseten_base_url=os.getenv("BASETEN_BASE_URL", ""),

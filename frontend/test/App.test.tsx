@@ -6,6 +6,7 @@ import { App } from "../src/App";
 import firstPlanJson from "./fixtures/plan-success-initial.fixture.json?raw";
 import replacementPlanJson from "./fixtures/plan-success-replacement.fixture.json?raw";
 import reducedBudgetPlanJson from "./fixtures/plan-success-reduced-budget.fixture.json?raw";
+import reducedBudgetReplacementPlanJson from "./fixtures/plan-success-reduced-budget-replacement.fixture.json?raw";
 
 /* The catalog fixture is the checked-in non-synthetic catalog. Plan responses below are
  * deterministic UI fixtures, not model output or user recommendations. */
@@ -18,11 +19,17 @@ const FIXTURE_LABEL = "Deterministic API fixture";
 const firstPlan: unknown = JSON.parse(firstPlanJson);
 const replacementPlan: unknown = JSON.parse(replacementPlanJson);
 const reducedBudgetPlan: unknown = JSON.parse(reducedBudgetPlanJson);
+const reducedBudgetReplacementPlan: unknown = JSON.parse(reducedBudgetReplacementPlanJson);
 
-function apiResponse(payload: unknown, status = 200): Response {
+function apiResponse(
+  payload: unknown,
+  status = 200,
+  responseHeaders: Record<string, string> = {},
+): Response {
   return {
     ok: status >= 200 && status < 300,
     status,
+    headers: new Headers(responseHeaders),
     json: async () => payload,
   } as Response;
 }
@@ -36,9 +43,30 @@ function installApiFixtures(plans: unknown[], previewsEnabled = false, previewFe
     throw new Error("The UI fixture must use the checked-in non-synthetic catalog");
   }
   const requests: unknown[] = [];
+  let ageConfirmed = false;
+  let planRequestsUsed = 0;
   const fetchFixture = vi.fn<typeof fetch>(async (input, init) => {
     const url = String(input);
     if (url === "/api/catalog") return apiResponse(catalogFixture);
+    if (url === "/api/session") {
+      return apiResponse({
+        enabled: true,
+        age_confirmed: ageConfirmed,
+        plan_requests_used: planRequestsUsed,
+        plan_requests_limit: 3,
+        plan_requests_remaining: 3 - planRequestsUsed,
+      });
+    }
+    if (url === "/api/session/confirm-age") {
+      ageConfirmed = true;
+      return apiResponse({
+        enabled: true,
+        age_confirmed: true,
+        plan_requests_used: planRequestsUsed,
+        plan_requests_limit: 3,
+        plan_requests_remaining: 3 - planRequestsUsed,
+      });
+    }
     if (url === "/api/previews/status") {
       return apiResponse({
         enabled: previewsEnabled,
@@ -46,11 +74,15 @@ function installApiFixtures(plans: unknown[], previewsEnabled = false, previewFe
       });
     }
     if (url === "/api/plans") {
+      if (!ageConfirmed) return apiResponse({ detail: "Age confirmation required" }, 403);
       const request: unknown = JSON.parse(String(init?.body));
       requests.push(request);
+      planRequestsUsed += 1;
       const plan = plans.shift();
       if (plan === undefined) throw new Error(`${FIXTURE_LABEL} has no queued plan response`);
-      return apiResponse(plan);
+      return apiResponse(plan, 200, {
+        "X-Plan-Requests-Remaining": String(3 - planRequestsUsed),
+      });
     }
     if (url === "/api/previews" && previewFetch) return previewFetch(input, init);
     throw new Error(`${FIXTURE_LABEL} does not define ${url}`);
@@ -92,6 +124,7 @@ async function prepareEnabledPreviewFlow(plans: unknown[], previewFetch: typeof 
 }
 
 function submitPreferences(styleGoal: string, budget: string) {
+  fireEvent.click(screen.getByRole("checkbox", { name: "I confirm that I am 18 or older." }));
   fireEvent.change(screen.getByLabelText("What should the looks work for?"), {
     target: { value: styleGoal },
   });
@@ -147,6 +180,34 @@ afterEach(() => {
 });
 
 describe(`${FIXTURE_LABEL}: preferences-to-results flow`, () => {
+  it("requires age confirmation and disables planning after three session requests", async () => {
+    installApiFixtures([
+      successfulResponse(firstPlan),
+      successfulResponse(reducedBudgetPlan),
+      successfulResponse(reducedBudgetReplacementPlan),
+    ]);
+    render(<App />);
+    await screen.findByText("15 catalog products");
+    submitPreferences("A limited demo session", "250");
+
+    fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+    await screen.findByText("The three looks passed the catalog and budget checks.");
+    await screen.findByText("2 of 3 planning requests remain in this session.");
+    fireEvent.click(screen.getByRole("button", { name: "Keep JAAMES LANGARMSHIRT in look_2" }));
+    fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "160" } });
+    fireEvent.click(screen.getByRole("button", { name: "Update three looks" }));
+    await screen.findByText("1 of 3 planning requests remain in this session.");
+    fireEvent.click(screen.getByRole("button", { name: "Replace REHMAA LEGGINGS in look_1" }));
+    await screen.findByText("The item was replaced. All three looks passed the catalog and budget checks.");
+
+    expect(screen.getByText("0 of 3 planning requests remain in this session.")).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Update three looks" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole("checkbox", { name: "I confirm that I am 18 or older." }) as HTMLInputElement).disabled).toBe(true);
+    expect(
+      screen.getByText(/two JPEGs will be sent to Meta after metadata removal/),
+    ).toBeTruthy();
+  });
+
   it("generates three looks, sends a changed budget and keeps a lock scoped to one look", async () => {
     const requests = installApiFixtures([
       successfulResponse(firstPlan),
@@ -471,10 +532,33 @@ describe(`${FIXTURE_LABEL}: preferences-to-results flow`, () => {
   it("does not change locks while an update is in flight", async () => {
     let resolveUpdate: ((response: Response) => void) | undefined;
     let planningCalls = 0;
+    let ageConfirmed = false;
     const fetchFixture = vi.fn<typeof fetch>((input) => {
+      if (String(input) === "/api/session") {
+        return Promise.resolve(apiResponse({
+          enabled: true,
+          age_confirmed: ageConfirmed,
+          plan_requests_used: 0,
+          plan_requests_limit: 3,
+          plan_requests_remaining: 3,
+        }));
+      }
+      if (String(input) === "/api/session/confirm-age") {
+        ageConfirmed = true;
+        return Promise.resolve(apiResponse({
+          enabled: true,
+          age_confirmed: true,
+          plan_requests_used: 0,
+          plan_requests_limit: 3,
+          plan_requests_remaining: 3,
+        }));
+      }
       if (String(input) === "/api/catalog") return Promise.resolve(apiResponse(catalogFixture));
       if (String(input) === "/api/previews/status") {
         return Promise.resolve(apiResponse({ enabled: false, detail: "Pending T-02" }));
+      }
+      if (String(input) !== "/api/plans") {
+        return Promise.reject(new Error(`Unexpected fixture request: ${String(input)}`));
       }
       planningCalls += 1;
       if (planningCalls === 1) return Promise.resolve(apiResponse(successfulResponse(firstPlan)));
@@ -578,11 +662,29 @@ describe(`${FIXTURE_LABEL}: preferences-to-results flow`, () => {
 
   it("labels an unconfigured development model after the API fixture returns 503", async () => {
     const fetchFixture = vi.fn<typeof fetch>(async (input) => {
+      if (String(input) === "/api/session") {
+        return apiResponse({
+          enabled: true,
+          age_confirmed: false,
+          plan_requests_used: 0,
+          plan_requests_limit: 3,
+          plan_requests_remaining: 3,
+        });
+      }
+      if (String(input) === "/api/session/confirm-age") {
+        return apiResponse({
+          enabled: true,
+          age_confirmed: true,
+          plan_requests_used: 0,
+          plan_requests_limit: 3,
+          plan_requests_remaining: 3,
+        });
+      }
       if (String(input) === "/api/catalog") return apiResponse(catalogFixture);
       if (String(input) === "/api/previews/status") {
         return apiResponse({ enabled: false, detail: "Pending T-02" });
       }
-      return apiResponse({ detail: "BASETEN_API_KEY is not set" }, 503);
+      return apiResponse({ detail: "The planning model is not configured" }, 503);
     });
     vi.stubGlobal("fetch", fetchFixture);
     render(<App />);
@@ -590,13 +692,37 @@ describe(`${FIXTURE_LABEL}: preferences-to-results flow`, () => {
     submitPreferences("A configured model is required", "250");
     fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
     expect((await screen.findByRole("alert")).textContent).toContain(
-      "The planning model is not configured in this development environment.",
+      "The planning model is not configured",
     );
   });
 
   it("shows the network failure state when the planning request rejects", async () => {
     const fetchFixture = vi.fn<typeof fetch>(async (input) => {
+      if (String(input) === "/api/session") {
+        return apiResponse({
+          enabled: true,
+          age_confirmed: false,
+          plan_requests_used: 0,
+          plan_requests_limit: 3,
+          plan_requests_remaining: 3,
+        });
+      }
+      if (String(input) === "/api/session/confirm-age") {
+        return apiResponse({
+          enabled: true,
+          age_confirmed: true,
+          plan_requests_used: 0,
+          plan_requests_limit: 3,
+          plan_requests_remaining: 3,
+        });
+      }
       if (String(input) === "/api/catalog") return apiResponse(catalogFixture);
+      if (String(input) === "/api/previews/status") {
+        return apiResponse({ enabled: false, detail: "Pending T-02" });
+      }
+      if (String(input) === "/api/plans") {
+        throw new TypeError("fixture network unavailable");
+      }
       throw new TypeError("fixture network unavailable");
     });
     vi.stubGlobal("fetch", fetchFixture);

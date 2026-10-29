@@ -152,6 +152,14 @@ interface PreviewStatus {
   detail: string | null;
 }
 
+interface DemoSession {
+  enabled: boolean;
+  age_confirmed: boolean;
+  plan_requests_used: number;
+  plan_requests_limit: number;
+  plan_requests_remaining: number;
+}
+
 interface PreviewOption {
   id: string;
   label: string;
@@ -193,13 +201,14 @@ interface PlanRequest {
 
 type OwnedItemDraft = OwnedItem;
 
-type CatalogState = "loading" | "ready" | "error";
+type CatalogState = "loading" | "ready" | "error" | "disabled";
+type SessionState = "loading" | "ready" | "error";
 type RequestState = "idle" | "loading" | "success" | "error";
 type PreviewStatusState = "loading" | "ready" | "error";
 
 class ApiResponseError extends Error {
-  constructor(readonly status: number) {
-    super(`API request failed with status ${status}`);
+  constructor(readonly status: number, readonly detail: string | null = null) {
+    super(detail ?? `API request failed with status ${status}`);
   }
 }
 
@@ -408,9 +417,50 @@ function parsePreviewStatus(value: unknown): PreviewStatus {
   };
 }
 
+function parseDemoSession(value: unknown): DemoSession {
+  if (
+    !isRecord(value) ||
+    typeof value.enabled !== "boolean" ||
+    typeof value.age_confirmed !== "boolean"
+  ) {
+    throw new Error("Invalid demo session response");
+  }
+  const planRequestsUsed = readNumber(value.plan_requests_used, "used plan request count");
+  const planRequestsLimit = readNumber(value.plan_requests_limit, "plan request limit");
+  const planRequestsRemaining = readNumber(value.plan_requests_remaining, "remaining plan request count");
+  if (
+    !Number.isInteger(planRequestsUsed) ||
+    !Number.isInteger(planRequestsLimit) ||
+    !Number.isInteger(planRequestsRemaining) ||
+    planRequestsUsed < 0 ||
+    planRequestsLimit < 1 ||
+    planRequestsRemaining < 0 ||
+    planRequestsRemaining > planRequestsLimit ||
+    planRequestsUsed + planRequestsRemaining !== planRequestsLimit
+  ) {
+    throw new Error("Invalid demo session request limits");
+  }
+  return {
+    enabled: value.enabled,
+    age_confirmed: value.age_confirmed,
+    plan_requests_used: planRequestsUsed,
+    plan_requests_limit: planRequestsLimit,
+    plan_requests_remaining: planRequestsRemaining,
+  };
+}
+
 function errorMessage(error: unknown): string {
+  if (error instanceof ApiResponseError && error.status === 401) {
+    return "The demo session expired. Refresh the page to start another session.";
+  }
+  if (error instanceof ApiResponseError && error.status === 403) {
+    return error.detail ?? "Confirm that you are 18 or older before requesting a plan.";
+  }
+  if (error instanceof ApiResponseError && error.status === 429) {
+    return error.detail ?? "This demo session has reached its planning request limit.";
+  }
   if (error instanceof ApiResponseError && error.status === 503) {
-    return "The planning model is not configured in this development environment.";
+    return error.detail ?? "The planning model is not configured.";
   }
   if (error instanceof ApiResponseError && error.status === 404) {
     return "Planning is available only when the backend runs in development mode.";
@@ -419,7 +469,16 @@ function errorMessage(error: unknown): string {
 }
 
 async function readJson(response: Response): Promise<unknown> {
-  if (!response.ok) throw new ApiResponseError(response.status);
+  if (!response.ok) {
+    let detail: string | null = null;
+    try {
+      const payload: unknown = await response.json();
+      if (isRecord(payload) && typeof payload.detail === "string") detail = payload.detail;
+    } catch {
+      // Keep the status-based message when the server did not return JSON.
+    }
+    throw new ApiResponseError(response.status, detail);
+  }
   const payload: unknown = await response.json();
   return payload;
 }
@@ -1041,7 +1100,7 @@ function PreviewPanel({ enabled, detail, loadingStatus, options }: PreviewPanelP
       </div>
       <p className="preview-privacy">
         {enabled
-          ? "Metadata is removed before photos are sent to the configured Meta image model. The server does not retain the photos or result."
+          ? "Metadata is removed before photos are sent to Meta. FullAura keeps the photos and result in memory only for this request; Meta’s current terms govern provider retention."
           : loadingStatus
             ? "Checking preview availability…"
             : detail ?? "Photo previews are unavailable."}
@@ -1057,6 +1116,9 @@ function PreviewPanel({ enabled, detail, loadingStatus, options }: PreviewPanelP
 }
 
 export function App() {
+  const [demoSession, setDemoSession] = useState<DemoSession | null>(null);
+  const [sessionState, setSessionState] = useState<SessionState>("loading");
+  const [over18Checked, setOver18Checked] = useState(false);
   const [catalog, setCatalog] = useState<Catalog | null>(null);
   const [catalogState, setCatalogState] = useState<CatalogState>("loading");
   const [catalogError, setCatalogError] = useState<string | null>(null);
@@ -1078,8 +1140,16 @@ export function App() {
 
   useEffect(() => {
     const controller = new AbortController();
-    async function loadCatalog() {
+    async function loadDemoAndCatalog() {
       try {
+        const sessionResponse = await fetch("/api/session", { signal: controller.signal });
+        const session = parseDemoSession(await readJson(sessionResponse));
+        setDemoSession(session);
+        setSessionState("ready");
+        if (!session.enabled) {
+          setCatalogState("disabled");
+          return;
+        }
         const response = await fetch("/api/catalog", { signal: controller.signal });
         const loadedCatalog = parseCatalog(await readJson(response));
         setCatalog(loadedCatalog);
@@ -1087,10 +1157,11 @@ export function App() {
       } catch (error) {
         if (controller.signal.aborted) return;
         setCatalogError(errorMessage(error));
+        setSessionState("error");
         setCatalogState("error");
       }
     }
-    void loadCatalog();
+    void loadDemoAndCatalog();
     return () => controller.abort();
   }, []);
 
@@ -1144,6 +1215,15 @@ export function App() {
     );
   }
 
+  async function refreshDemoSession(): Promise<DemoSession> {
+    const response = await fetch("/api/session");
+    const session = parseDemoSession(await readJson(response));
+    setDemoSession(session);
+    setOver18Checked(session.age_confirmed);
+    setSessionState("ready");
+    return session;
+  }
+
   function toggleLock(lookId: string, slot: Slot, item: ItemRef) {
     if (requestState === "loading") return;
     setLocks((current) => {
@@ -1170,6 +1250,17 @@ export function App() {
 
   async function requestPlan(replacement: ReplacementTarget | null = null) {
     if (!catalog || requestState === "loading") return;
+    if (!demoSession?.enabled || sessionState !== "ready") return;
+    if (demoSession.plan_requests_remaining <= 0) {
+      setRequestMessage("This demo session has reached its three planning requests.");
+      setRequestState("error");
+      return;
+    }
+    if (!demoSession.age_confirmed && !over18Checked) {
+      setRequestMessage("Confirm that you are 18 or older before requesting a plan.");
+      setRequestState("error");
+      return;
+    }
     if (replacement) {
       const look = plan?.looks.find((candidate) => candidate.id === replacement.look_id);
       const targetIsLocked = locks.some(
@@ -1224,11 +1315,38 @@ export function App() {
           : "Requesting three looks from the catalog.",
     );
     try {
+      if (!demoSession.age_confirmed) {
+        const confirmation = await fetch("/api/session/confirm-age", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ over_18: true }),
+        });
+        setDemoSession(parseDemoSession(await readJson(confirmation)));
+        setOver18Checked(true);
+      }
       const response = await fetch("/api/plans", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(request),
       });
+      const remainingHeader = response.headers.get("X-Plan-Requests-Remaining");
+      const remaining = remainingHeader === null ? null : Number(remainingHeader);
+      if (
+        remaining !== null &&
+        Number.isInteger(remaining) &&
+        remaining >= 0 &&
+        remaining <= demoSession.plan_requests_limit
+      ) {
+        setDemoSession((current) =>
+          current
+            ? {
+                ...current,
+                plan_requests_used: current.plan_requests_limit - remaining,
+                plan_requests_remaining: remaining,
+              }
+            : current,
+        );
+      }
       const result = parsePlanResponse(await readJson(response));
       if (result.outcome === "success" && result.plan) {
         if (replacement && plan && !isExactReplacement(plan, result.plan, replacement)) {
@@ -1283,6 +1401,11 @@ export function App() {
     } catch (error) {
       setRequestState("error");
       setRequestMessage(errorMessage(error));
+      try {
+        await refreshDemoSession();
+      } catch {
+        // Keep the last server-confirmed session state if a refresh also fails.
+      }
     }
   }
 
@@ -1295,7 +1418,12 @@ export function App() {
     void requestPlan({ look_id: lookId, slot, item });
   }
 
-  const canSubmit = catalogState === "ready" && requestState !== "loading";
+  const canSubmit =
+    catalogState === "ready" &&
+    requestState !== "loading" &&
+    demoSession?.enabled === true &&
+    demoSession.plan_requests_remaining > 0 &&
+    (demoSession.age_confirmed || over18Checked);
   const preferredColorList = preferredColors
     .split(",")
     .map((color) => color.trim())
@@ -1325,7 +1453,7 @@ export function App() {
     <main className="app-shell">
       <header className="topbar">
         <a className="wordmark" href="/" aria-label="FullAura home">FullAura</a>
-        <p className="environment-label">Development planning</p>
+        <p className="environment-label">Style planning</p>
       </header>
 
       <div className="workspace">
@@ -1339,6 +1467,7 @@ export function App() {
           <p className="catalog-status" aria-live="polite">
             {catalogState === "loading" && "Loading catalog"}
             {catalogState === "ready" && `${catalog?.products.length ?? 0} catalog products`}
+            {catalogState === "disabled" && "Demo closed"}
             {catalogState === "error" && "Catalog unavailable"}
           </p>
         </div>
@@ -1352,6 +1481,11 @@ export function App() {
 
             {catalogState === "error" ? (
               <div className="notice notice-error" role="alert">{catalogError}</div>
+            ) : catalogState === "disabled" ? (
+              <div className="empty-state">
+                <h3>This demo is closed</h3>
+                <p>The planning catalog and model are available only when the pilot is enabled.</p>
+              </div>
             ) : (
               <form className="preferences-form" onSubmit={submitPlan}>
                 <div className="form-field">
@@ -1506,6 +1640,33 @@ export function App() {
                   ))}
                 </section>
 
+                <div className="demo-consent">
+                  <label className="check-choice" htmlFor="confirm-over-18">
+                    <input
+                      checked={demoSession?.age_confirmed === true || over18Checked}
+                      disabled={demoSession?.age_confirmed === true}
+                      id="confirm-over-18"
+                      onChange={(event) => setOver18Checked(event.target.checked)}
+                      required={demoSession?.age_confirmed !== true}
+                      type="checkbox"
+                    />
+                    <span>I confirm that I am 18 or older.</span>
+                  </label>
+                  <p className="field-help">
+                    {demoSession?.age_confirmed
+                      ? "Age confirmation is recorded for this browser session."
+                      : "Planning sends your style preferences, budget and owned-item descriptions to Baseten. This session allows up to three plan requests, including updates and replacements."}
+                  </p>
+                  <p className="field-help">
+                    Photo previews are disabled pending T-02. If enabled later, two JPEGs will be sent to Meta after metadata removal. FullAura keeps photos in memory only for the request; Meta’s current terms govern provider retention.
+                  </p>
+                  {demoSession && (
+                    <p className="session-quota" role="status">
+                      {demoSession.plan_requests_remaining} of {demoSession.plan_requests_limit} planning requests remain in this session.
+                    </p>
+                  )}
+                </div>
+
                 <button
                   aria-busy={requestState === "loading"}
                   className={`primary-button${requestState === "loading" ? " is-loading" : requestState === "error" ? " is-error" : requestState === "success" && planCurrent ? " is-success" : ""}`}
@@ -1515,7 +1676,7 @@ export function App() {
                   {requestState === "loading" ? "Planning looks…" : plan ? "Update three looks" : "Generate three looks"}
                 </button>
                 <p className="submit-help">
-                  This sends your preferences to the configured planning model through Baseten. Provider quota or cost may apply.
+                  This uses one planning request. Provider quota or cost may apply.
                 </p>
               </form>
             )}
@@ -1550,6 +1711,11 @@ export function App() {
                   </div>
                 ))}
               </div>
+            ) : catalogState === "disabled" ? (
+              <div className="empty-state">
+                <h3>Planning is unavailable</h3>
+                <p>The pilot is not open for requests yet.</p>
+              </div>
             ) : catalogState === "error" ? (
               <div className="empty-state" role="status">{catalogError}</div>
             ) : requestState === "loading" && !plan ? (
@@ -1583,7 +1749,7 @@ export function App() {
                       key={look.id}
                       catalog={catalog}
                       lockDisabled={requestState === "loading"}
-                      replaceDisabled={!planCurrent || requestState === "loading"}
+                      replaceDisabled={!planCurrent || !canSubmit}
                       locks={locks}
                       look={look}
                       onToggleLock={toggleLock}

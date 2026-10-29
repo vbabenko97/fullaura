@@ -148,6 +148,7 @@ def test_replacement_changes_only_the_target_and_checks_the_whole_plan(tmp_path:
     app = create_app(Settings(web_dist=tmp_path, catalog_file=FIXTURE), spark=client)
 
     with TestClient(app) as http:
+        authorize_demo(http)
         response = http.post("/api/plans", json=request.model_dump(mode="json"))
 
     payload = response.json()
@@ -423,10 +424,19 @@ def body() -> dict[str, Any]:
     }
 
 
+def authorize_demo(http: TestClient) -> None:
+    session = http.get("/api/session")
+    assert session.status_code == 200
+    assert session.json()["plan_requests_remaining"] == 3
+    confirmation = http.post("/api/session/confirm-age", json={"over_18": True})
+    assert confirmation.status_code == 200
+
+
 def test_the_api_returns_a_checked_plan(tmp_path: Path) -> None:
     client, _, _ = spark(VALID)
     app = create_app(Settings(web_dist=tmp_path, catalog_file=FIXTURE), spark=client)
     with TestClient(app) as http:
+        authorize_demo(http)
         response = http.post("/api/plans", json=body())
     assert response.status_code == 200
     payload = response.json()
@@ -443,6 +453,7 @@ def test_the_api_hides_a_plan_that_still_fails_checks(tmp_path: Path) -> None:
     client, _, _ = spark(WITH_WOOL, WITH_WOOL)
     app = create_app(Settings(web_dist=tmp_path, catalog_file=FIXTURE), spark=client)
     with TestClient(app) as http:
+        authorize_demo(http)
         response = http.post("/api/plans", json=body())
     payload = response.json()
     assert payload["outcome"] == "generation_failed"
@@ -452,8 +463,59 @@ def test_the_api_hides_a_plan_that_still_fails_checks(tmp_path: Path) -> None:
 
 def test_the_api_needs_a_key_and_stays_off_in_production(tmp_path: Path) -> None:
     with TestClient(create_app(Settings(web_dist=tmp_path, catalog_file=FIXTURE))) as http:
+        authorize_demo(http)
         assert http.post("/api/plans", json=body()).status_code == 503
     (tmp_path / "index.html").write_text("<html></html>", encoding="utf-8")
     production = Settings(environment="production", web_dist=tmp_path, baseten_api_key="key")
     with TestClient(create_app(production)) as http:
         assert http.post("/api/plans", json=body()).status_code == 404
+
+
+def test_public_production_planning_requires_a_secure_age_confirmed_session(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "index.html").write_text("<html>FullAura</html>", encoding="utf-8")
+    client, _, _ = spark(VALID)
+    settings = Settings(
+        environment="production",
+        public_demo_enabled=True,
+        web_dist=tmp_path,
+        catalog_file=FIXTURE,
+    )
+    with TestClient(create_app(settings, spark=client), base_url="https://testserver") as http:
+        assert http.post("/api/plans", json=body()).status_code == 401
+        session = http.get("/api/session")
+        assert session.json()["enabled"] is True
+        assert "secure" in session.headers["set-cookie"].lower()
+        assert http.post("/api/plans", json=body()).status_code == 403
+        assert http.post("/api/session/confirm-age", json={"over_18": True}).status_code == 200
+        response = http.post("/api/plans", json=body())
+    assert response.status_code == 200
+    assert response.json()["outcome"] == "success"
+    assert "max-age=86400" in response.headers["set-cookie"].lower()
+
+
+def test_api_requires_age_confirmation_and_caps_plan_submissions_per_session(
+    tmp_path: Path,
+) -> None:
+    client, sent, _ = spark(VALID, VALID, VALID)
+    app = create_app(Settings(web_dist=tmp_path, catalog_file=FIXTURE), spark=client)
+    with TestClient(app) as http:
+        session = http.get("/api/session")
+        cookie = http.cookies.get("fullaura_demo_session")
+        assert cookie and session.json()["age_confirmed"] is False
+        assert "httponly" in session.headers["set-cookie"].lower()
+        assert "samesite=lax" in session.headers["set-cookie"].lower()
+
+        assert http.post("/api/plans", json=body()).status_code == 403
+        assert http.post("/api/session/confirm-age", json={"over_18": False}).status_code == 403
+        confirmed = http.post("/api/session/confirm-age", json={"over_18": True})
+        assert confirmed.status_code == 200
+        assert confirmed.json()["age_confirmed"] is True
+
+        responses = [http.post("/api/plans", json=body()) for _ in range(3)]
+        assert all(response.status_code == 200 for response in responses)
+        assert responses[-1].headers["x-plan-requests-remaining"] == "0"
+        assert http.post("/api/plans", json=body()).status_code == 429
+        assert http.get("/api/session").json()["plan_requests_used"] == 3
+        assert len(sent) == 3
