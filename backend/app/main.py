@@ -17,6 +17,8 @@ from backend.app.planner import (
     result_json,
 )
 
+PREVIEW_DISABLED_DETAIL = "Photo previews are unavailable pending the T-02 feasibility result"
+
 
 def create_app(settings: Settings | None = None, spark: SparkClient | None = None) -> FastAPI:
     settings = settings or Settings.from_env()
@@ -45,6 +47,15 @@ def create_app(settings: Settings | None = None, spark: SparkClient | None = Non
         return JSONResponse(
             {"status": "ready" if usable else "not_ready"},
             status_code=200 if usable else 503,
+        )
+
+    @app.post("/api/previews", tags=["previews"], status_code=503)
+    def previews_disabled() -> JSONResponse:
+        """Keep photo processing unavailable pending the formal T-02 result."""
+        return JSONResponse(
+            {"detail": PREVIEW_DISABLED_DETAIL},
+            status_code=503,
+            headers={"Cache-Control": "no-store"},
         )
 
     # Planning calls a paid model, so it stays off in production until T-04 adds per-session
