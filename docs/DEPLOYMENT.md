@@ -1,6 +1,6 @@
-# Azure demo deployment
+# Azure deployment
 
-**Status:** The demo is deployed to Azure Container Apps in France Central. Public planning is enabled; photo previews remain disabled. The Baseten DevRain workspace was not changed.
+**Status:** The closed beta runs on Azure Container Apps in France Central since 2026-10-30. Invited sessions can plan and try looks on; everyone else sees the invite step. The pilot closes model calls at 2026-11-06 23:59 Vienna time.
 
 ## Deployed configuration
 
@@ -11,53 +11,49 @@
 | Region | France Central (`francecentral`) |
 | Log Analytics workspace | `law-fullaura-demo-frc`, 30-day retention |
 | Container Apps environment | `cae-fullaura-demo-frc`, Consumption workload profile |
-| Container App | `fullaura-demo` |
-| Revision | `fullaura-demo--0000002`, healthy and serving all traffic after the live planning check on 2026-10-30 |
-| Compute and scaling | 0.5 vCPU / 1 GiB; minimum 0 and maximum 1 replica |
+| Container App | `fullaura-demo`, with a system-assigned managed identity |
+| Revision | `fullaura-demo--0000006`, serving all traffic since 2026-10-30 |
+| Compute and scaling | 0.5 vCPU / 1 GiB; minimum 0 and maximum 1 replica; scales to zero after 300 seconds without traffic |
 | Ingress | External HTTPS, target port 8000, insecure HTTP disabled |
-| Public planning | `FULLAURA_PUBLIC_DEMO_ENABLED=true` |
-| Photo previews | `FULLAURA_T02_PREVIEWS_PASSED=false` |
-| Planning model | `meta-models/muse-spark-open-1026` at `https://inference.baseten.co/v1` |
-| Baseten API key | Container Apps secret `baseten-api-key`, referenced by `BASETEN_API_KEY` |
-| Image | `ghcr.io/vbabenko97/fullaura@sha256:9fececb06a258c5074aa3340e054a7d3d723c0153f69381b5ca9301526169fb5` (tag `e918d07-linux-amd64`, `linux/amd64`) |
-| Application source | `main` at `e918d07` |
-| Rollback image | `ghcr.io/vbabenko97/fullaura@sha256:3e33cff2c0249e0cc08fd40e93bcee8ad83328df969a83506c13ea6bfdd4805f`, built from `18ed8df`, previously served by revision `fullaura-demo--0000001` |
-| Successful ARM deployment | `fullaura-francecentral-amd64-20261029`; the image was updated on 2026-10-30 with `az containerapp update` |
+| Beta | `FULLAURA_BETA_ENABLED=true`; 11 invite digests in the secret `invite-hashes` (10 for participants, 1 for the operator); cookies signed with the secret `session-secret` |
+| Pilot window | `FULLAURA_PILOT_ENDS_AT=2026-11-06T23:59:00+01:00` |
+| Budgets in the app | Planning $7.97 and images $2.91: the beta's $8 and $3, less the $0.023 and $0.09 spent outside the ledger on the checks of 2026-10-30 |
+| Pilot store | Storage account `stfullauradurnz5gu4z`, container `pilot`; shared keys and public blob access off; a lifecycle rule deletes each record 30 days after its last change. The app's identity has Storage Blob Data Contributor on the container; the operator has Storage Blob Data Reader on the account. |
+| Planning model | `meta-models/muse-spark-open-1026` at `https://inference.baseten.co/v1`, key in the secret `baseten-api-key` |
+| Try-on model | `muse-image-1.0` in Standard mode, key in the secret `model-api-key` |
+| Image | `ghcr.io/vbabenko97/fullaura@sha256:aa797cca7be943806f64299fb8d502ca2096f7bda9a2e4a7dec9780985cc95ed` (tag `00c7e2f-linux-amd64`; its `linux/amd64` manifest is `sha256:b8c12de2a840a05ffff8c048333bd0b9fe6c82332599c10c13dfa8f99604739d`) |
+| Application source | `main` at `00c7e2f` |
+| Rollback image | `ghcr.io/vbabenko97/fullaura@sha256:9fececb06a258c5074aa3340e054a7d3d723c0153f69381b5ca9301526169fb5`, built from `e918d07`, the anonymous planning demo; it ignores the beta settings and keeps planning closed |
+| ARM deployments | `fullaura-beta-20261030` and `fullaura-beta-budgets-20261030`, from `infra/azure/main.bicep` |
 
-The image is public and an anonymous pull of the pinned digest succeeded. The Baseten key is stored as an encrypted Container Apps secret; it is not in the image or Bicep template. The resource group and the existing subscription-level budget remain in place.
+The image is public, and GHCR issues an anonymous pull token for it. The keys, the session secret and the invite digests are encrypted Container Apps secrets, passed to the template as secure parameters; none is in the image or the repository. The resource group and the existing subscription-level budget remain in place.
 
 The existing `fullaura-monthly` budget is $20 per month from 2026-10-01 through 2027-10-01, with actual-spend notifications at 50%, 80%, and 100%. Budgets notify; they do not stop resources or cap usage. The Free Trial spending limit remains on. The last billing record available during the pre-deployment check showed a $200 closed balance expiring 2026-11-22 18:56 UTC; this was not a live estimated balance.
 
 On 2026-10-29, Baseten's pinned answer in the hackathon `#baseten` channel confirmed that the $100 grant is attached to the hackathon API key, not a personal workspace; personal workspace budgets do not apply. Baseten said no payment method is needed and the key cannot be charged beyond $100. The remaining credit cannot be viewed. The planning API returns prompt and completion token counts, which provide an activity record but not a live dollar balance.
 
-Revision `fullaura-demo--0000002` writes one `backend.app.planner` line to the container log for each planning request the planner completes, whatever its outcome. The line gives the outcome, model, model calls, HTTP attempts, token counts, completed proposals, format failures, constraint failures, constraint violations and latency. It holds nothing the person entered: no brief, colors, budget, material exclusions, sizes or owned items. The Container Apps environment sends the container log to the Log Analytics workspace, where the line appears in `ContainerAppConsoleLogs_CL`. Revision `fullaura-demo--0000001` did not record planning usage: its logging setup discarded the line.
+The app writes one `backend.app.planner` line for each planning request the planner completes, with its outcome, model, calls, HTTP attempts, token counts, proposals, failures and latency, and one `backend.app.main` line for each try-on, with its outcome, attempts and latency. Neither holds anything a person entered, an invite code or an image. The Container Apps environment sends the container log to the Log Analytics workspace, where the lines appear in `ContainerAppConsoleLogs_CL`. A pilot-store warning names at most the first 16 hex digits of an invite's digest.
 
 The Uvicorn access log records the method, path, status and client address of each request, but not request bodies or cookies. On 2026-10-30 the client address it recorded was `100.100.0.67`, an internal address of the Container Apps ingress, not the visitor's IP. Uvicorn trusts forwarded client addresses only from 127.0.0.1 and ::1, and `FORWARDED_ALLOW_IPS` is not set.
 
-## Smoke check
+## Checks on the deployed beta
 
-The HTTPS smoke check passed on 2026-10-29. After the revision scaled to zero, a follow-up request restarted it and `/`, `/api/health`, and `/api/ready` again returned `200`.
+On 2026-10-30, after the deployment of `00c7e2f`:
 
-| Request | Result |
-| --- | --- |
-| `GET /` | `200`, compiled frontend returned |
-| `GET /api/health` | `200`, `{"status":"ok","service":"fullaura"}` |
-| `GET /api/ready` | `200`, `{"status":"ready"}` |
-| `GET /api/catalog` | `200`, catalog returned |
-| `GET /api/session` | `200`, planning enabled, age confirmation required |
-| `GET /api/does-not-exist` | `404`, JSON `{"detail":"Not Found"}` |
+- `scripts/smoke_http.py` passed over HTTPS: the frontend and its assets, `/api/health`, `/api/ready`, an open beta session and a JSON 404 for an unknown `/api` route. Without an invite, `/api/catalog` answers 401.
+- The operator invite opened a session, and its age confirmation reached the pilot store through the managed identity.
+- The whole flow passed once with the real providers and a synthetic adult persona: plan, try-on, keeping an item, a lower budget, an update, a replacement, saving, reloading, restoring, copying, printing and feedback. Its three planning requests and one try-on cost $0.028 and $0.01 in the ledger.
+- After `az containerapp revision restart`, a new replica served the invite with its three planning requests still counted.
+- The app was rolled back to the previous image, which served health and readiness with planning closed, and rolled forward again to `00c7e2f`.
+- The budget limits were then lowered by redeploying the template; revision `fullaura-demo--0000006` passed the smoke check and the invite session check again.
 
-After enabling planning, one live request passed on 2026-10-29. It used a generic smart-casual brief for an autumn week in Vienna, a €250 per-look budget, navy and olive color preferences, and a wool exclusion; it contained no personal data. The API returned three looks and no constraint violations. The request took 12.24 seconds and used one model completion and one HTTP attempt: 1,170 prompt tokens and 3,022 completion tokens. This single request is a smoke check, not the T-06 evaluation.
+URL: <https://fullaura-demo.blackbay-aaeee2c5.francecentral.azurecontainerapps.io>.
 
-The image from `e918d07` was smoke-tested locally with a stand-in model endpoint, then deployed on 2026-10-30. On revision `fullaura-demo--0000002`, `scripts/smoke_http.py` passed over HTTPS, and one live planning request passed. It used the same generic brief, budget, colors and wool exclusion as the first request, with an example fit that is not a real person's: men's line, trousers or jeans, size L, waist and length 32/32, and EU shoe size 42 or 43. The API returned three looks in that fit and no constraint violations. The request took 14.05 seconds and used one model completion and one HTTP attempt: 914 prompt tokens and 4,013 completion tokens. Its `backend.app.planner` line, with the same counts, appeared in Log Analytics.
-
-Demo URL: <https://fullaura-demo.blackbay-aaeee2c5.francecentral.azurecontainerapps.io>.
-
-To roll back, point the app at the rollback image in the table above with `az containerapp update` (see the deployment procedure). That image is the first deployment, verified on 2026-10-29; it does not check fit and does not record planning usage in its log.
+To roll back, point the app at the rollback image in the table above with `az containerapp update` (see the deployment procedure). That image serves the anonymous demo of 2026-10-30, so the beta is closed while it runs.
 
 ## Configuration and cost
 
-The Bicep template in `infra/azure/main.bicep` creates a 30-day Log Analytics workspace, a Consumption environment, and one externally reachable Container App. It configures one active revision, 0.5 vCPU / 1 GiB, scale from zero to one replica, HTTPS ingress, and explicit liveness and readiness probes. The template defaults public planning and photo previews to disabled. The live app enables planning after checking the Azure spending limit and Baseten hackathon credit; previews remain disabled pending T-02.
+The Bicep template in `infra/azure/main.bicep` describes the 30-day Log Analytics workspace, the Consumption environment, the externally reachable Container App with one active revision, 0.5 vCPU / 1 GiB, scale from zero to one replica, HTTPS ingress and liveness and readiness probes, and the pilot store. The template keeps the beta closed unless `betaEnabled` is true.
 
 The Azure Retail Prices API listed these France Central Consumption rates on 2026-10-29:
 
@@ -75,9 +71,9 @@ Provider usage is not included in the Azure estimate. Public planning now uses t
 
 The Baseten hackathon key is not linked to the DevRain workspace, and its remaining credit cannot be checked in that workspace. Baseten's pinned answer says the $100 key credit cannot be exceeded; the app records per-request token counts, not a provider balance. No Baseten account or workspace settings were changed.
 
-The app stores anonymous 18+ confirmations and three-request session quotas in process memory. Keep one Uvicorn worker and one active replica. A process restart resets those counts, and browser users can create another session. The session limit does not cap aggregate Azure or provider spend.
+The app keeps each browser session's checked plan in process memory, so it keeps one Uvicorn worker and one replica; a restart or a scale-down forgets the plans, and browsers restore them. Quotas, spending and feedback live in the pilot store and survive restarts. The store costs cents at this size; blob storage, transactions and Log Analytics ingestion are the only charges beyond Container Apps.
 
-Container-local files are ephemeral. The scaffold stores no photographs. If the MVP needs persistent image storage, add private Azure Blob Storage with short-lived access and explicit deletion, then document that behavior before accepting uploads.
+The Free Trial credit expires on 2026-11-22. The pilot ends before that, but the 30-day deletion of pilot records runs until early December; if the subscription is not upgraded, Azure disables its resources when the trial ends, so delete the pilot records with the commands under [Stopping the beta](#stopping-the-beta) after the pilot rather than relying on the lifecycle rule.
 
 ## Deployment procedure
 
@@ -90,7 +86,8 @@ The template `infra/azure/main.bicep` describes every resource in `rg-fullaura-d
    ```bash
    az deployment group what-if --subscription <subscription ID> --resource-group rg-fullaura-demo \
      --template-file infra/azure/main.bicep --parameters containerImage=ghcr.io/vbabenko97/fullaura@<digest> \
-     betaEnabled=true pilotEndsAt=<ISO date-time with zone> basetenApiKey=<key> modelApiKey=<key> \
+     betaEnabled=true pilotEndsAt=<ISO date-time with zone> planningBudgetUsd=<USD> imageBudgetUsd=<USD> \
+     basetenApiKey=<key> modelApiKey=<key> \
      sessionSecret=<secret> inviteHashes=<comma-separated digests>
    ```
 

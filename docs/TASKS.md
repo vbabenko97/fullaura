@@ -10,7 +10,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-04](#t-04-one-complete-flow) One complete flow | done | 2026-10-29 |
 | [T-05](#t-05-azure-demo) Azure demo | done | 2026-10-29 |
 | [T-08](#t-08-looks-for-a-stated-wearer) Looks for a stated wearer | next | |
-| [T-09](#t-09-closed-beta) Closed beta | next | |
+| [T-09](#t-09-closed-beta) Closed beta | done | 2026-10-30 |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
