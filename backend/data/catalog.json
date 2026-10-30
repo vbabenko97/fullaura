@@ -851,6 +851,7 @@
       "category": "footwear",
       "line": "unisex",
       "garment_type": null,
+      "footwear_closure": "open",
       "variants": [
         {
           "id": "gw-beach-hellgrau-42",
@@ -918,6 +919,7 @@
       "category": "footwear",
       "line": "women",
       "garment_type": null,
+      "footwear_closure": "closed",
       "variants": [
         {
           "id": "gw-wool-sneaker-women-schwarz-39",
@@ -1000,6 +1002,7 @@
       "category": "footwear",
       "line": "men",
       "garment_type": null,
+      "footwear_closure": "closed",
       "variants": [
         {
           "id": "gw-merino-runners-men-schiefer-43",
@@ -1087,6 +1090,7 @@
       "category": "footwear",
       "line": "women",
       "garment_type": null,
+      "footwear_closure": "open",
       "variants": [
         {
           "id": "gw-merino-slides-lite-women-ocean-blue-39",
@@ -1164,6 +1168,7 @@
       "category": "footwear",
       "line": "unisex",
       "garment_type": null,
+      "footwear_closure": "closed",
       "variants": [
         {
           "id": "gea-tramper-flex-schwarz-43",
@@ -1226,6 +1231,7 @@
       "category": "footwear",
       "line": "unisex",
       "garment_type": null,
+      "footwear_closure": "closed",
       "variants": [
         {
           "id": "gea-kommod-classic-schwarz-43",

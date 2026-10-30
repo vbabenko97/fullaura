@@ -123,6 +123,10 @@ function installServer(options: { invited?: boolean; aged?: boolean; plans?: unk
       return json(success(next));
     }
     if (url === "/api/plans/restore") {
+      // Like the server, refuse any field beyond the saved brief, state and catalog ID.
+      if (Object.keys(object(body)).sort().join() !== "brief,catalog_id,state") {
+        return json({ detail: "extra fields", reason: "invalid" }, 422);
+      }
       server.token += 1;
       return json({ ...success(object(object(body).state).plan), catalog_changed: false });
     }
@@ -314,7 +318,7 @@ describe(`${FIXTURE_LABEL}: try-on`, () => {
   async function prepareTryOn(server: Server) {
     render(<App />);
     await generate();
-    fireEvent.click(screen.getByRole("checkbox", { name: "I agree to this processing of my photos." }));
+    fireEvent.click(screen.getByRole("button", { name: "I agree to this processing of my photos" }));
     await screen.findByText("You agreed to this processing.");
     fireEvent.change(screen.getByLabelText("Portrait photo"), {
       target: { files: [new File(["p"], "portrait.png", { type: "image/png" })] },
@@ -352,7 +356,7 @@ describe(`${FIXTURE_LABEL}: try-on`, () => {
     installServer({ plans: [firstPlan] });
     render(<App />);
     await generate();
-    fireEvent.click(screen.getByRole("checkbox", { name: "I agree to this processing of my photos." }));
+    fireEvent.click(screen.getByRole("button", { name: "I agree to this processing of my photos" }));
     await screen.findByText("You agreed to this processing.");
     fireEvent.change(screen.getByLabelText("Portrait photo"), {
       target: { files: [new File(["h"], "portrait.heic", { type: "image/heic" })] },

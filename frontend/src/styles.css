@@ -1,6 +1,7 @@
-/* Hallmark · shape: app screen · screen: preferences and three-look plan · theme: Bloom (deal 1/3, seed fullaura-wardrobe-planning-app-653f·nosalt·2026-10-28·r0) · genre: atmospheric · posture: restrained · contrast: pass · axes: light/grotesk-sans/chromatic-green · nav: top bar with wordmark and environment · signature: three catalog-backed looks with item locks · states: loading, empty, error, full · accent: existing forest green kept · v2.0.0 */
+/* Hallmark · shape: app screen · screen: closed-beta planner (invite and age gate, preferences, three looks, try-on, shopping list, saved plans, feedback) · theme: Bloom (deal 1/3, seed fullaura-wardrobe-planning-app-653f·nosalt·2026-10-28·r0) · genre: atmospheric · posture: restrained · contrast: pass · axes: light/grotesk-sans/chromatic-green · nav: top bar with wordmark, beta label and plan quota · signature: three catalog-backed looks with item locks and a shared shopping list · states: loading, empty, error, full, paused · accent: existing forest green kept · v2.0.0 */
 /* Hallmark · pre-emit critique: P4 H4 E4 S3 R5 V3 · weakest: S, real catalog facts and per-slot locks tie this to FullAura; R5 cut image placeholders and preview claims */
 /* Hallmark · dismissed F3 · gates.md § 5 forbids text-wrap balance on display heads */
+/* Hallmark · dismissed F7 · one container recipe across panels is the app-screen rule (flow.md § App screens) */
 @import url("./tokens.css");
 @import url("./base.css");
 
@@ -187,6 +188,11 @@
   color: var(--color-ink-2);
   font-size: var(--text-sm);
   font-weight: 600;
+}
+
+.choice-row {
+  grid-template-columns: repeat(auto-fill, minmax(4.5rem, max-content));
+  column-gap: var(--space-lg);
 }
 
 .radio-choice,
@@ -653,7 +659,9 @@
 }
 
 .text-button:disabled {
-  opacity: 0.55;
+  color: var(--color-muted);
+  text-decoration: none;
+  cursor: not-allowed;
 }
 
 .secondary-button.is-danger {
@@ -675,7 +683,6 @@
   border-radius: var(--radius-card);
   padding: var(--space-xl);
   background: var(--color-sheet);
-  box-shadow: var(--shadow-card);
 }
 
 .gate-panel h1 {
@@ -982,6 +989,43 @@
   .saved-heading {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .shopping-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+  }
+
+  .shopping-table tr {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-2xs) var(--space-sm);
+    border-bottom: 1px solid var(--color-rule);
+    padding-block: var(--space-sm);
+  }
+
+  .shopping-table td {
+    border: 0;
+    padding: 0;
+  }
+
+  .shopping-table td:first-child,
+  .shopping-table td:nth-child(2),
+  .shopping-table td:last-child {
+    grid-column: 1;
+  }
+
+  .shopping-table td:nth-child(3) {
+    grid-column: 2;
+    grid-row: 1;
+    text-align: right;
+  }
+
+  .shopping-table td:nth-child(2) {
+    color: var(--color-muted);
   }
 }
 

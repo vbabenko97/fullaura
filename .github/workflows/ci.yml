@@ -44,6 +44,11 @@ jobs:
           npm ci
           npm test
           npm run build
+      - name: Run the browser flow with scripted providers
+        working-directory: frontend
+        run: |
+          npx playwright install --with-deps chromium
+          npm run e2e
       - name: Build container
         run: docker build --tag fullaura:ci .
       - name: Check container over HTTP
