@@ -1,0 +1,186 @@
+"""The real catalog covers the closed beta's example profiles (docs/DATA.md#catalog-coverage).
+
+For each example profile and scenario, code must find three different complete looks with closed
+shoes that pass every hard constraint, from catalog items alone, and at least one position that
+a different catalog item can fill while the plan still passes. The profiles are examples, not
+any person's sizes. A failure here is a catalog gap: fix it with sourced records, never by
+relaxing a constraint.
+"""
+
+from __future__ import annotations
+
+import itertools
+from collections.abc import Iterator
+from dataclasses import dataclass
+
+import pytest
+
+from backend.app.catalog import Catalog, Category, Line, Size, SizeSystem
+from backend.app.config import Settings
+from backend.app.constraints import cheapest_usable_offers
+from backend.app.planner import check_complete_plan
+from backend.app.state import (
+    Budget,
+    BudgetMode,
+    Fit,
+    FootwearChoice,
+    ItemKind,
+    ItemRef,
+    Look,
+    Plan,
+    Slot,
+    State,
+)
+
+CATALOG = Catalog.model_validate_json(Settings().catalog_file.read_text(encoding="utf-8"))
+CHEAPEST_LOOKS = 60  # the search combines only this many of the cheapest looks
+PLANS_TRIED = 20  # passing plans checked for a valid replacement
+
+
+def _fit(line: Line, *sizes: tuple[SizeSystem, str]) -> Fit:
+    return Fit(lines={line}, sizes=[Size(system=system, value=value) for system, value in sizes])
+
+
+PROFILES = {
+    "men-m": _fit(
+        Line.MEN,
+        (SizeSystem.LETTER, "M"),
+        (SizeSystem.WAIST_LENGTH, "32/32"),
+        (SizeSystem.EU_SHOE, "42"),
+    ),
+    "men-l": _fit(
+        Line.MEN,
+        (SizeSystem.LETTER, "L"),
+        (SizeSystem.WAIST_LENGTH, "34/32"),
+        (SizeSystem.EU_SHOE, "43"),
+    ),
+    "women-s": _fit(Line.WOMEN, (SizeSystem.LETTER, "S"), (SizeSystem.EU_SHOE, "38")),
+    "women-l": _fit(Line.WOMEN, (SizeSystem.LETTER, "L"), (SizeSystem.EU_SHOE, "40")),
+}
+
+
+@dataclass(frozen=True)
+class Scenario:
+    budget: Budget
+    exclusions: frozenset[str]
+
+
+SCENARIOS = {
+    "office-autumn": Scenario(Budget(amount_cents=25000), frozenset({"wool"})),
+    "casual": Scenario(Budget(amount_cents=15000), frozenset()),
+    "capsule": Scenario(
+        Budget(amount_cents=30000, mode=BudgetMode.WHOLE_PLAN), frozenset({"wool"})
+    ),
+}
+
+
+def _state(profile: str, scenario: Scenario, plan: Plan | None = None) -> State:
+    return State(
+        budget=scenario.budget,
+        material_exclusions=scenario.exclusions,
+        fit=PROFILES[profile],
+        footwear=FootwearChoice.CLOSED,
+        plan=plan,
+    )
+
+
+def _looks(state: State) -> list[tuple[int, dict[Slot, str]]]:
+    """Every top-and-bottom or one-piece with closed shoes from usable variants, cheapest first."""
+    offers = cheapest_usable_offers(CATALOG, state)
+    by_category: dict[Category, list[str]] = {}
+    for product in CATALOG.products:
+        for variant in product.variants:
+            if variant.id in offers:
+                by_category.setdefault(product.category, []).append(variant.id)
+    tops = by_category.get(Category.TOP, []) + by_category.get(Category.KNITWEAR, [])
+    bases = [
+        {Slot.TOP: t, Slot.BOTTOM: b} for t in tops for b in by_category.get(Category.BOTTOM, [])
+    ]
+    bases += [{Slot.ONE_PIECE: one} for one in by_category.get(Category.ONE_PIECE, [])]
+    looks = [
+        {**base, Slot.FOOTWEAR: shoe}
+        for base in bases
+        for shoe in by_category.get(Category.FOOTWEAR, [])
+    ]
+    priced = [
+        (sum(offers[item].price_cents or 0 for item in look.values()), look) for look in looks
+    ]
+    return sorted(priced, key=lambda entry: (entry[0], sorted(entry[1].values())))
+
+
+def _plan(chosen: tuple[dict[Slot, str], ...], state: State) -> Plan:
+    offers = cheapest_usable_offers(CATALOG, state)
+    looks = tuple(
+        Look(
+            id=f"look_{number}",
+            items={slot: ItemRef(kind=ItemKind.CATALOG, id=item) for slot, item in look.items()},
+        )
+        for number, look in enumerate(chosen, start=1)
+    )
+    used = {item for look in chosen for item in look.values()}
+    return Plan(looks=looks, selected_offers={item: offers[item].id for item in used})
+
+
+def _within_budget(
+    chosen: tuple[dict[Slot, str], ...], prices: dict[str, int], budget: Budget
+) -> bool:
+    """A quick price filter; check_complete_plan still decides."""
+    if budget.mode is BudgetMode.PER_LOOK:
+        return all(
+            sum(prices[item] for item in look.values()) <= budget.amount_cents for look in chosen
+        )
+    return sum(prices[item] for item in {i for look in chosen for i in look.values()}) <= (
+        budget.amount_cents
+    )
+
+
+def _plans(profile: str, scenario: Scenario) -> Iterator[Plan]:
+    state = _state(profile, scenario)
+    prices = {
+        key: offer.price_cents or 0 for key, offer in cheapest_usable_offers(CATALOG, state).items()
+    }
+    looks = [look for _, look in _looks(state)[:CHEAPEST_LOOKS]]
+    for chosen in itertools.combinations(looks, 3):
+        if not _within_budget(chosen, prices, scenario.budget):
+            continue
+        plan = _plan(chosen, state)
+        if check_complete_plan(plan, state, CATALOG).passed:
+            yield plan
+
+
+def _has_valid_replacement(plan: Plan, profile: str, scenario: Scenario) -> bool:
+    """Whether some position can take a different catalog item of its kind and still pass."""
+    state = _state(profile, scenario)
+    offers = cheapest_usable_offers(CATALOG, state)
+    prices = {key: offer.price_cents or 0 for key, offer in offers.items()}
+    categories = {
+        variant.id: product.category for product in CATALOG.products for variant in product.variants
+    }
+    current = tuple({slot: item.id for slot, item in look.items.items()} for look in plan.looks)
+    for index, look in enumerate(current):
+        for slot, item in look.items():
+            for variant_id in offers:
+                if categories[variant_id] != categories[item] or variant_id in look.values():
+                    continue
+                chosen = tuple(
+                    {**other, slot: variant_id} if number == index else other
+                    for number, other in enumerate(current)
+                )
+                if not _within_budget(chosen, prices, scenario.budget):
+                    continue
+                if check_complete_plan(_plan(chosen, state), state, CATALOG).passed:
+                    return True
+    return False
+
+
+@pytest.mark.parametrize("scenario", SCENARIOS)
+@pytest.mark.parametrize("profile", PROFILES)
+def test_the_catalog_gives_three_looks_with_closed_shoes_and_a_replacement(
+    profile: str, scenario: str
+) -> None:
+    case = SCENARIOS[scenario]
+    plans = list(itertools.islice(_plans(profile, case), PLANS_TRIED))
+    assert plans, f"No three looks with closed shoes pass for {profile} in {scenario}"
+    plan = next((plan for plan in plans if _has_valid_replacement(plan, profile, case)), None)
+    assert plan is not None, f"No position in {profile} {scenario} can take a valid replacement"
+    assert all(look.items[Slot.FOOTWEAR].kind is ItemKind.CATALOG for look in plan.looks)

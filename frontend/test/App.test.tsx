@@ -169,7 +169,7 @@ function planRequests(server: Server): Body[] {
 }
 
 async function generate(styleGoal = "Relaxed office outfits", budget = "250") {
-  await screen.findByText(/products, checked/);
+  await screen.findByText(/products\. Price checked/);
   fireEvent.change(screen.getByLabelText("What should the looks work for?"), { target: { value: styleGoal } });
   fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: budget } });
   fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));

@@ -11,7 +11,7 @@ import {
 } from "./api";
 import { AccessGate } from "./AccessGate";
 import { FeedbackForm } from "./FeedbackForm";
-import { formatMoney } from "./format";
+import { formatCheckedDate, formatMoney } from "./format";
 import { LookCard } from "./LookCard";
 import {
   fitDraftFrom,
@@ -99,6 +99,14 @@ function preferencesFrom(saved: { brief: Brief; state: StateInput }): Preference
     fit: fitDraftFrom(saved.state.fit),
     ownedItems: saved.state.owned_items,
   };
+}
+
+/** When the newest price in the catalog was checked against its shop. */
+function latestCheck(catalog: Catalog): string {
+  const dates = catalog.products.flatMap((product) =>
+    product.variants.flatMap((variant) => variant.offers.map((offer) => offer.source.checked_at)),
+  );
+  return dates.length ? formatCheckedDate(dates.reduce((a, b) => (a > b ? a : b))) : "";
 }
 
 function lookLabel(lookId: string): string {
@@ -509,7 +517,7 @@ export function App() {
             </div>
             <p className="catalog-status" aria-live="polite">
               {catalogState === "loading" && "Loading catalog"}
-              {catalogState === "ready" && catalog && `${catalog.products.length} products, checked ${catalog.id.slice(-10)}`}
+              {catalogState === "ready" && catalog && `${catalog.products.length} products. ${latestCheck(catalog)}`}
               {catalogState === "error" && "Catalog unavailable"}
             </p>
           </div>

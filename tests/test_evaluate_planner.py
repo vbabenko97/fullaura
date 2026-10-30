@@ -55,11 +55,11 @@ def test_the_baseline_keeps_to_a_stated_fit() -> None:
     case = replace(CASES[1], fit=fit)  # open materials, EUR 250.00 per look
     plan, _ = cheapest_baseline(case, CATALOG)  # raises unless check_plan passes with the fit
     assert check_plan(case.state(plan), CATALOG).passed
-    assert {look.items[Slot.BOTTOM].id for look in plan.looks} <= {
-        "ae-aaster-space-steel-32-32",
-        "ae-kaavo-lolite-32-32",
-    }
-    assert {look.items[Slot.FOOTWEAR].id for look in plan.looks} == {"gw-beach-hellgrau-42"}
+    items = [item for look in plan.looks for item in look.items.values()]
+    lines = {CATALOG.product_of(item.id).line for item in items}  # type: ignore[union-attr]
+    assert lines <= {"men", "unisex"}
+    shoes = {CATALOG.variant(look.items[Slot.FOOTWEAR].id) for look in plan.looks}
+    assert {shoe.normalized_size.value for shoe in shoes} == {"42"}  # type: ignore[union-attr]
 
 
 def test_cheapest_baseline_is_reproducible() -> None:

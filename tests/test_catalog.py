@@ -63,15 +63,25 @@ def test_the_real_catalog_builds_three_looks_that_pass_every_check(exclusions: s
     assert check_plan(state, REAL).violations == ()
 
 
-def test_only_one_real_shoe_passes_a_wool_exclusion() -> None:
+def test_only_shoes_with_complete_wool_free_compositions_pass_a_wool_exclusion() -> None:
     shoes = [
         variant
         for product in REAL.products
         if product.category == "footwear"
         for variant in product.variants
     ]
-    passing = [v.id for v in shoes if not item_violations(v, v.offers[0], {"wool"})]
-    assert passing == ["gw-beach-hellgrau-42"]
+    passing = {v.id for v in shoes if not item_violations(v, v.offers[0], {"wool"})}
+    # Giesswein's wool shoes contain wool; GEA's and Tchibo's compositions are partial.
+    assert passing == {
+        "gw-beach-hellgrau-42",
+        "tt-sneaker-elastischer-schaft-blue-42",
+        "tt-sneaker-elastischer-schaft-blue-43",
+        "tt-sneaker-erhoehte-sohle-sky-white-38",
+        "tt-sneaker-lederimitat-khaki-42",
+        "tt-sneaker-lederimitat-khaki-43",
+        "tt-sneaker-plateau-pink-38",
+        "tt-sneaker-plateau-pink-40",
+    }
 
 
 def test_a_mens_fit_keeps_womens_lines_and_other_shoe_sizes_out_of_the_real_catalog() -> None:
@@ -95,6 +105,12 @@ def test_a_mens_fit_keeps_womens_lines_and_other_shoe_sizes_out_of_the_real_cata
         "gw-merino-runners-men-schiefer-43",
         "gea-tramper-flex-schwarz-43",  # unisex
         "gea-kommod-classic-schwarz-43",  # unisex
+        "tt-travis-slim-chino-black-32-32",
+        "tt-relaxed-chino-sky-captain-blue-32-32",
+        "tt-sneaker-elastischer-schaft-blue-42",
+        "tt-sneaker-elastischer-schaft-blue-43",
+        "tt-sneaker-lederimitat-khaki-42",
+        "tt-sneaker-lederimitat-khaki-43",
     }
 
 
