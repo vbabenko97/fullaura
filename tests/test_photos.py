@@ -14,12 +14,14 @@ from starlette.requests import Request as StarletteRequest
 from backend.app.meta_images import ImageRequestError, ImageResult, InputImage, MuseImageClient
 from backend.app.photos import (
     MAX_PHOTO_BYTES,
+    MAX_PREVIEW_REQUEST_BYTES,
     PHOTO_MIME_TYPE,
+    AsyncImageEditor,
     PhotoInputError,
     PhotoProcessingError,
+    PhotoTooLargeError,
     PreviewImage,
     PreviewResponse,
-    create_preview,
     create_preview_async,
     read_preview_uploads,
     wait_for_preview_or_disconnect,
@@ -35,32 +37,6 @@ def segment(marker: int, payload: bytes) -> bytes:
 def jpeg(*segments: bytes, pixels: bytes = b"pixels") -> bytearray:
     scan_header = b"\xff\xda\x00\x08\x01\x01\x00\x00\x3f\x00"
     return bytearray(b"\xff\xd8" + b"".join(segments) + scan_header + pixels + b"\xff\xd9")
-
-
-class FakeEditor:
-    def __init__(self, result: ImageResult | BaseException) -> None:
-        self.result = result
-        self.prompt: str | None = None
-        self.images: list[InputImage] = []
-
-    def edit(
-        self, prompt: str, images: Sequence[InputImage], *, size: str | None = None
-    ) -> ImageResult:
-        self.prompt = prompt
-        self.images = list(images)
-        if isinstance(self.result, BaseException):
-            raise self.result
-        return self.result
-
-
-class FailingEditor:
-    def __init__(self, failure: BaseException) -> None:
-        self.failure = failure
-
-    def edit(
-        self, prompt: str, images: Sequence[InputImage], *, size: str | None = None
-    ) -> ImageResult:
-        raise self.failure
 
 
 class FakeAsyncEditor:
@@ -83,7 +59,9 @@ class FakeAsyncEditor:
         return self.result
 
 
-def preview_request(body: bytes, boundary: str = "test-boundary") -> Request:
+def preview_request(
+    body: bytes, boundary: str = "test-boundary", content_length: str | None = None
+) -> Request:
     messages = [
         {"type": "http.request", "body": body, "more_body": False},
         {"type": "http.disconnect"},
@@ -99,7 +77,7 @@ def preview_request(body: bytes, boundary: str = "test-boundary") -> Request:
             "path": "/api/previews",
             "headers": [
                 (b"content-type", f"multipart/form-data; boundary={boundary}".encode()),
-                (b"content-length", str(len(body)).encode()),
+                (b"content-length", (content_length or str(len(body))).encode()),
             ],
             "query_string": b"",
             "server": ("test", 80),
@@ -187,14 +165,25 @@ def result(image: bytes = PREVIEW, mime_type: str = "image/png") -> ImageResult:
     return ImageResult(image, mime_type, 1, 0.1, {}, None)
 
 
-def test_create_preview_strips_metadata_and_discards_inputs_after_success() -> None:
+def run_preview(
+    portrait: bytearray, full_body: bytearray, editor: AsyncImageEditor
+) -> PreviewImage:
+    """The production preview path, with a deadline the test never reaches."""
+    return asyncio.run(
+        create_preview_async(
+            "Use the selected look", portrait, full_body, editor, deadline=time.monotonic() + 60
+        )
+    )
+
+
+def test_preview_strips_metadata_and_discards_inputs_after_success() -> None:
     tiff = b"MM\x00*\x00\x00\x00\x08\x00\x00\x00\x00\x00\x00private location"
     private = segment(0xE1, b"Exif\x00\x00" + tiff)
     portrait = jpeg(private)
     full_body = jpeg(private)
-    editor = FakeEditor(result())
+    editor = FakeAsyncEditor(result())
 
-    preview = create_preview("Use the selected look", portrait, full_body, editor)
+    preview = run_preview(portrait, full_body, editor)
 
     assert editor.prompt == "Use the selected look"
     assert [image.mime_type for image in editor.images] == [PHOTO_MIME_TYPE, PHOTO_MIME_TYPE]
@@ -203,30 +192,6 @@ def test_create_preview_strips_metadata_and_discards_inputs_after_success() -> N
     assert preview.data == PREVIEW
     preview.discard()
     assert preview.data == bytearray()
-
-
-def test_async_preview_strips_metadata_and_discards_inputs_after_success() -> None:
-    tiff = b"MM\x00*\x00\x00\x00\x08\x00\x00\x00\x00\x00\x00private location"
-    private = segment(0xE1, b"Exif\x00\x00" + tiff)
-    portrait = jpeg(private)
-    full_body = jpeg(private)
-    editor = FakeAsyncEditor(result())
-
-    preview = asyncio.run(
-        create_preview_async(
-            "Use the selected look",
-            portrait,
-            full_body,
-            editor,
-            deadline=time.monotonic() + 1,
-        )
-    )
-
-    assert editor.prompt == "Use the selected look"
-    assert all(b"private location" not in image.data for image in editor.images)
-    assert portrait == bytearray() and full_body == bytearray()
-    assert preview.data == PREVIEW
-    preview.discard()
 
 
 @pytest.mark.parametrize(
@@ -239,7 +204,7 @@ def test_provider_failure_and_timeout_discard_inputs(failure: BaseException) -> 
     full_body = jpeg()
 
     with pytest.raises(type(failure)):
-        create_preview("Use the selected look", portrait, full_body, FakeEditor(failure))
+        run_preview(portrait, full_body, FakeAsyncEditor(failure))
 
     assert portrait == bytearray() and full_body == bytearray()
 
@@ -250,12 +215,7 @@ def test_provider_error_traceback_does_not_retain_stripped_photo() -> None:
     full_body = jpeg()
 
     with pytest.raises(ImageRequestError) as failure:
-        create_preview(
-            "Use the selected look",
-            portrait,
-            full_body,
-            FailingEditor(ImageRequestError("provider error", 1)),
-        )
+        run_preview(portrait, full_body, FakeAsyncEditor(ImageRequestError("provider error", 1)))
 
     assert portrait == bytearray() and full_body == bytearray()
     _assert_tracebacks_discard(failure.value, marker)
@@ -264,10 +224,10 @@ def test_provider_error_traceback_does_not_retain_stripped_photo() -> None:
 def test_invalid_input_discards_both_photos_before_provider_call() -> None:
     portrait = jpeg()
     full_body = bytearray(b"not a JPEG")
-    editor = FakeEditor(result())
+    editor = FakeAsyncEditor(result())
 
     with pytest.raises(PhotoInputError, match="JPEG"):
-        create_preview("Use the selected look", portrait, full_body, editor)
+        run_preview(portrait, full_body, editor)
 
     assert portrait == bytearray() and full_body == bytearray()
     assert editor.images == []
@@ -278,7 +238,7 @@ def test_oversized_input_is_rejected_and_discarded() -> None:
     full_body = jpeg()
 
     with pytest.raises(PhotoInputError, match="10 MiB"):
-        create_preview("Use the selected look", portrait, full_body, FakeEditor(result()))
+        run_preview(portrait, full_body, FakeAsyncEditor(result()))
 
     assert portrait == bytearray() and full_body == bytearray()
 
@@ -288,12 +248,7 @@ def test_invalid_provider_image_discards_inputs() -> None:
     full_body = jpeg()
 
     with pytest.raises(PhotoProcessingError, match="invalid preview"):
-        create_preview(
-            "Use the selected look",
-            portrait,
-            full_body,
-            FakeEditor(result(b"invalid", "image/png")),
-        )
+        run_preview(portrait, full_body, FakeAsyncEditor(result(b"invalid", "image/png")))
 
     assert portrait == bytearray() and full_body == bytearray()
 
@@ -304,12 +259,7 @@ def test_invalid_provider_result_is_not_retained_in_traceback() -> None:
     full_body = jpeg()
 
     with pytest.raises(PhotoProcessingError) as failure:
-        create_preview(
-            "Use the selected look",
-            portrait,
-            full_body,
-            FakeEditor(result(PREVIEW + marker, "image/jpeg")),
-        )
+        run_preview(portrait, full_body, FakeAsyncEditor(result(PREVIEW + marker, "image/jpeg")))
 
     assert portrait == bytearray() and full_body == bytearray()
     _assert_tracebacks_discard(failure.value, marker)
@@ -320,7 +270,7 @@ def test_failed_provider_request_clears_request_body_and_traceback_copies() -> N
     requests: list[Request] = []
     body_was_present: list[bool] = []
 
-    def post(request: Request, timeout_s: float) -> dict[str, object]:
+    async def post(request: Request, timeout_s: float) -> dict[str, object]:
         requests.append(request)
         body_was_present.append(request.data is not None)
         raise HTTPError(
@@ -331,12 +281,12 @@ def test_failed_provider_request_clears_request_body_and_traceback_copies() -> N
             io.BytesIO(b"{}"),
         )
 
-    editor = MuseImageClient("secret-key", "muse-image-1.0", post=post, max_attempts=1)
+    editor = MuseImageClient("secret-key", "muse-image-1.0", async_post=post, max_attempts=1)
     portrait = jpeg(pixels=marker)
-    full_body = jpeg()
+    full_body = jpeg(pixels=marker)  # the client's frame keeps its last input until cleared
 
     with pytest.raises(ImageRequestError) as failure:
-        create_preview("Use the selected look", portrait, full_body, editor)
+        run_preview(portrait, full_body, editor)
 
     assert body_was_present == [True]
     assert requests[0].data is None
@@ -400,6 +350,23 @@ def test_preview_upload_parser_rejects_oversized_photo(monkeypatch: pytest.Monke
 
     with pytest.raises(PhotoInputError, match="no larger than 10 MiB"):
         asyncio.run(read_preview_uploads(preview_request(body)))
+
+
+@pytest.mark.parametrize(
+    ("content_length", "error", "message"),
+    [
+        ("not a number", PhotoInputError, "Invalid preview request size"),
+        ("-1", PhotoInputError, "Invalid preview request size"),
+        (str(MAX_PREVIEW_REQUEST_BYTES + 1), PhotoTooLargeError, "no larger than 20 MiB"),
+    ],
+)
+def test_preview_upload_parser_refuses_an_invalid_or_oversized_declared_length(
+    content_length: str, error: type[PhotoInputError], message: str
+) -> None:
+    request = preview_request(b"", content_length=content_length)
+    with pytest.raises(error, match=message) as raised:
+        asyncio.run(read_preview_uploads(request))
+    assert type(raised.value) is error  # the route answers 400 or 413 by type
 
 
 def test_preview_task_is_cancelled_when_browser_disconnects() -> None:

@@ -2,7 +2,9 @@
 
 The default run is offline and produces baseline plans plus a blank human-score sheet. A live
 run requires --live and at least one explicit --case-id; it uses the Baseten key from the
-environment and stores only validated item IDs and aggregate usage, never provider payloads.
+environment. run.json stores validated item IDs and aggregate usage. provider_responses.jsonl,
+in the same run folder under the ignored runs/, stores every raw provider response, and every
+HTTP error body with the API key redacted.
 """
 
 from __future__ import annotations
@@ -266,8 +268,6 @@ def cheapest_baseline(case: EvaluationCase, catalog: Catalog) -> tuple[Plan, int
         best_rank: tuple[int, tuple[tuple[str, ...], ...]] | None = None
         best_looks: tuple[CandidateLook, ...] | None = None
         for chosen in itertools.combinations(candidates, 3):
-            if len({look.signature for look in chosen}) != 3:
-                continue
             variant_ids = {variant_id for look in chosen for _, variant_id in look.items}
             total = sum(offers[variant_id].price_cents or 0 for variant_id in variant_ids)
             if total > case.budget.amount_cents:
@@ -360,7 +360,37 @@ def plan_metrics(
     }
 
 
+def baseline_metrics(
+    case: EvaluationCase, plan: Plan, plan_cost: int, catalog: Catalog
+) -> dict[str, Any]:
+    """The plan_metrics keys for a baseline plan, which makes no provider calls."""
+    return {
+        "outcome": "baseline",
+        "hard_constraints_passed": check_plan(case.state(plan), catalog).passed,
+        "final_violation_count": 0,
+        "final_violations_by_rule": {},
+        "distinct_looks": distinct_look_count(plan),
+        "rejected_proposals": 0,
+        "rejected_constraint_failures": 0,
+        "rejected_format_failures": 0,
+        "rejected_violation_count": 0,
+        "rejected_violations_by_rule": {},
+        "provider_calls": 0,
+        "http_attempts": 0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "estimated_model_api_cost_usd": 0,
+        "latency_s": 0,
+        "catalog_cost_cents": plan_cost,
+        "plan": plan.model_dump(mode="json"),
+    }
+
+
 def score_row(case_id: str, approach: str, metrics: dict[str, Any]) -> dict[str, str]:
+    def blank_if_none(key: str) -> str:
+        value = metrics.get(key)
+        return "" if value is None else str(value)
+
     return {
         "case_id": case_id,
         "approach": approach,
@@ -370,7 +400,7 @@ def score_row(case_id: str, approach: str, metrics: dict[str, Any]) -> dict[str,
         "final_violations_by_rule": json.dumps(
             metrics.get("final_violations_by_rule", {}), sort_keys=True
         ),
-        "distinct_looks": str(metrics.get("distinct_looks", "")),
+        "distinct_looks": blank_if_none("distinct_looks"),
         "rejected_proposals": str(metrics.get("rejected_proposals", 0)),
         "rejected_violation_count": str(metrics.get("rejected_violation_count", 0)),
         "rejected_violations_by_rule": json.dumps(
@@ -382,7 +412,7 @@ def score_row(case_id: str, approach: str, metrics: dict[str, Any]) -> dict[str,
         "completion_tokens": str(metrics.get("completion_tokens", 0)),
         "estimated_model_api_cost_usd": str(metrics.get("estimated_model_api_cost_usd", 0)),
         "latency_s": str(metrics.get("latency_s", "")),
-        "catalog_cost_cents": str(metrics.get("catalog_cost_cents", "")),
+        "catalog_cost_cents": blank_if_none("catalog_cost_cents"),
         **dict.fromkeys(HUMAN_ANSWER_COLUMNS, ""),
         "notes": "",
     }
@@ -459,7 +489,7 @@ def main(output_root: Path = ROOT / "runs" / "t06") -> None:
     }
     score_rows = []
     settings = Settings.from_env() if args.live else None
-    if args.live and settings and not settings.baseten_api_key:
+    if settings and not settings.baseten_api_key:
         raise SystemExit("BASETEN_API_KEY is not set; use --env-file .env")
     if settings and settings.baseten_model not in ("", SPARK_MODEL):
         raise SystemExit(f"The T-06 runner requires model {SPARK_MODEL}")
@@ -487,24 +517,7 @@ def main(output_root: Path = ROOT / "runs" / "t06") -> None:
 
     for case in cases:
         baseline, baseline_cost = cheapest_baseline(case, catalog)
-        baseline_metrics = {
-            "outcome": "baseline",
-            "hard_constraints_passed": check_plan(case.state(baseline), catalog).passed,
-            "final_violation_count": 0,
-            "final_violations_by_rule": {},
-            "rejected_proposals": 0,
-            "rejected_violation_count": 0,
-            "rejected_violations_by_rule": {},
-            "provider_calls": 0,
-            "http_attempts": 0,
-            "prompt_tokens": 0,
-            "completion_tokens": 0,
-            "estimated_model_api_cost_usd": 0,
-            "latency_s": 0,
-            "catalog_cost_cents": baseline_cost,
-            "distinct_looks": distinct_look_count(baseline),
-            "plan": baseline.model_dump(mode="json"),
-        }
+        baseline_summary = baseline_metrics(case, baseline, baseline_cost, catalog)
         case_result: dict[str, Any] = {
             "inputs": {
                 "brief": case.brief.model_dump(mode="json"),
@@ -513,9 +526,9 @@ def main(output_root: Path = ROOT / "runs" / "t06") -> None:
                 "material_exclusions": sorted(case.exclusions),
                 "fit": case.fit.model_dump(mode="json"),
             },
-            "baseline": baseline_metrics,
+            "baseline": baseline_summary,
         }
-        score_rows.append(score_row(case.id, "cheapest_baseline", baseline_metrics))
+        score_rows.append(score_row(case.id, "cheapest_baseline", baseline_summary))
 
         if (
             response_recorder
@@ -550,10 +563,10 @@ def main(output_root: Path = ROOT / "runs" / "t06") -> None:
 
     print(f"mode={run['mode']} catalog={catalog.id} output={output_dir}")
     for case_id, metrics in run["cases"].items():
-        baseline_metrics = metrics["baseline"]
+        baseline_summary = metrics["baseline"]
         print(
-            f"{case_id}: baseline cost={baseline_metrics['catalog_cost_cents']} cents; "
-            f"hard_checks={'pass' if baseline_metrics['hard_constraints_passed'] else 'fail'}"
+            f"{case_id}: baseline cost={baseline_summary['catalog_cost_cents']} cents; "
+            f"hard_checks={'pass' if baseline_summary['hard_constraints_passed'] else 'fail'}"
         )
         if "muse_spark" in metrics:
             model = metrics["muse_spark"]

@@ -1,7 +1,9 @@
 """The hard constraints in docs/SPEC.md, checked in code against state and catalog records.
 
-SPEC.md allows a plan to be shown only when check_plan finds no violation. When lock_conflicts
-finds one, no plan that keeps the locks can pass, and the plan is reported as infeasible.
+check_plan does not check look structure: the planner checks that each look has a complete base
+outfit and that each item's category matches its slot. SPEC.md allows a plan to be shown only
+when neither finds a violation. When lock_conflicts finds one, no plan that keeps the locks can
+pass, and the plan is reported as infeasible.
 """
 
 from __future__ import annotations
@@ -346,7 +348,7 @@ def lock_conflicts(state: State, catalog: Catalog) -> list[Violation]:
         usable = [
             offer.price_cents
             for offer, issues in zip(variant.offers, options, strict=True)
-            if not issues and offer.price_cents is not None
+            if not issues  # an offer without a price has a PRICE_UNKNOWN issue
         ]
         if usable:
             prices[item.id] = min(usable)

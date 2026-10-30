@@ -416,10 +416,15 @@ def test_http_timeout_cancels_the_full_async_request(monkeypatch: pytest.MonkeyP
                 cancelled = True
                 raise
 
-    monkeypatch.setattr("backend.app.planner.httpx2.AsyncClient", SlowClient)
+    monkeypatch.setattr("backend.app.meta_images.httpx2.AsyncClient", SlowClient)
     with pytest.raises(TimeoutError):
         _post_json(Request("https://example.test"), 0.01)
     assert cancelled
+
+
+def test_a_client_needs_at_least_one_attempt() -> None:
+    with pytest.raises(ValueError, match="max_attempts must be at least 1"):
+        SparkClient("secret-key", max_attempts=0)
 
 
 def test_locks_that_break_the_budget_are_infeasible_without_a_model_call() -> None:

@@ -229,6 +229,10 @@ def test_does_not_retry_a_rejected_request_and_keeps_secrets_out() -> None:
     ("payload", "message"),
     [
         ({"data": []}, "no image"),
+        ({"data": ["not an object"]}, "no image"),
+        ({"data": {"b64_json": "UklGRg=="}}, "no image"),
+        ({"data": [{"b64_json": "not base64!"}]}, "not base64"),
+        ({"data": [{"b64_json": 7}]}, "not base64"),
         ({"data": [{"b64_json": base64.b64encode(b"not an image").decode()}]}, "not PNG"),
     ],
 )

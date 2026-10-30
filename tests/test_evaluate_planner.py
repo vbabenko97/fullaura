@@ -13,15 +13,18 @@ import pytest
 
 from backend.app.catalog import Catalog, Size
 from backend.app.constraints import check_plan
-from backend.app.planner import ProviderError, SparkClient
+from backend.app.planner import Outcome, PlanResult, ProviderError, SparkClient, Usage
 from backend.app.state import Fit, Slot
 from scripts import evaluate_planner
 from scripts.evaluate_planner import (
     CASES,
     MAX_LIVE_HTTP_ATTEMPTS,
     ProviderResponseRecorder,
+    baseline_metrics,
     cheapest_baseline,
     plan_cost_cents,
+    plan_metrics,
+    score_row,
 )
 
 CATALOG_PATH = Path(__file__).parents[1] / "backend" / "data" / "catalog.json"
@@ -62,6 +65,22 @@ def test_the_baseline_keeps_to_a_stated_fit() -> None:
 def test_cheapest_baseline_is_reproducible() -> None:
     for case in CASES:
         assert cheapest_baseline(case, CATALOG) == cheapest_baseline(case, CATALOG)
+
+
+def test_baseline_and_model_metrics_have_the_same_keys() -> None:
+    case = CASES[0]
+    plan, plan_cost = cheapest_baseline(case, CATALOG)
+    baseline = baseline_metrics(case, plan, plan_cost, CATALOG)
+    model = plan_metrics(case, PlanResult(Outcome.PROVIDER_ERROR, Usage()), 1.0, CATALOG)
+    assert baseline.keys() == model.keys()
+    assert baseline["rejected_constraint_failures"] == baseline["rejected_format_failures"] == 0
+
+
+def test_a_score_row_without_a_plan_leaves_its_plan_columns_blank() -> None:
+    case = CASES[0]
+    failed = PlanResult(Outcome.PROVIDER_ERROR, Usage(), error="HTTP 500")
+    row = score_row(case.id, "muse_spark", plan_metrics(case, failed, 1.0, CATALOG))
+    assert (row["distinct_looks"], row["catalog_cost_cents"]) == ("", "")
 
 
 @pytest.mark.parametrize(

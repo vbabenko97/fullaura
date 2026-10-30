@@ -21,6 +21,7 @@ from urllib.request import Request, urlopen
 import httpx2
 
 API_URL = "https://api.meta.ai/v1"
+IMAGE_MODEL = "muse-image-1.0"  # in the account's model list on 2026-10-26
 # Rate limits, timeouts and server errors are worth another attempt; other errors are not.
 RETRY_STATUS = frozenset({408, 429, 500, 502, 503, 504})
 JPEG_SEGMENT_MARKERS = frozenset({*range(0xC0, 0xC8), *range(0xC9, 0xD0), 0xCC, *range(0xDB, 0xE0)})
@@ -217,7 +218,7 @@ def _post_json(request: Request, timeout_s: float) -> dict[str, Any]:
         return json.load(response)
 
 
-async def _post_json_async(request: Request, timeout_s: float) -> dict[str, Any]:
+async def post_json_async(request: Request, timeout_s: float) -> dict[str, Any]:
     try:
         async with asyncio.timeout(timeout_s):
             async with httpx2.AsyncClient(timeout=None) as client:
@@ -244,7 +245,7 @@ async def _post_json_async(request: Request, timeout_s: float) -> dict[str, Any]
     return response.json()
 
 
-def _error_detail(error: HTTPError, api_key: str) -> str:
+def error_detail(error: HTTPError, api_key: str) -> str:
     """The provider's error type, code and a short message; never the request body, and
     never the API key, even when the provider repeats it in the message."""
     try:
@@ -270,7 +271,7 @@ class MuseImageClient:
     max_attempts: int = 3
     post: Callable[[Request, float], dict[str, Any]] = _post_json
     sleep: Callable[[float], None] = time.sleep
-    async_post: Callable[[Request, float], Awaitable[dict[str, Any]]] = _post_json_async
+    async_post: Callable[[Request, float], Awaitable[dict[str, Any]]] = post_json_async
 
     def __post_init__(self) -> None:
         if not self.api_key:
@@ -370,7 +371,7 @@ class MuseImageClient:
                     async with asyncio.timeout(remaining_s):
                         payload = await self.async_post(request, remaining_s)
                 except HTTPError as error:
-                    failure = f"HTTP {error.code}{_error_detail(error, self.api_key)}"
+                    failure = f"HTTP {error.code}{error_detail(error, self.api_key)}"
                     timed_out = error.code in (408, 504)
                     if error.code not in RETRY_STATUS:
                         raise ImageRequestError(failure, attempt) from None
@@ -442,7 +443,7 @@ class MuseImageClient:
                 try:
                     payload = self.post(request, self.timeout_s)
                 except HTTPError as error:
-                    failure = f"HTTP {error.code}{_error_detail(error, self.api_key)}"
+                    failure = f"HTTP {error.code}{error_detail(error, self.api_key)}"
                     if error.code not in RETRY_STATUS:
                         raise ImageRequestError(failure, attempt) from None
                 except (OSError, http.client.HTTPException) as error:
@@ -476,10 +477,18 @@ class MuseImageClient:
         image: bytes | None = None
         try:
             data = payload.get("data") or []
-            if not data or not data[0].get("b64_json"):
+            if (
+                not isinstance(data, list)
+                or not data
+                or not isinstance(data[0], dict)
+                or not data[0].get("b64_json")
+            ):
                 raise ImageRequestError("The response contained no image", attempts)
             first = data[0]
-            image = base64.b64decode(first["b64_json"])
+            try:
+                image = base64.b64decode(first["b64_json"])
+            except (ValueError, TypeError):
+                raise ImageRequestError("The response image is not base64", attempts) from None
             mime_type = image_mime_type(image)
             if mime_type is None:
                 raise ImageRequestError("The response image is not PNG, JPEG or WebP", attempts)

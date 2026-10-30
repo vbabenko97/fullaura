@@ -17,11 +17,9 @@ from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
 
-from backend.app.meta_images import ImageRequestError, MuseImageClient, _error_detail
-from scripts.feasibility_run import IMAGE_MODEL
+from backend.app.meta_images import IMAGE_MODEL, ImageRequestError, MuseImageClient, error_detail
+from backend.app.planner import BASETEN_URL, SPARK_MODEL
 
-BASETEN_URL = "https://inference.baseten.co/v1"  # Baseten Model APIs docs, checked 2026-10-27
-BASETEN_MODEL = "meta-models/muse-spark-open-1026"
 TIMEOUT_S = 60.0
 TEXT_PROMPT = "Reply with one word: ready"
 IMAGE_PROMPT = "A plain white cotton t-shirt on a wooden hanger, studio product photo"
@@ -54,7 +52,7 @@ def check_baseten(api_key: str, base_url: str, model: str) -> dict[str, Any]:
         if not finished:
             outcome["error"] = "The reply is empty or was cut off"
     except HTTPError as error:
-        detail = _error_detail(error, api_key)
+        detail = error_detail(error, api_key)
         outcome = {"status": "failed", "error": f"HTTP {error.code}{detail}"}
     except (OSError, http.client.HTTPException) as error:
         reason = getattr(error, "reason", error)
@@ -90,7 +88,7 @@ def main() -> None:
         check_baseten(
             keys["BASETEN_API_KEY"],
             os.environ.get("BASETEN_BASE_URL") or BASETEN_URL,
-            os.environ.get("BASETEN_MODEL") or BASETEN_MODEL,
+            os.environ.get("BASETEN_MODEL") or SPARK_MODEL,
         ),
         check_meta(keys["MODEL_API_KEY"], os.environ.get("META_IMAGE_MODEL") or IMAGE_MODEL),
     ]
