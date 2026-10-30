@@ -45,21 +45,24 @@ def check(base_url: str) -> None:
             raise RuntimeError("Unknown API route did not return a JSON 404") from error
     else:
         raise RuntimeError("Unknown API route unexpectedly succeeded")
-    expected_preview_detail = "Photo previews are available only in development"
-    try:
-        urlopen(f"{base_url}/api/previews", data=b"", timeout=5).close()
-    except HTTPError as error:
-        if (
-            error.code != 503
-            or json.load(error) != {"detail": expected_preview_detail}
-            or error.headers.get("Cache-Control") != "no-store"
-        ):
-            raise RuntimeError("Photo preview route is not disabled in production") from error
-    else:
-        raise RuntimeError("Photo preview route unexpectedly succeeded in production")
+    with urlopen(f"{base_url}/api/session", timeout=5) as response:
+        beta_open = json.load(response)["beta"]
+    if not beta_open:
+        # A closed instance must refuse a try-on before it reads any upload.
+        try:
+            urlopen(f"{base_url}/api/previews", data=b"", timeout=5).close()
+        except HTTPError as error:
+            if (
+                error.code != 404
+                or json.load(error).get("reason") != "closed"
+                or error.headers.get("Cache-Control") != "no-store"
+            ):
+                raise RuntimeError("Try-on route is not closed") from error
+        else:
+            raise RuntimeError("Try-on route unexpectedly succeeded on a closed instance")
     print(
-        f"HTTP smoke check passed: health, readiness, frontend, {len(assets)} assets, "
-        "API 404 and production-disabled previews"
+        f"HTTP smoke check passed: health, readiness, frontend, {len(assets)} assets, API 404 "
+        + ("and an open beta session" if beta_open else "and a closed beta")
     )
 
 

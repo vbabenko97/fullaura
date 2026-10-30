@@ -2,21 +2,25 @@ import { CATEGORIES, GARMENT_TYPES, PRODUCT_LINES, SIZE_SYSTEMS, SLOTS } from ".
 import type {
   Catalog,
   Category,
-  DemoSession,
   ItemRef,
   NormalizedSize,
   Offer,
   OwnedNotice,
   Plan,
+  PlanOutcome,
   PlanResponse,
-  PreviewStatus,
+  Session,
   Slot,
   Source,
   Variant,
 } from "./types";
 
-class ApiResponseError extends Error {
-  constructor(readonly status: number, readonly detail: string | null = null) {
+export class ApiResponseError extends Error {
+  constructor(
+    readonly status: number,
+    readonly detail: string | null = null,
+    readonly reason: string | null = null,
+  ) {
     super(detail ?? `API request failed with status ${status}`);
   }
 }
@@ -151,12 +155,16 @@ export function parseCatalog(value: unknown): Catalog {
           entry.garment_type == null
             ? null
             : readChoice(entry.garment_type, GARMENT_TYPES, "garment type"),
+        footwear_closure:
+          entry.footwear_closure == null
+            ? null
+            : readChoice(entry.footwear_closure, ["closed", "open"] as const, "footwear closure"),
         variants: readArray(entry.variants, "variants").map(readVariant),
       };
     }),
   };
   if (catalog.synthetic || catalog.products.length === 0) {
-    throw new Error("The development catalog is empty or synthetic");
+    throw new Error("The catalog is empty or synthetic");
   }
   return catalog;
 }
@@ -195,18 +203,19 @@ function parsePlan(value: unknown): Plan {
   };
 }
 
+const PLAN_OUTCOMES: readonly PlanOutcome[] = [
+  "success",
+  "infeasible",
+  "generation_failed",
+  "provider_timeout",
+  "provider_error",
+  "restore_failed",
+];
+
 export function parsePlanResponse(value: unknown): PlanResponse {
   if (!isRecord(value)) throw new Error("Invalid planning response");
-  const outcome = value.outcome;
-  if (
-    outcome !== "success" &&
-    outcome !== "infeasible" &&
-    outcome !== "generation_failed" &&
-    outcome !== "provider_timeout" &&
-    outcome !== "provider_error"
-  ) {
-    throw new Error("Unknown planning outcome");
-  }
+  const outcome = PLAN_OUTCOMES.find((candidate) => candidate === value.outcome);
+  if (outcome === undefined) throw new Error("Unknown planning outcome");
   const conflicts = readArray(value.conflicts, "planning conflicts").map((entry) => {
     if (!isRecord(entry)) throw new Error("Invalid planning conflict");
     return {
@@ -231,9 +240,17 @@ export function parsePlanResponse(value: unknown): PlanResponse {
     const kind: OwnedNotice["kind"] = entry.kind;
     return { kind, item, material: readString(entry.material, "planning notice material") };
   });
+  const plan = value.plan == null ? null : parsePlan(value.plan);
+  const planToken = value.plan_token == null ? null : readString(value.plan_token, "plan token");
+  if (outcome === "success" && (plan === null || planToken === null)) {
+    throw new Error("A successful planning response needs a plan and its token");
+  }
   return {
     outcome,
-    plan: value.plan === null ? null : parsePlan(value.plan),
+    plan,
+    plan_token: planToken,
+    catalog_id: value.catalog_id == null ? null : readString(value.catalog_id, "catalog ID"),
+    catalog_changed: value.catalog_changed === true,
     conflicts,
     violations,
     error,
@@ -241,77 +258,99 @@ export function parsePlanResponse(value: unknown): PlanResponse {
   };
 }
 
-export function parsePreviewStatus(value: unknown): PreviewStatus {
-  if (!isRecord(value) || typeof value.enabled !== "boolean") {
-    throw new Error("Invalid preview status response");
-  }
+function readCount(value: unknown, field: string): number {
+  const count = readNumber(value, field);
+  if (!Number.isInteger(count) || count < 0) throw new Error(`Invalid ${field} in API response`);
+  return count;
+}
+
+function readFlag(value: unknown, field: string): boolean {
+  if (typeof value !== "boolean") throw new Error(`Invalid ${field} in session response`);
+  return value;
+}
+
+export function parseSession(value: unknown): Session {
+  if (!isRecord(value)) throw new Error("Invalid session response");
   return {
-    enabled: value.enabled,
-    detail: readNullableString(value.detail, "preview status detail"),
+    beta: readFlag(value.beta, "beta flag"),
+    invited: readFlag(value.invited, "invite flag"),
+    accounting: readFlag(value.accounting, "accounting flag"),
+    age_confirmed: readFlag(value.age_confirmed, "age confirmation"),
+    photo_consent: readFlag(value.photo_consent, "photo consent"),
+    plan_requests_used: readCount(value.plan_requests_used, "used plan requests"),
+    plan_requests_limit: readCount(value.plan_requests_limit, "plan request limit"),
+    preview_requests_used: readCount(value.preview_requests_used, "used try-ons"),
+    preview_requests_limit: readCount(value.preview_requests_limit, "try-on limit"),
+    planning_open: readFlag(value.planning_open, "planning flag"),
+    previews_open: readFlag(value.previews_open, "try-on flag"),
+    pilot_ends_at: readNullableString(value.pilot_ends_at, "pilot end"),
+    pilot_ended: readFlag(value.pilot_ended, "pilot end flag"),
+    feedback_ids: readArray(value.feedback_ids, "feedback IDs").map((id) => readString(id, "feedback ID")),
+    has_plan: readFlag(value.has_plan, "plan flag"),
   };
 }
 
-export function parseDemoSession(value: unknown): DemoSession {
-  if (
-    !isRecord(value) ||
-    typeof value.enabled !== "boolean" ||
-    typeof value.age_confirmed !== "boolean"
-  ) {
-    throw new Error("Invalid demo session response");
-  }
-  const planRequestsUsed = readNumber(value.plan_requests_used, "used plan request count");
-  const planRequestsLimit = readNumber(value.plan_requests_limit, "plan request limit");
-  const planRequestsRemaining = readNumber(value.plan_requests_remaining, "remaining plan request count");
-  if (
-    !Number.isInteger(planRequestsUsed) ||
-    !Number.isInteger(planRequestsLimit) ||
-    !Number.isInteger(planRequestsRemaining) ||
-    planRequestsUsed < 0 ||
-    planRequestsLimit < 1 ||
-    planRequestsRemaining < 0 ||
-    planRequestsRemaining > planRequestsLimit ||
-    planRequestsUsed + planRequestsRemaining !== planRequestsLimit
-  ) {
-    throw new Error("Invalid demo session request limits");
-  }
-  return {
-    enabled: value.enabled,
-    age_confirmed: value.age_confirmed,
-    plan_requests_used: planRequestsUsed,
-    plan_requests_limit: planRequestsLimit,
-    plan_requests_remaining: planRequestsRemaining,
-  };
-}
+const REASON_MESSAGES: Record<string, string> = {
+  invite_required: "Open your invite link again to continue.",
+  invite_invalid: "This invite code is not valid. Check the link you were sent.",
+  age_required: "Confirm that you are 18 or older first.",
+  photo_consent_required: "Agree to the photo processing notice before a try-on.",
+  quota: "This invite has used all its requests of this kind.",
+  busy: "Another request from this invite is still running. Wait for it to finish.",
+  budget: "The beta's shared budget for this kind of request is used up. Your plan stays available.",
+  accounting_unavailable:
+    "Spending cannot be recorded right now, so model requests are paused. Your plan stays available.",
+  pilot_ended: "The beta has ended. Your saved plans and shopping list stay available.",
+  plan_expired: "This plan is no longer current on the server.",
+  not_configured: "This feature is not configured on the server.",
+  closed: "The beta is closed.",
+  timeout: "The request took too long. Try again.",
+  provider: "The model provider could not complete this request. Try again later.",
+};
 
 export function errorMessage(error: unknown): string {
-  if (error instanceof ApiResponseError && error.status === 401) {
-    return "The demo session expired. Refresh the page to start another session.";
+  if (error instanceof ApiResponseError) {
+    const known = error.reason ? REASON_MESSAGES[error.reason] : undefined;
+    if (known) return known;
+    if (error.detail) return error.detail;
+    return `The request failed with status ${error.status}.`;
   }
-  if (error instanceof ApiResponseError && error.status === 403) {
-    return error.detail ?? "Confirm that you are 18 or older before requesting a plan.";
-  }
-  if (error instanceof ApiResponseError && error.status === 429) {
-    return error.detail ?? "This demo session has reached its planning request limit.";
-  }
-  if (error instanceof ApiResponseError && error.status === 503) {
-    return error.detail ?? "The planning model is not configured.";
-  }
-  if (error instanceof ApiResponseError && error.status === 404) {
-    return "Planning is available only when the backend runs in development mode.";
-  }
-  return "The request could not be completed. Check the backend and try again.";
+  return "The request could not be completed. Check your connection and try again.";
+}
+
+export function reasonOf(error: unknown): string | null {
+  return error instanceof ApiResponseError ? error.reason : null;
+}
+
+export function newOperationId(): string {
+  return crypto.randomUUID();
+}
+
+export async function postJson(
+  url: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+): Promise<unknown> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  });
+  return readJson(response);
 }
 
 export async function readJson(response: Response): Promise<unknown> {
   if (!response.ok) {
     let detail: string | null = null;
+    let reason: string | null = null;
     try {
       const payload: unknown = await response.json();
       if (isRecord(payload) && typeof payload.detail === "string") detail = payload.detail;
+      if (isRecord(payload) && typeof payload.reason === "string") reason = payload.reason;
     } catch {
       // Keep the status-based message when the server did not return JSON.
     }
-    throw new ApiResponseError(response.status, detail);
+    throw new ApiResponseError(response.status, detail, reason);
   }
   const payload: unknown = await response.json();
   return payload;

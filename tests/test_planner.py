@@ -10,19 +10,18 @@ from urllib.error import HTTPError
 from urllib.request import Request
 
 import pytest
-from fastapi.testclient import TestClient
 
 from backend.app.catalog import Catalog
-from backend.app.config import Settings
 from backend.app.constraints import Rule
-from backend.app.main import create_app
 from backend.app.planner import (
     MAX_TOKENS,
     REASONING_EFFORT,
     Brief,
+    Occasion,
     Outcome,
     PlanRequest,
     Replacement,
+    Season,
     SparkClient,
     _post_json,
     plan_looks,
@@ -30,6 +29,7 @@ from backend.app.planner import (
 from backend.app.state import (
     Budget,
     Fit,
+    FootwearChoice,
     ItemKind,
     ItemRef,
     LockedPlacement,
@@ -142,7 +142,7 @@ def test_a_valid_plan_succeeds_with_offers_chosen_by_code() -> None:
     assert {"P01", "P05", "P18"} <= candidates
 
 
-def test_replacement_changes_only_the_target_and_checks_the_whole_plan(tmp_path: Path) -> None:
+def test_replacement_changes_only_the_target_and_checks_the_whole_plan() -> None:
     current_plan = plan_from_looks(LOOK_1, LOOK_2, LOOK_3)
     target = Replacement(
         look_id="look_2",
@@ -159,17 +159,15 @@ def test_replacement_changes_only_the_target_and_checks_the_whole_plan(tmp_path:
     request = PlanRequest(brief=BRIEF, state=request_state, replacement=target)
     changed_look_2 = {**LOOK_2, "top": "P16", "bottom": "P09"}
     client, sent, _ = spark(reply(LOOK_1, changed_look_2, LOOK_3))
-    app = create_app(Settings(web_dist=tmp_path, catalog_file=FIXTURE), spark=client)
 
-    with TestClient(app) as http:
-        authorize_demo(http)
-        response = http.post("/api/plans", json=request.model_dump(mode="json"))
+    result = plan_looks(
+        request.brief, request.state, CATALOG, client, replacement=request.replacement
+    )
 
-    payload = response.json()
-    assert response.status_code == 200 and payload["outcome"] == "success"
-    assert payload["violations"] == []
-    assert payload["plan"]["looks"][1]["items"]["top"]["id"] == "P16"
-    assert payload["plan"]["looks"][1]["items"]["bottom"]["id"] == "P05"
+    assert result.outcome is Outcome.SUCCESS and result.check and result.check.passed
+    assert result.plan is not None
+    assert result.plan.looks[1].items[Slot.TOP].id == "P16"
+    assert result.plan.looks[1].items[Slot.BOTTOM].id == "P05"
     submitted = json.loads(sent[0]["messages"][1]["content"])
     assert submitted["replacement"] == {
         "look_id": "look_2",
@@ -487,122 +485,49 @@ def test_logs_hold_usage_but_nothing_the_person_entered(caplog: pytest.LogCaptur
         assert entered not in caplog.text
 
 
-def body() -> dict[str, Any]:
-    return {
-        "brief": BRIEF.model_dump(mode="json"),
-        "state": {"budget": {"amount_cents": 20000}, "material_exclusions": ["wool"]},
-    }
-
-
-def authorize_demo(http: TestClient) -> None:
-    session = http.get("/api/session")
-    assert session.status_code == 200
-    assert session.json()["plan_requests_remaining"] == 3
-    confirmation = http.post("/api/session/confirm-age", json={"over_18": True})
-    assert confirmation.status_code == 200
-
-
-def test_the_api_returns_a_checked_plan(tmp_path: Path) -> None:
-    client, _, _ = spark(VALID)
-    app = create_app(Settings(web_dist=tmp_path, catalog_file=FIXTURE), spark=client)
-    with TestClient(app) as http:
-        authorize_demo(http)
-        response = http.post("/api/plans", json=body())
-    assert response.status_code == 200
-    payload = response.json()
-    assert (payload["outcome"], payload["violations"], payload["usage"]["calls"]) == (
-        "success",
-        [],
-        1,
-    )
-    assert len(payload["plan"]["looks"]) == 3
-    assert payload["usage"]["http_attempts"] == 1
-
-
-def test_the_model_sees_only_catalog_variants_in_the_stated_fit(tmp_path: Path) -> None:
-    client, sent, _ = spark(MENS_LOOKS)
-    app = create_app(Settings(web_dist=tmp_path, catalog_file=FIXTURE), spark=client)
-    fit = {"lines": ["men"], "garment_types": ["trousers", "jeans", "shorts"]}
-    with TestClient(app) as http:
-        authorize_demo(http)
-        response = http.post("/api/plans", json=body() | {"state": body()["state"] | {"fit": fit}})
-        catalog = http.get("/api/catalog").json()
-    assert response.json()["outcome"] == "success"
+def test_closed_footwear_keeps_open_and_unrecorded_shoes_from_the_model() -> None:
+    client, sent, _ = spark(VALID)
+    chosen = state(material_exclusions=frozenset(), footwear=FootwearChoice.CLOSED)
+    assert plan_looks(BRIEF, chosen, CATALOG, client).outcome is Outcome.SUCCESS
     request = json.loads(sent[0]["messages"][1]["content"])
-    # Without a line, outside the line or with wool, a variant never reaches the model.
-    assert {candidate["id"] for candidate in request["candidates"]} == {"P01", "P03", "P05", "P18"}
-    shoes = next(product for product in catalog["products"] if product["id"] == "product_P18")
-    assert (shoes["line"], shoes["garment_type"]) == ("unisex", None)
-    assert shoes["variants"][0]["normalized_size"] == {"system": "eu_shoe", "value": "42"}
+    candidates = request["candidates"]
+    shoes = {c["id"]: c.get("closure") for c in candidates if c["category"] == "footwear"}
+    # P17 records no closure, so it cannot pass a closed choice.
+    assert shoes == {"P07": "closed", "P08": "closed", "P18": "closed"}
+    assert request["footwear_required"] is True
 
 
-def test_the_api_hides_a_plan_that_still_fails_checks(tmp_path: Path) -> None:
-    client, _, _ = spark(WITH_WOOL, WITH_WOOL)
-    app = create_app(Settings(web_dist=tmp_path, catalog_file=FIXTURE), spark=client)
-    with TestClient(app) as http:
-        authorize_demo(http)
-        response = http.post("/api/plans", json=body())
-    payload = response.json()
-    assert payload["outcome"] == "generation_failed"
-    assert payload["plan"] is None
-    assert any(violation["rule"] == Rule.MATERIAL.value for violation in payload["violations"])
+def test_a_look_without_shoes_gets_a_repair_once_footwear_is_chosen() -> None:
+    barefoot = reply(LOOK_1, LOOK_2, {"top": "P01", "bottom": "P09"})
+    client, sent, _ = spark(barefoot, VALID)
+    result = plan_looks(BRIEF, state(footwear=FootwearChoice.CLOSED), CATALOG, client)
+    assert result.outcome is Outcome.SUCCESS and len(sent) == 2
+    assert "look_3 needs closed footwear" in sent[1]["messages"][-1]["content"]
 
 
-def test_the_api_needs_a_key_and_stays_off_in_production(tmp_path: Path) -> None:
-    with TestClient(create_app(Settings(web_dist=tmp_path, catalog_file=FIXTURE))) as http:
-        authorize_demo(http)
-        assert http.post("/api/plans", json=body()).status_code == 503
-    (tmp_path / "index.html").write_text("<html></html>", encoding="utf-8")
-    production = Settings(environment="production", web_dist=tmp_path, baseten_api_key="key")
-    with TestClient(create_app(production)) as http:
-        assert http.post("/api/plans", json=body()).status_code == 404
+def test_a_footwear_choice_that_no_shoe_meets_is_infeasible_without_a_model_call() -> None:
+    client, sent, _ = spark()
+    result = plan_looks(BRIEF, state(footwear=FootwearChoice.OPEN), CATALOG, client)
+    assert (result.outcome, sent) == (Outcome.INFEASIBLE, [])
+    assert [conflict.rule for conflict in result.conflicts] == [Rule.FOOTWEAR]
 
 
-def test_public_production_planning_requires_a_secure_age_confirmed_session(
-    tmp_path: Path,
-) -> None:
-    (tmp_path / "index.html").write_text("<html>FullAura</html>", encoding="utf-8")
-    client, _, _ = spark(VALID)
-    settings = Settings(
-        environment="production",
-        public_demo_enabled=True,
-        web_dist=tmp_path,
-        catalog_file=FIXTURE,
-    )
-    with TestClient(create_app(settings, spark=client), base_url="https://testserver") as http:
-        assert http.post("/api/plans", json=body()).status_code == 401
-        session = http.get("/api/session")
-        assert session.json()["enabled"] is True
-        assert "secure" in session.headers["set-cookie"].lower()
-        assert http.post("/api/plans", json=body()).status_code == 403
-        assert http.post("/api/session/confirm-age", json={"over_18": True}).status_code == 200
-        response = http.post("/api/plans", json=body())
-    assert response.status_code == 200
-    assert response.json()["outcome"] == "success"
-    assert "max-age=86400" in response.headers["set-cookie"].lower()
+def test_owned_shoes_meet_a_footwear_choice() -> None:
+    boots = OwnedItem(id="O01", category="footwear", color="brown", description="leather boots")
+    looks = [{**look, "footwear": "O01"} for look in (LOOK_1, LOOK_2, LOOK_3)]
+    client, _, _ = spark(reply(*looks))
+    chosen = state(footwear=FootwearChoice.OPEN, owned_items=(boots,))
+    assert plan_looks(BRIEF, chosen, CATALOG, client).outcome is Outcome.SUCCESS
 
 
-def test_api_requires_age_confirmation_and_caps_plan_submissions_per_session(
-    tmp_path: Path,
-) -> None:
-    client, sent, _ = spark(VALID, VALID, VALID)
-    app = create_app(Settings(web_dist=tmp_path, catalog_file=FIXTURE), spark=client)
-    with TestClient(app) as http:
-        session = http.get("/api/session")
-        cookie = http.cookies.get("fullaura_demo_session")
-        assert cookie and session.json()["age_confirmed"] is False
-        assert "httponly" in session.headers["set-cookie"].lower()
-        assert "samesite=lax" in session.headers["set-cookie"].lower()
-
-        assert http.post("/api/plans", json=body()).status_code == 403
-        assert http.post("/api/session/confirm-age", json={"over_18": False}).status_code == 403
-        confirmed = http.post("/api/session/confirm-age", json={"over_18": True})
-        assert confirmed.status_code == 200
-        assert confirmed.json()["age_confirmed"] is True
-
-        responses = [http.post("/api/plans", json=body()) for _ in range(3)]
-        assert all(response.status_code == 200 for response in responses)
-        assert responses[-1].headers["x-plan-requests-remaining"] == "0"
-        assert http.post("/api/plans", json=body()).status_code == 429
-        assert http.get("/api/session").json()["plan_requests_used"] == 3
-        assert len(sent) == 3
+def test_occasion_and_season_reach_the_model_as_wishes() -> None:
+    client, sent, _ = spark(VALID)
+    brief = Brief(style_goal="smart casual", occasion=Occasion.OFFICE, season=Season.AUTUMN)
+    plan_looks(brief, state(), CATALOG, client)
+    request = json.loads(sent[0]["messages"][1]["content"])
+    assert request["brief"] | {"style_goal": ""} == {
+        "style_goal": "",
+        "preferred_colors": [],
+        "occasion": "office",
+        "season": "autumn",
+    }

@@ -51,6 +51,9 @@ export const SLOT_CATEGORIES: Record<Slot, readonly Category[]> = {
   accessory: ["accessory"],
 };
 
+export const FOOTWEAR_CHOICES = ["closed", "open", "any"] as const;
+export const OCCASIONS = ["office", "casual", "evening", "travel", "special_event"] as const;
+export const SEASONS = ["spring", "summer", "autumn", "winter"] as const;
 export const FIT_LINES = ["men", "women"] as const;
 export const PRODUCT_LINES = [...FIT_LINES, "unisex"] as const;
 export const GARMENT_TYPES = ["trousers", "jeans", "shorts", "skirt", "leggings", "dress"] as const;
@@ -65,6 +68,9 @@ export type Category = (typeof CATEGORIES)[number];
 export type Slot = (typeof SLOTS)[number];
 export type FitLine = (typeof FIT_LINES)[number];
 export type GarmentType = (typeof GARMENT_TYPES)[number];
+export type FootwearChoice = (typeof FOOTWEAR_CHOICES)[number];
+export type Occasion = (typeof OCCASIONS)[number];
+export type Season = (typeof SEASONS)[number];
 type LetterSize = (typeof LETTER_SIZES)[number];
 
 
@@ -140,6 +146,7 @@ export interface Product {
   category: Category;
   line: (typeof PRODUCT_LINES)[number] | null;
   garment_type: GarmentType | null;
+  footwear_closure: "closed" | "open" | null;
   variants: Variant[];
 }
 
@@ -179,28 +186,43 @@ export interface LockedPlacement {
 
 export type ReplacementTarget = LockedPlacement;
 
+export type PlanOutcome =
+  | "success"
+  | "infeasible"
+  | "generation_failed"
+  | "provider_timeout"
+  | "provider_error"
+  | "restore_failed";
+
 export interface PlanResponse {
-  outcome: "success" | "infeasible" | "generation_failed" | "provider_timeout" | "provider_error";
+  outcome: PlanOutcome;
   plan: Plan | null;
+  plan_token: string | null;
+  catalog_id: string | null;
+  catalog_changed: boolean;
   conflicts: { rule: string | null; detail: string }[];
   violations: { rule: string; detail: string }[];
   error: string | null;
   notices: OwnedNotice[];
 }
 
-export interface PreviewStatus {
-  enabled: boolean;
-  detail: string | null;
-}
-
-export interface DemoSession {
-  enabled: boolean;
+export interface Session {
+  beta: boolean;
+  invited: boolean;
+  accounting: boolean;
   age_confirmed: boolean;
+  photo_consent: boolean;
   plan_requests_used: number;
   plan_requests_limit: number;
-  plan_requests_remaining: number;
+  preview_requests_used: number;
+  preview_requests_limit: number;
+  planning_open: boolean;
+  previews_open: boolean;
+  pilot_ends_at: string | null;
+  pilot_ended: boolean;
+  feedback_ids: string[];
+  has_plan: boolean;
 }
-
 
 export interface OwnedNotice {
   kind: "owned_reported" | "owned_unconfirmed";
@@ -208,23 +230,55 @@ export interface OwnedNotice {
   material: string;
 }
 
+export interface Brief {
+  style_goal: string;
+  preferred_colors: string[];
+  occasion: Occasion | null;
+  season: Season | null;
+}
+
+/** The structured state the server checks; the server adds the plan named by plan_token. */
+export interface StateInput {
+  budget: {
+    amount_cents: number;
+    mode: BudgetMode;
+  };
+  material_exclusions: Material[];
+  fit?: Fit;
+  footwear: FootwearChoice;
+  owned_items: OwnedItem[];
+  locks: LockedPlacement[];
+}
+
 export interface PlanRequest {
-  brief: {
-    style_goal: string;
-    preferred_colors: string[];
-  };
+  brief: Brief;
+  state: StateInput;
   replacement: ReplacementTarget | null;
-  state: {
-    budget: {
-      amount_cents: number;
-      mode: BudgetMode;
-    };
-    material_exclusions: Material[];
-    fit?: Fit;
-    owned_items: OwnedItem[];
-    locks: LockedPlacement[];
-    plan: Plan | null;
-  };
+  plan_token: string | null;
+}
+
+/** A checked plan kept on this device, with the facts needed to show it without the server. */
+export interface SavedPlan {
+  id: string;
+  saved_at: string;
+  name: string;
+  brief: Brief;
+  state: StateInput & { plan: Plan };
+  catalog_id: string;
+  shopping_list: ShoppingLine[];
+}
+
+export interface ShoppingLine {
+  key: string;
+  kind: "catalog" | "owned";
+  name: string;
+  details: string;
+  looks: string[];
+  price_cents: number | null;
+  retailer: string | null;
+  url: string | null;
+  checked_at: string | null;
+  stock: "in_stock" | "out_of_stock" | null;
 }
 
 export type RequestState = "idle" | "loading" | "success" | "error";

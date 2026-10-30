@@ -1,20 +1,29 @@
-"""Serve the API and, when built, the React frontend from one origin."""
+"""Serve the API and, when built, the React frontend from one origin.
+
+Production keeps everything except health, readiness and the session status closed unless
+FULLAURA_BETA_ENABLED=true; the closed beta then serves invited sessions only. Every model call
+first passes the pilot's checks, which count it against the invite's quota and reserve its
+maximum cost in the shared ledger (backend/app/pilot.py).
+"""
 
 from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 import time
-from collections.abc import Awaitable, Callable
+import uuid
+from pathlib import Path
+from typing import Annotated, Any, Literal
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, StrictBool
+from pydantic import BaseModel, Field, StrictBool, ValidationError
 from starlette.requests import Request
 from starlette.responses import Response
 
-from backend.app.catalog import Catalog
+from backend.app.catalog import Catalog, Record
 from backend.app.config import Settings
 from backend.app.meta_images import ImageRequestError, MuseImageClient
 from backend.app.photos import (
@@ -24,101 +33,276 @@ from backend.app.photos import (
     PhotoProcessingError,
     PhotoTooLargeError,
     PreviewResponse,
+    preview_prompt,
     read_preview_uploads,
     wait_for_preview_or_disconnect,
 )
+from backend.app.pilot import (
+    IMAGE_MICRO_USD,
+    Budget,
+    OperationKind,
+    Pilot,
+    PilotLimits,
+    Refusal,
+    Refused,
+    planning_cost_micro_usd,
+    planning_reserve_micro_usd,
+)
 from backend.app.planner import (
     BASETEN_URL,
+    GENERATION_ATTEMPTS,
+    HTTP_ATTEMPTS_PER_CALL,
+    MAX_TOKENS,
     SPARK_MODEL,
+    Brief,
+    Outcome,
     PlanRequest,
+    PlanResult,
     SparkClient,
+    Usage,
+    check_complete_plan,
+    infeasibility,
     plan_looks,
     result_json,
+    with_cheapest_offers,
 )
 from backend.app.sessions import (
-    DEMO_SESSION_COOKIE,
-    MAX_PLAN_REQUESTS_PER_SESSION,
-    SESSION_TTL_SECONDS,
-    DemoSessionStore,
-    DemoSessionView,
+    SESSION_COOKIE,
+    SESSION_COOKIE_MAX_AGE_S,
+    PlanMemory,
+    PlanRecord,
+    Session,
+    read_session,
+    sign_session,
 )
+from backend.app.state import State
+from backend.app.store import AzureBlobStore, DirectoryStore, MemoryStore, Store, StoreUnavailable
 
-PREVIEW_DISABLED_DETAIL = "Photo previews are unavailable pending the T-02 feasibility result"
-PREVIEW_CONFIG_DETAIL = "Photo previews need MODEL_API_KEY in the development environment"
+OPERATION_HEADER = "X-Operation-Id"
+PLAN_TOKEN_HEADER = "X-Plan-Token"
+LOOK_HEADER = "X-Look-Id"
+NO_STORE = {"Cache-Control": "no-store"}
+REFUSAL_STATUS = {
+    Refusal.AGE_REQUIRED: 403,
+    Refusal.PHOTO_CONSENT_REQUIRED: 403,
+    Refusal.PILOT_ENDED: 403,
+    Refusal.QUOTA: 429,
+    Refusal.BUSY: 409,
+    Refusal.DUPLICATE: 409,
+    Refusal.BUDGET: 503,
+    Refusal.ACCOUNTING_UNAVAILABLE: 503,
+}
+IMAGE_ATTEMPTS = 3  # MuseImageClient.max_attempts
+
+logger = logging.getLogger(__name__)
+
+
+class InviteCode(BaseModel):
+    code: Annotated[str, Field(min_length=8, max_length=64)]
 
 
 class AgeConfirmation(BaseModel):
     over_18: StrictBool
 
 
-def _session_payload(
-    enabled: bool,
-    session: DemoSessionView,
-) -> dict[str, bool | int]:
-    return {
-        "enabled": enabled,
-        "age_confirmed": session.age_confirmed,
-        "plan_requests_used": session.plan_requests_used,
-        "plan_requests_limit": MAX_PLAN_REQUESTS_PER_SESSION,
-        "plan_requests_remaining": session.plan_requests_remaining,
-    }
+class PhotoConsent(BaseModel):
+    consent: StrictBool
 
 
-def _set_demo_cookie(response: Response, session_id: str, settings: Settings) -> None:
-    response.set_cookie(
-        key=DEMO_SESSION_COOKIE,
-        value=session_id,
-        max_age=SESSION_TTL_SECONDS,
-        httponly=True,
-        secure=settings.environment == "production",
-        samesite="lax",
-        path="/",
-    )
+class PlanSubmission(Record):
+    """A planning request. The server adds the plan it last checked for this browser session,
+    named by plan_token, so the browser never sends a plan here."""
+
+    brief: Brief
+    state: dict[str, Any]
+    replacement: dict[str, Any] | None = None
+    plan_token: str | None = None
 
 
-def _preview_error(detail: str, status_code: int) -> JSONResponse:
+class RestoreRequest(Record):
+    """A plan the browser saved earlier, to check again against the current catalog."""
+
+    brief: Brief
+    state: State
+    catalog_id: str
+
+
+class FeedbackAnswers(Record):
+    would_wear: StrictBool  # would wear at least one of the looks
+    usefulness: Annotated[int, Field(ge=1, le=5)]
+    try_on: Annotated[int, Field(ge=1, le=5)] | Literal["cannot_assess"]
+    catalog_problem: Annotated[str, Field(max_length=300)] = ""
+    comment: Annotated[str, Field(max_length=500)] = ""
+
+
+def _error(
+    detail: str, status_code: int, reason: str | None = None, headers: dict[str, str] | None = None
+) -> JSONResponse:
     return JSONResponse(
-        {"detail": detail},
+        {"detail": detail, "reason": reason},
         status_code=status_code,
-        headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
+        headers={**NO_STORE, "X-Content-Type-Options": "nosniff", **(headers or {})},
     )
+
+
+def _refusal(refused: Refused) -> JSONResponse:
+    return _error(refused.detail, REFUSAL_STATUS[refused.reason], refused.reason.value)
+
+
+def _invalid(error: ValidationError) -> JSONResponse:
+    details = error.errors(include_url=False, include_input=False, include_context=False)
+    return JSONResponse({"detail": details, "reason": "invalid"}, status_code=422, headers=NO_STORE)
+
+
+def open_store(url: str) -> Store:
+    if url == "memory://":
+        return MemoryStore()
+    if url.startswith("file://"):
+        return DirectoryStore(Path(url.removeprefix("file://")))
+    if url.startswith("https://") and ".blob.core.windows.net/" in url:
+        account_url, container = url.rstrip("/").rsplit("/", 1)
+        return AzureBlobStore(account_url, container)
+    raise ValueError("FULLAURA_STORE_URL must be memory://, file:///folder or a blob container URL")
 
 
 def create_app(
     settings: Settings | None = None,
     spark: SparkClient | None = None,
     image_editor: AsyncImageEditor | None = None,
+    store: Store | None = None,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
     index_file = settings.web_dist / "index.html"
     assets_dir = settings.web_dist / "assets"
-    if settings.environment == "production" and not index_file.is_file():
+    production = settings.environment == "production"
+    if production and not index_file.is_file():
         raise RuntimeError("Build the frontend before starting in production")
+    if production and settings.beta_enabled:
+        if len(settings.session_secret) < 32:
+            raise RuntimeError("The beta needs FULLAURA_SESSION_SECRET of 32 or more characters")
+        if settings.store_url == "memory://" and store is None:
+            raise RuntimeError("The beta needs a persistent FULLAURA_STORE_URL")
+        if not settings.invite_hashes:
+            raise RuntimeError("The beta needs FULLAURA_INVITE_HASHES")
 
     app = FastAPI(
         title="FullAura API",
-        version="0.1.0",
+        version="0.2.0",
         docs_url="/api/docs" if settings.environment == "development" else None,
         redoc_url=None,
         openapi_url="/api/openapi.json" if settings.environment == "development" else None,
     )
-    demo_enabled = settings.environment == "development" or settings.public_demo_enabled
-    demo_sessions = DemoSessionStore()
+    secret = settings.session_secret.encode() or secrets.token_bytes(32)
+    pilot = Pilot(
+        store or open_store(settings.store_url),
+        PilotLimits(
+            plan_requests=settings.plan_requests_per_invite,
+            preview_requests=settings.preview_requests_per_invite,
+            budgets_micro_usd=(
+                (Budget.PLANNING, round(settings.planning_budget_usd * 1_000_000)),
+                (Budget.IMAGES, round(settings.image_budget_usd * 1_000_000)),
+            ),
+            ends_at=settings.pilot_ends_at,
+        ),
+        settings.invite_hashes,
+    )
+    plans = PlanMemory()
+    catalog = Catalog.model_validate_json(settings.catalog_file.read_text(encoding="utf-8"))
+    plan_reserve = planning_reserve_micro_usd(
+        GENERATION_ATTEMPTS * HTTP_ATTEMPTS_PER_CALL, MAX_TOKENS
+    )
+    preview_reserve = IMAGE_ATTEMPTS * IMAGE_MICRO_USD
 
-    @app.middleware("http")
-    async def refresh_demo_session_cookie(
-        request: Request,
-        call_next: Callable[[Request], Awaitable[Response]],
-    ) -> Response:
-        response = await call_next(request)
-        session_id = request.cookies.get(DEMO_SESSION_COOKIE)
-        if session_id and demo_sessions.refresh(session_id):
-            _set_demo_cookie(response, session_id, settings)
-        return response
+    def planning_client() -> SparkClient | None:
+        if spark is not None:
+            return spark
+        if not settings.baseten_api_key:
+            return None
+        return SparkClient(
+            settings.baseten_api_key,
+            model=settings.baseten_model or SPARK_MODEL,
+            base_url=settings.baseten_base_url or BASETEN_URL,
+        )
+
+    def preview_editor() -> AsyncImageEditor | None:
+        if image_editor is not None:
+            return image_editor
+        if not settings.model_api_key:
+            return None
+        return MuseImageClient(settings.model_api_key, settings.meta_image_model)
+
+    def session_of(request: Request) -> Session | None:
+        session = read_session(secret, request.cookies.get(SESSION_COOKIE))
+        return session if session and pilot.knows(session.invite_id) else None
+
+    def session_payload(session: Session | None) -> dict[str, Any]:
+        payload: dict[str, Any] = {
+            "beta": settings.beta_open,
+            "invited": session is not None,
+            "accounting": False,
+            "age_confirmed": False,
+            "photo_consent": False,
+            "plan_requests_used": 0,
+            "plan_requests_limit": pilot.limits.plan_requests,
+            "preview_requests_used": 0,
+            "preview_requests_limit": pilot.limits.preview_requests,
+            "planning_open": False,
+            "previews_open": False,
+            "pilot_ends_at": settings.pilot_ends_at.isoformat() if settings.pilot_ends_at else None,
+            "pilot_ended": pilot.ended(),
+            "feedback_ids": [],
+            "has_plan": False,
+        }
+        if session is None or not settings.beta_open:
+            return payload
+        payload["has_plan"] = plans.get(session) is not None
+        try:
+            status = pilot.status(session.invite_id)
+            planning_budget = pilot.budget_open(OperationKind.PLAN, plan_reserve)
+            image_budget = pilot.budget_open(OperationKind.PREVIEW, preview_reserve)
+        except StoreUnavailable:
+            return payload
+        open_window = not pilot.ended()
+        payload.update(
+            accounting=True,
+            age_confirmed=status.age_confirmed,
+            photo_consent=status.photo_consent,
+            plan_requests_used=status.plan_requests_used,
+            preview_requests_used=status.preview_requests_used,
+            planning_open=open_window
+            and planning_budget
+            and planning_client() is not None
+            and status.plan_requests_used < pilot.limits.plan_requests,
+            previews_open=open_window
+            and image_budget
+            and preview_editor() is not None
+            and status.preview_requests_used < pilot.limits.preview_requests,
+            feedback_ids=list(status.feedback_ids),
+        )
+        return payload
+
+    def plan_payload(record: PlanRecord, result: PlanResult) -> dict[str, Any]:
+        payload = result_json(result)
+        payload.update(
+            plan_token=record.token, plan_version=record.version, catalog_id=record.catalog_id
+        )
+        return payload
+
+    def closed() -> JSONResponse:
+        return _error("The beta is closed", 404, "closed")
+
+    def not_invited() -> JSONResponse:
+        return _error("Open your invite link to continue", 401, "invite_required")
+
+    def operation_id_of(request: Request) -> str | None:
+        try:
+            return str(uuid.UUID(request.headers.get(OPERATION_HEADER, "")))
+        except ValueError:
+            return None
 
     @app.get("/api/health", tags=["operations"])
     def health() -> dict[str, str]:
-        """Process health; this does not contact or verify Meta or Azure."""
+        """Process health; this does not contact or verify Meta, Baseten or Azure."""
         return {"status": "ok", "service": "fullaura"}
 
     @app.get("/api/ready", tags=["operations"])
@@ -130,62 +314,175 @@ def create_app(
             status_code=200 if usable else 503,
         )
 
-    @app.get("/api/session", tags=["demo"])
-    def get_demo_session(request: Request) -> JSONResponse:
-        """Create or refresh the anonymous session used for consent and request limits."""
-        session_id, session = demo_sessions.get_or_create(request.cookies.get(DEMO_SESSION_COOKIE))
-        response = JSONResponse(
-            _session_payload(demo_enabled, session),
-            headers={"Cache-Control": "no-store"},
+    @app.get("/api/session", tags=["session"])
+    def get_session(request: Request) -> JSONResponse:
+        """Whether this browser holds an invite, and what it may still do."""
+        return JSONResponse(session_payload(session_of(request)), headers=NO_STORE)
+
+    @app.post("/api/session/invite", tags=["session"])
+    def open_invite(invite: InviteCode, request: Request) -> JSONResponse:
+        """Exchange an invite code for a signed session cookie."""
+        if not settings.beta_open:
+            return closed()
+        invite_id = pilot.invite_id(invite.code)
+        if invite_id is None:
+            return _error("This invite code is not valid", 403, "invite_invalid")
+        cookie = sign_session(secret, invite_id)
+        response = JSONResponse(session_payload(read_session(secret, cookie)), headers=NO_STORE)
+        response.set_cookie(
+            key=SESSION_COOKIE,
+            value=cookie,
+            max_age=SESSION_COOKIE_MAX_AGE_S,
+            httponly=True,
+            secure=production,
+            samesite="lax",
+            path="/",
         )
-        if request.cookies.get(DEMO_SESSION_COOKIE) != session_id:
-            _set_demo_cookie(response, session_id, settings)
         return response
 
-    @app.post("/api/session/confirm-age", tags=["demo"])
-    def confirm_demo_age(request: Request, confirmation: AgeConfirmation) -> JSONResponse:
-        """Store an explicit 18+ confirmation for this anonymous browser session."""
-        if not demo_enabled:
-            return JSONResponse(
-                {"detail": "The planning demo is closed"},
-                status_code=404,
-                headers={"Cache-Control": "no-store"},
-            )
-        if not confirmation.over_18:
-            return JSONResponse(
-                {"detail": "You must confirm that you are 18 or older to use planning"},
-                status_code=403,
-                headers={"Cache-Control": "no-store"},
-            )
-        session = demo_sessions.confirm_age(request.cookies.get(DEMO_SESSION_COOKIE))
+    @app.post("/api/session/confirm-age", tags=["session"])
+    def confirm_age(confirmation: AgeConfirmation, request: Request) -> JSONResponse:
+        """Record that the invited person confirmed they are 18 or older."""
+        session = session_of(request)
+        if not settings.beta_open:
+            return closed()
         if session is None:
-            return JSONResponse(
-                {"detail": "The demo session expired; refresh the page to continue"},
-                status_code=401,
-                headers={"Cache-Control": "no-store"},
+            return not_invited()
+        if not confirmation.over_18:
+            return _error("FullAura is for people aged 18 or older", 403, "age_required")
+        try:
+            pilot.confirm_age(session.invite_id)
+        except StoreUnavailable:
+            return _error("The confirmation could not be saved; try again", 503, "accounting")
+        return JSONResponse(session_payload(session), headers=NO_STORE)
+
+    @app.post("/api/session/photo-consent", tags=["session"])
+    def photo_consent(consent: PhotoConsent, request: Request) -> JSONResponse:
+        """Record or withdraw consent to the photo processing notice."""
+        session = session_of(request)
+        if not settings.beta_open:
+            return closed()
+        if session is None:
+            return not_invited()
+        try:
+            pilot.set_photo_consent(session.invite_id, consent.consent)
+        except StoreUnavailable:
+            return _error("The consent could not be saved; try again", 503, "accounting")
+        return JSONResponse(session_payload(session), headers=NO_STORE)
+
+    @app.get("/api/catalog", tags=["catalog"])
+    def get_catalog(request: Request) -> JSONResponse:
+        """Catalog facts for invited sessions."""
+        if not settings.beta_open:
+            return closed()
+        if session_of(request) is None:
+            return not_invited()
+        return JSONResponse(catalog.model_dump(mode="json"))
+
+    @app.post("/api/plans", tags=["planning"])
+    def create_plan(submission: PlanSubmission, request: Request) -> JSONResponse:
+        """Three looks from the catalog, checked against every hard constraint. An update or a
+        replacement names the current plan by its token; a failure keeps that plan current."""
+        if not settings.beta_open:
+            return closed()
+        session = session_of(request)
+        if session is None:
+            return not_invited()
+        operation_id = operation_id_of(request)
+        if operation_id is None:
+            return _error(f"Send a UUID in {OPERATION_HEADER}", 400, "operation_id")
+
+        record = plans.get(session)
+        if record is not None and record.operation_id == operation_id:
+            # A repeat of the request that produced the current plan: answer it again for free.
+            plan = record.state.plan
+            check = check_complete_plan(plan, record.state, catalog)
+            result = PlanResult(Outcome.SUCCESS, Usage(), plan, check)
+            return JSONResponse(plan_payload(record, result), headers=NO_STORE)
+        if "plan" in submission.state:
+            return _error("Send plan_token instead of a plan", 422, "invalid")
+        current = None
+        if submission.plan_token is not None:
+            current = plans.current(session, submission.plan_token)
+            if current is None:
+                return _error("This plan has expired; restore it first", 409, "plan_expired")
+        try:
+            plan_request = PlanRequest.model_validate(
+                {
+                    "brief": submission.brief,
+                    "state": {
+                        **submission.state,
+                        "plan": current.state.plan if current else None,
+                    },
+                    "replacement": submission.replacement,
+                }
             )
-        return JSONResponse(
-            _session_payload(demo_enabled, session),
-            headers={"Cache-Control": "no-store"},
-        )
+        except ValidationError as error:
+            return _invalid(error)
 
-    def preview_status() -> tuple[bool, str | None]:
-        if settings.environment != "development":
-            return False, "Photo previews are available only in development"
-        if not settings.t02_previews_passed:
-            return False, PREVIEW_DISABLED_DETAIL
-        if not settings.model_api_key and image_editor is None:
-            return False, PREVIEW_CONFIG_DETAIL
-        return True, None
+        state = plan_request.state
+        conflicts = infeasibility(state, catalog)
+        if conflicts:  # no plan can pass, so no model call and no quota
+            result = PlanResult(Outcome.INFEASIBLE, Usage(), conflicts=tuple(conflicts))
+            return JSONResponse({**result_json(result), "catalog_id": catalog.id}, headers=NO_STORE)
+        client = planning_client()
+        if client is None:
+            return _error("The planning model is not configured", 503, "not_configured")
+        try:
+            operation = pilot.begin(
+                session.invite_id, OperationKind.PLAN, operation_id, plan_reserve
+            )
+        except Refused as refused:
+            return _refusal(refused)
 
-    @app.get("/api/previews/status", tags=["previews"])
-    def get_preview_status() -> JSONResponse:
-        """Report whether local photo previews are available without receiving photos."""
-        enabled, detail = preview_status()
-        return JSONResponse(
-            {"enabled": enabled, "detail": detail},
-            headers={"Cache-Control": "no-store"},
-        )
+        cost: int | None = None
+        outcome = "error"
+        try:
+            result = plan_looks(
+                plan_request.brief, state, catalog, client, replacement=plan_request.replacement
+            )
+            usage = result.usage
+            cost = planning_cost_micro_usd(
+                usage.prompt_tokens,
+                usage.completion_tokens,
+                usage.calls,
+                usage.http_attempts,
+                MAX_TOKENS,
+            )
+            outcome = result.outcome.value
+        finally:
+            pilot.finish(operation, cost, outcome)
+
+        if result.outcome is Outcome.SUCCESS and result.plan is not None:
+            checked = State.model_validate({**dict(state), "plan": result.plan})
+            record = plans.store(session, plan_request.brief, checked, catalog.id, operation_id)
+            return JSONResponse(plan_payload(record, result), headers=NO_STORE)
+        return JSONResponse({**result_json(result), "catalog_id": catalog.id}, headers=NO_STORE)
+
+    @app.post("/api/plans/restore", tags=["planning"])
+    def restore_plan(saved: RestoreRequest, request: Request) -> JSONResponse:
+        """Check a saved plan again against the current catalog and constraints, with offers
+        chosen again, and make it current. No model call."""
+        if not settings.beta_open:
+            return closed()
+        session = session_of(request)
+        if session is None:
+            return not_invited()
+        if saved.state.plan is None:
+            return _error("Send the saved plan in state.plan", 422, "invalid")
+        plan = with_cheapest_offers(saved.state.plan, saved.state, catalog)
+        check = check_complete_plan(plan, saved.state, catalog)
+        payload: dict[str, Any] = {"catalog_id": catalog.id, "catalog_changed": False}
+        payload["catalog_changed"] = saved.catalog_id != catalog.id
+        if not check.passed:
+            failed = PlanResult(Outcome.GENERATION_FAILED, Usage(), check=check)
+            return JSONResponse(
+                {**result_json(failed), **payload, "outcome": "restore_failed"}, headers=NO_STORE
+            )
+        checked = State.model_validate({**dict(saved.state), "plan": plan})
+        record = plans.store(session, saved.brief, checked, catalog.id, None)
+        result = PlanResult(Outcome.SUCCESS, Usage(), plan, check)
+        return JSONResponse({**plan_payload(record, result), **payload}, headers=NO_STORE)
 
     @app.post(
         "/api/previews",
@@ -197,11 +494,10 @@ def create_app(
                     "multipart/form-data": {
                         "schema": {
                             "type": "object",
-                            "required": ["portrait", "full_body", "prompt"],
+                            "required": ["portrait", "full_body"],
                             "properties": {
                                 "portrait": {"type": "string", "format": "binary"},
                                 "full_body": {"type": "string", "format": "binary"},
-                                "prompt": {"type": "string", "maxLength": 3000},
                             },
                         }
                     }
@@ -210,21 +506,54 @@ def create_app(
         },
     )
     async def create_preview(request: Request) -> Response:
-        """Create one request-scoped preview when T-02 is enabled in development."""
-        enabled, detail = preview_status()
-        if not enabled:
-            return _preview_error(detail or PREVIEW_DISABLED_DETAIL, 503)
-
-        editor = image_editor
+        """An experimental try-on of one look of the current plan on two upright JPEGs. Every
+        access check runs before the body is read; the server writes the prompt."""
+        if not settings.beta_open:
+            return closed()
+        session = session_of(request)
+        if session is None:
+            return not_invited()
+        editor = preview_editor()
         if editor is None:
-            editor = MuseImageClient(settings.model_api_key, settings.meta_image_model)
+            return _error("Try-on previews are not configured", 503, "not_configured")
+        operation_id = operation_id_of(request)
+        if operation_id is None:
+            return _error(f"Send a UUID in {OPERATION_HEADER}", 400, "operation_id")
+        record = plans.current(session, request.headers.get(PLAN_TOKEN_HEADER))
+        if record is None or record.state.plan is None:
+            return _error("This plan has expired; restore it first", 409, "plan_expired")
+        look_id = request.headers.get(LOOK_HEADER)
+        look = next((look for look in record.state.plan.looks if look.id == look_id), None)
+        if look is None:
+            return _error("That look is not in the current plan", 404, "look_unknown")
+        try:
+            prompt = preview_prompt(look, record.state, catalog)
+            await asyncio.to_thread(
+                pilot.check, session.invite_id, OperationKind.PREVIEW, preview_reserve
+            )
+        except PhotoInputError as error:
+            return _error(str(error), 422, "invalid")
+        except Refused as refused:
+            return _refusal(refused)
 
-        deadline = time.monotonic() + PREVIEW_DEADLINE_S
+        operation = None
+
+        async def reserve() -> None:
+            nonlocal operation
+            operation = await asyncio.to_thread(
+                pilot.begin, session.invite_id, OperationKind.PREVIEW, operation_id, preview_reserve
+            )
+
+        started = time.monotonic()
+        deadline = started + PREVIEW_DEADLINE_S
         portrait: bytearray | None = None
         full_body: bytearray | None = None
+        preview = None
+        cost: int | None = None
+        outcome = "unknown"
         try:
             async with asyncio.timeout_at(deadline):
-                prompt, portrait, full_body = await read_preview_uploads(request)
+                portrait, full_body = await read_preview_uploads(request)
                 preview = await wait_for_preview_or_disconnect(
                     request,
                     prompt,
@@ -232,115 +561,81 @@ def create_app(
                     full_body,
                     editor,
                     deadline=deadline,
+                    before_call=reserve,
                 )
+            if preview is not None:
+                cost, outcome = preview.attempts * IMAGE_MICRO_USD, "succeeded"
+            else:
+                outcome = "disconnected"
+        except Refused as refused:
+            outcome = refused.reason.value
+            return _refusal(refused)
         except PhotoTooLargeError as error:
-            return _preview_error(str(error), 413)
+            outcome = "too_large"
+            return _error(str(error), 413, "invalid")
         except PhotoInputError as error:
-            return _preview_error(str(error), 400)
+            outcome = "invalid_photo"
+            return _error(str(error), 400, "invalid")
         except TimeoutError:
-            return _preview_error("Preview generation took too long", 504)
+            outcome = "timeout"
+            return _error("The try-on took too long", 504, "timeout")
         except ImageRequestError as error:
+            outcome = "timeout" if error.timed_out else "provider_error"
             if error.timed_out:
-                return _preview_error("Preview generation took too long", 504)
-            return _preview_error("The image provider could not complete this preview", 502)
+                return _error("The try-on took too long", 504, "timeout")
+            return _error("The image provider could not complete this try-on", 502, "provider")
         except PhotoProcessingError:
-            return _preview_error("The image provider returned an unusable preview", 502)
+            outcome = "unusable_result"
+            return _error("The image provider returned an unusable image", 502, "provider")
         finally:
             if portrait is not None:
                 portrait.clear()
             if full_body is not None:
                 full_body.clear()
+            if operation is not None:
+                await asyncio.to_thread(pilot.finish, operation, cost, outcome)
+            logger.info(
+                "preview outcome=%s attempts=%s latency_s=%.1f",
+                outcome,
+                preview.attempts if preview is not None else "unknown",
+                time.monotonic() - started,
+            )
 
         if preview is None:
-            return Response(status_code=499, headers={"Cache-Control": "no-store"})
+            return Response(status_code=499, headers=NO_STORE)
         return PreviewResponse(preview)
 
-    # Production routes remain closed until the pilot operator opts in. Each planning request
-    # still requires an age-confirmed session and consumes one of three per-session requests.
-    if demo_enabled:
-        catalog = Catalog.model_validate_json(settings.catalog_file.read_text(encoding="utf-8"))
+    @app.post("/api/feedback", tags=["feedback"])
+    def add_feedback(answers: FeedbackAnswers, request: Request) -> JSONResponse:
+        """Short product feedback, without photos, plans or profiles."""
+        if not settings.beta_open:
+            return closed()
+        session = session_of(request)
+        if session is None:
+            return not_invited()
+        try:
+            feedback_id = pilot.add_feedback(session.invite_id, answers.model_dump(mode="json"))
+        except StoreUnavailable:
+            return _error("Feedback could not be saved; try again later", 503, "accounting")
+        return JSONResponse({"id": feedback_id}, status_code=201, headers=NO_STORE)
 
-        @app.get("/api/catalog", tags=["catalog"])
-        def get_catalog() -> JSONResponse:
-            """Expose catalog facts while the planning demo is enabled."""
-            return JSONResponse(catalog.model_dump(mode="json"))
-
-        @app.post("/api/plans", tags=["planning"])
-        def create_plan(plan_request: PlanRequest, request: Request) -> JSONResponse:
-            """Three looks from the catalog, checked against every hard constraint."""
-            session_id = request.cookies.get(DEMO_SESSION_COOKIE)
-            access, session = demo_sessions.check_plan_access(session_id)
-            if access == "missing":
-                return JSONResponse(
-                    {"detail": "Start a demo session before requesting a plan"},
-                    status_code=401,
-                    headers={"Cache-Control": "no-store"},
-                )
-            if access == "age_required":
-                return JSONResponse(
-                    {"detail": "Confirm that you are 18 or older before requesting a plan"},
-                    status_code=403,
-                    headers={"Cache-Control": "no-store"},
-                )
-            if access == "limit":
-                return JSONResponse(
-                    {"detail": "This demo session has reached its three planning requests"},
-                    status_code=429,
-                    headers={
-                        "Cache-Control": "no-store",
-                        "X-Plan-Requests-Remaining": str(
-                            session.plan_requests_remaining if session else 0
-                        ),
-                    },
-                )
-
-            client = spark
-            if client is None:
-                if not settings.baseten_api_key:
-                    return JSONResponse(
-                        {"detail": "The planning model is not configured"},
-                        status_code=503,
-                        headers={"Cache-Control": "no-store"},
-                    )
-                client = SparkClient(
-                    settings.baseten_api_key,
-                    model=settings.baseten_model or SPARK_MODEL,
-                    base_url=settings.baseten_base_url or BASETEN_URL,
-                )
-            access, session = demo_sessions.reserve_plan_request(session_id)
-            if access == "limit":
-                return JSONResponse(
-                    {"detail": "This demo session has reached its three planning requests"},
-                    status_code=429,
-                    headers={
-                        "Cache-Control": "no-store",
-                        "X-Plan-Requests-Remaining": str(
-                            session.plan_requests_remaining if session else 0
-                        ),
-                    },
-                )
-            if access != "ok" or session is None:
-                return JSONResponse(
-                    {"detail": "The demo session expired; refresh the page to continue"},
-                    status_code=401,
-                    headers={"Cache-Control": "no-store"},
-                )
-            response = JSONResponse(
-                result_json(
-                    plan_looks(
-                        plan_request.brief,
-                        plan_request.state,
-                        catalog,
-                        client,
-                        replacement=plan_request.replacement,
-                    )
-                ),
-                headers={
-                    "Cache-Control": "no-store",
-                    "X-Plan-Requests-Remaining": str(session.plan_requests_remaining),
-                },
-            )
-            return response
+    @app.delete("/api/feedback/{feedback_id}", tags=["feedback"])
+    def delete_feedback(feedback_id: str, request: Request) -> Response:
+        """Delete one of this invite's feedback entries."""
+        if not settings.beta_open:
+            return closed()
+        session = session_of(request)
+        if session is None:
+            return not_invited()
+        try:
+            deleted = pilot.delete_feedback(session.invite_id, uuid.UUID(feedback_id).hex)
+        except ValueError:
+            deleted = False
+        except StoreUnavailable:
+            return _error("Feedback could not be deleted; try again later", 503, "accounting")
+        if not deleted:
+            return _error("No such feedback for this invite", 404, "not_found")
+        return Response(status_code=204, headers=NO_STORE)
 
     # Reserve the API prefix so an unknown API URL can never serve HTML.
     @app.api_route(

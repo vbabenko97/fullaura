@@ -1,9 +1,11 @@
-import { EU_SHOE_SIZE, MAX_FIT_SIZES, SLOT_CATEGORIES, SLOTS, WAIST_SIZE } from "./types";
+import { EU_SHOE_SIZE, LETTER_SIZES, MAX_FIT_SIZES, SLOT_CATEGORIES, SLOTS, WAIST_SIZE } from "./types";
+import { formatCheckedDate, labelCategory, labelSlot } from "./format";
 import type {
   BudgetMode,
   Catalog,
   Fit,
   FitDraft,
+  FootwearChoice,
   ItemRef,
   LockedPlacement,
   Look,
@@ -14,6 +16,7 @@ import type {
   Plan,
   Product,
   ReplacementTarget,
+  ShoppingLine,
   Slot,
   Variant,
 } from "./types";
@@ -57,12 +60,19 @@ function fitsCatalogVariant(product: Product, variant: Variant, fit: Fit | undef
   return wanted.length === 0 || wanted.some((candidate) => sizeMatches(candidate, size));
 }
 
+/** The footwear choice from SPEC.md: with closed or open, a shoe of the other kind or with no
+ * recorded closure fails. */
+function meetsFootwearChoice(product: Product, footwear: FootwearChoice): boolean {
+  return footwear === "any" || product.category !== "footwear" || product.footwear_closure === footwear;
+}
+
 export function hasReplacementAlternative(
   catalog: Catalog,
   ownedItems: OwnedItem[],
   currentItem: ItemRef,
   slot: Slot,
   fit: Fit | undefined,
+  footwear: FootwearChoice,
 ): boolean {
   const categories = SLOT_CATEGORIES[slot];
   return (
@@ -70,6 +80,7 @@ export function hasReplacementAlternative(
     catalog.products.some(
       (product) =>
         categories.includes(product.category) &&
+        meetsFootwearChoice(product, footwear) &&
         product.variants.some(
           (variant) =>
             variant.id !== currentItem.id &&
@@ -119,6 +130,19 @@ export function parseFit(draft: FitDraft): FitResult {
   if (draft.garmentTypes.length > 0) fit.garment_types = draft.garmentTypes;
   if (sizes.length > 0) fit.sizes = sizes;
   return { ok: true, fit: Object.keys(fit).length > 0 ? fit : undefined };
+}
+
+/** The form's fit fields for a fit that a saved plan stored. */
+export function fitDraftFrom(fit: Fit | undefined): FitDraft {
+  const sizes = fit?.sizes ?? [];
+  const letter = sizes.find((size) => size.system === "letter")?.value;
+  return {
+    lines: fit?.lines ?? [],
+    garmentTypes: fit?.garment_types ?? [],
+    letterSize: LETTER_SIZES.find((size) => size === letter) ?? "",
+    waistSizes: sizes.filter((size) => size.system === "waist_length").map((size) => size.value).join(", "),
+    shoeSizes: sizes.filter((size) => size.system === "eu_shoe").map((size) => size.value).join(", "),
+  };
 }
 
 export function selectedOffer(plan: Plan, variant: Variant): Offer | null {
@@ -216,22 +240,111 @@ export function totalLookCosts(plan: Plan, catalog: Catalog): number | null {
   return total;
 }
 
-export function preferenceKey(
-  styleGoal: string,
-  colors: string[],
-  budgetAmount: string,
-  budgetMode: BudgetMode,
-  exclusions: Material[],
-  fit: FitDraft,
-  ownedItems: OwnedItem[],
-): string {
+export interface Preferences {
+  styleGoal: string;
+  colors: string[];
+  occasion: string;
+  season: string;
+  budgetAmount: string;
+  budgetMode: BudgetMode;
+  footwear: FootwearChoice;
+  exclusions: Material[];
+  fit: FitDraft;
+  ownedItems: OwnedItem[];
+}
+
+/** Changes whenever a preference that a plan request sends changes. */
+export function preferenceKey(preferences: Preferences): string {
   return JSON.stringify({
-    style_goal: styleGoal.trim(),
-    preferred_colors: colors,
-    amount_cents: Math.round(Number(budgetAmount) * 100),
-    budget_mode: budgetMode,
-    material_exclusions: [...exclusions].sort(),
-    fit,
-    owned_items: ownedItems,
+    ...preferences,
+    colors: preferences.colors.map((color) => color.trim()).filter(Boolean),
+    styleGoal: preferences.styleGoal.trim(),
+    amount_cents: Math.round(Number(preferences.budgetAmount) * 100),
+    exclusions: [...preferences.exclusions].sort(),
   });
+}
+
+function lookLabel(lookId: string): string {
+  return lookId.replaceAll("_", " ");
+}
+
+/** One line per distinct catalog variant and owned item: a variant used in several looks is
+ * bought once, and an owned item costs nothing. */
+export function shoppingList(plan: Plan, catalog: Catalog, ownedItems: OwnedItem[]): ShoppingLine[] {
+  const lines = new Map<string, ShoppingLine>();
+  for (const look of plan.looks) {
+    for (const slot of SLOTS) {
+      const item = look.items[slot];
+      if (!item) continue;
+      const key = `${item.kind}:${item.id}`;
+      const existing = lines.get(key);
+      if (existing) {
+        if (!existing.looks.includes(lookLabel(look.id))) existing.looks.push(lookLabel(look.id));
+        continue;
+      }
+      if (item.kind === "owned") {
+        const owned = ownedItems.find((candidate) => candidate.id === item.id);
+        lines.set(key, {
+          key,
+          kind: "owned",
+          name: owned?.description ?? "Your item",
+          details: owned ? `${owned.color}, ${labelCategory(owned.category)}` : labelSlot(slot),
+          looks: [lookLabel(look.id)],
+          price_cents: 0,
+          retailer: null,
+          url: null,
+          checked_at: null,
+          stock: null,
+        });
+        continue;
+      }
+      const entry = catalogItem(catalog, item.id);
+      const offer = entry ? selectedOffer(plan, entry.variant) : null;
+      lines.set(key, {
+        key,
+        kind: "catalog",
+        name: entry?.product.title ?? item.id,
+        details: entry
+          ? [entry.product.brand, entry.variant.color, entry.variant.size && `Size ${entry.variant.size}`]
+              .filter((value): value is string => Boolean(value))
+              .join(", ")
+          : "Catalog item unavailable",
+        looks: [lookLabel(look.id)],
+        price_cents: offer?.price_cents ?? null,
+        retailer: offer?.retailer ?? null,
+        url: offer && /^https:\/\//i.test(offer.url) ? offer.url : null,
+        checked_at: offer?.source.checked_at ?? null,
+        stock: offer?.stock ?? null,
+      });
+    }
+  }
+  return [...lines.values()];
+}
+
+export function shoppingTotal(lines: ShoppingLine[]): number | null {
+  let total = 0;
+  for (const line of lines) {
+    if (line.price_cents === null) return null;
+    total += line.price_cents;
+  }
+  return total;
+}
+
+export function shoppingListText(lines: ShoppingLine[], formatMoney: (cents: number | null) => string): string {
+  const rows = lines.map((line) =>
+    [
+      `- ${line.name} (${line.details})`,
+      line.kind === "owned" ? "already owned, EUR 0" : formatMoney(line.price_cents),
+      line.retailer && line.url ? `${line.retailer}: ${line.url}` : null,
+      line.checked_at ? formatCheckedDate(line.checked_at) : null,
+      `in ${line.looks.join(", ")}`,
+    ]
+      .filter(Boolean)
+      .join(" | "),
+  );
+  return [
+    "FullAura shopping list",
+    ...rows,
+    `Items total: ${formatMoney(shoppingTotal(lines))}. Delivery and returns are not included; check each shop before buying.`,
+  ].join("\n");
 }

@@ -1,5 +1,5 @@
-"""Structured application state: the plan, and the budget, exclusions, fit, owned items and
-locks that code checks it against (docs/SPEC.md#hard-constraints)."""
+"""Structured application state: the plan, and the budget, exclusions, fit, footwear, owned items
+and locks that code checks it against (docs/SPEC.md#hard-constraints)."""
 
 from __future__ import annotations
 
@@ -33,6 +33,15 @@ class Fit(Record):
     lines: frozenset[Line] = frozenset()
     garment_types: frozenset[GarmentType] = frozenset()
     sizes: tuple[Size, ...] = Field(default=(), max_length=MAX_FIT_SIZES)
+
+
+class FootwearChoice(StrEnum):
+    """Which shoes the person wants. With closed or open, every look needs footwear, and a
+    catalog shoe whose closure is the other one or unknown fails; owned shoes are not checked."""
+
+    ANY = "any"
+    CLOSED = "closed"
+    OPEN = "open"
 
 
 class Slot(StrEnum):
@@ -116,6 +125,7 @@ class State(Record):
     budget: Budget
     material_exclusions: frozenset[Material] = frozenset()
     fit: Fit = Fit()
+    footwear: FootwearChoice = FootwearChoice.ANY
     owned_items: tuple[OwnedItem, ...] = Field(default=(), max_length=MAX_OWNED_ITEMS)
     locks: tuple[LockedPlacement, ...] = ()
     plan: Plan | None = None
