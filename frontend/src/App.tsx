@@ -54,9 +54,59 @@ const SLOT_CATEGORIES: Record<Slot, readonly Category[]> = {
   accessory: ["accessory"],
 };
 
+const FIT_LINES = ["men", "women"] as const;
+const PRODUCT_LINES = [...FIT_LINES, "unisex"] as const;
+const GARMENT_TYPES = ["trousers", "jeans", "shorts", "skirt", "leggings", "dress"] as const;
+const LETTER_SIZES = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "3XL"] as const;
+const SIZE_SYSTEMS = ["letter", "waist_length", "eu_shoe"] as const;
+const MAX_FIT_SIZES = 12;
+const WAIST_SIZE = /^\d{2}(\/\d{2})?$/;
+const EU_SHOE_SIZE = /^\d{2}(\.5)?$/;
+
 type Material = (typeof MATERIALS)[number];
 type Category = (typeof CATEGORIES)[number];
 type Slot = (typeof SLOTS)[number];
+type FitLine = (typeof FIT_LINES)[number];
+type GarmentType = (typeof GARMENT_TYPES)[number];
+type LetterSize = (typeof LETTER_SIZES)[number];
+
+const LINE_LABELS: Record<FitLine, string> = { men: "Men's", women: "Women's" };
+const GARMENT_TYPE_LABELS: Record<GarmentType, string> = {
+  trousers: "Trousers",
+  jeans: "Jeans",
+  shorts: "Shorts",
+  skirt: "Skirts",
+  leggings: "Leggings",
+  dress: "Dresses",
+};
+
+interface NormalizedSize {
+  system: (typeof SIZE_SYSTEMS)[number];
+  value: string;
+}
+
+/** Whom the looks are for, as the person states it. Fields that are not set are omitted. */
+interface Fit {
+  lines?: FitLine[];
+  garment_types?: GarmentType[];
+  sizes?: NormalizedSize[];
+}
+
+interface FitDraft {
+  lines: FitLine[];
+  garmentTypes: GarmentType[];
+  letterSize: LetterSize | "";
+  waistSizes: string;
+  shoeSizes: string;
+}
+
+const EMPTY_FIT_DRAFT: FitDraft = {
+  lines: [],
+  garmentTypes: [],
+  letterSize: "",
+  waistSizes: "",
+  shoeSizes: "",
+};
 type BudgetMode = "per_look" | "whole_plan";
 type ItemKind = "catalog" | "owned";
 
@@ -85,6 +135,7 @@ interface Variant {
   id: string;
   color: string | null;
   size: string | null;
+  normalized_size: NormalizedSize | null;
   composition: {
     status: "complete" | "partial" | "unknown" | "conflicting";
     components: Component[];
@@ -99,6 +150,8 @@ interface Product {
   title: string;
   brand: string | null;
   category: Category;
+  line: (typeof PRODUCT_LINES)[number] | null;
+  garment_type: GarmentType | null;
   variants: Variant[];
 }
 
@@ -141,7 +194,7 @@ type ReplacementTarget = LockedPlacement;
 interface PlanResponse {
   outcome: "success" | "infeasible" | "generation_failed" | "provider_timeout" | "provider_error";
   plan: Plan | null;
-  conflicts: { detail: string }[];
+  conflicts: { rule: string | null; detail: string }[];
   violations: { rule: string; detail: string }[];
   error: string | null;
   notices: OwnedNotice[];
@@ -193,6 +246,7 @@ interface PlanRequest {
       mode: BudgetMode;
     };
     material_exclusions: Material[];
+    fit?: Fit;
     owned_items: OwnedItem[];
     locks: LockedPlacement[];
     plan: Plan | null;
@@ -257,6 +311,22 @@ function readCategory(value: unknown): Category {
   throw new Error("Invalid product category in API response");
 }
 
+function readChoice<T extends string>(value: unknown, choices: readonly T[], field: string): T {
+  const choice = choices.find((candidate) => candidate === value);
+  if (choice === undefined) throw new Error(`Invalid ${field} in catalog response`);
+  return choice;
+}
+
+function readNormalizedSize(value: unknown): NormalizedSize | null {
+  // minimal: a missing fit field reads as null, so a catalog written before fit fields still loads
+  if (value == null) return null;
+  if (!isRecord(value)) throw new Error("Invalid normalized size in catalog response");
+  return {
+    system: readChoice(value.system, SIZE_SYSTEMS, "size system"),
+    value: readString(value.value, "normalized size"),
+  };
+}
+
 function readOffer(value: unknown): Offer {
   if (!isRecord(value)) throw new Error("Invalid offer in catalog response");
   const stock = value.stock;
@@ -296,6 +366,7 @@ function readVariant(value: unknown): Variant {
     id: readString(value.id, "variant ID"),
     color: readNullableString(value.color, "variant color"),
     size: readNullableString(value.size, "variant size"),
+    normalized_size: readNormalizedSize(value.normalized_size),
     composition: {
       status,
       components,
@@ -320,6 +391,11 @@ function parseCatalog(value: unknown): Catalog {
         title: readString(entry.title, "product title"),
         brand: readNullableString(entry.brand, "product brand"),
         category: readCategory(entry.category),
+        line: entry.line == null ? null : readChoice(entry.line, PRODUCT_LINES, "product line"),
+        garment_type:
+          entry.garment_type == null
+            ? null
+            : readChoice(entry.garment_type, GARMENT_TYPES, "garment type"),
         variants: readArray(entry.variants, "variants").map(readVariant),
       };
     }),
@@ -378,7 +454,10 @@ function parsePlanResponse(value: unknown): PlanResponse {
   }
   const conflicts = readArray(value.conflicts, "planning conflicts").map((entry) => {
     if (!isRecord(entry)) throw new Error("Invalid planning conflict");
-    return { detail: readString(entry.detail, "conflict detail") };
+    return {
+      rule: entry.rule == null ? null : readString(entry.rule, "conflict rule"),
+      detail: readString(entry.detail, "conflict detail"),
+    };
   });
   const violations = readArray(value.violations ?? [], "planning violations").map((entry) => {
     if (!isRecord(entry)) throw new Error("Invalid planning violation");
@@ -519,11 +598,43 @@ function catalogItem(catalog: Catalog, variantId: string): { product: Product; v
   return null;
 }
 
+// A waist without a length matches every length of that waist.
+function sizeMatches(wanted: NormalizedSize, actual: NormalizedSize): boolean {
+  return (
+    wanted.value === actual.value ||
+    (wanted.system === "waist_length" &&
+      !wanted.value.includes("/") &&
+      actual.value.startsWith(`${wanted.value}/`))
+  );
+}
+
+/** The fit hard constraint from SPEC.md, as the backend checks it. Owned items are not checked. */
+function fitsCatalogVariant(product: Product, variant: Variant, fit: Fit | undefined): boolean {
+  if (!fit) return true;
+  const { category, line, garment_type: garmentType } = product;
+  if (fit.lines?.length && line !== "unisex" && (line === null || !fit.lines.includes(line))) {
+    return false;
+  }
+  if (
+    fit.garment_types?.length &&
+    (category === "bottom" || category === "one_piece") &&
+    (garmentType === null || !fit.garment_types.includes(garmentType))
+  ) {
+    return false;
+  }
+  if (!fit.sizes?.length) return true;
+  const size = variant.normalized_size;
+  if (size === null) return category === "accessory";
+  const wanted = fit.sizes.filter((candidate) => candidate.system === size.system);
+  return wanted.length === 0 || wanted.some((candidate) => sizeMatches(candidate, size));
+}
+
 function hasReplacementAlternative(
   catalog: Catalog,
   ownedItems: OwnedItem[],
   currentItem: ItemRef,
   slot: Slot,
+  fit: Fit | undefined,
 ): boolean {
   const categories = SLOT_CATEGORIES[slot];
   return (
@@ -532,9 +643,60 @@ function hasReplacementAlternative(
       (product) =>
         categories.includes(product.category) &&
         product.variants.some(
-          (variant) => variant.id !== currentItem.id && variant.offers.length > 0,
+          (variant) =>
+            variant.id !== currentItem.id &&
+            variant.offers.length > 0 &&
+            fitsCatalogVariant(product, variant, fit),
         ),
     )
+  );
+}
+
+function sizeList(text: string): string[] {
+  return [...new Set(text.split(",").map((size) => size.replace(/\s+/g, "")).filter(Boolean))];
+}
+
+type FitResult = { ok: true; fit: Fit | undefined } | { ok: false; error: string };
+
+function parseFit(draft: FitDraft): FitResult {
+  const waistSizes = sizeList(draft.waistSizes);
+  const invalidWaist = waistSizes.find((size) => !WAIST_SIZE.test(size));
+  if (invalidWaist !== undefined) {
+    return {
+      ok: false,
+      error: `${invalidWaist} is not a waist size. Enter waists separated by commas, each as a waist or waist/length, such as 33, 34/32.`,
+    };
+  }
+  const shoeSizes = sizeList(draft.shoeSizes);
+  const invalidShoeSize = shoeSizes.find((size) => !EU_SHOE_SIZE.test(size));
+  if (invalidShoeSize !== undefined) {
+    return {
+      ok: false,
+      error: `${invalidShoeSize} is not an EU shoe size. Enter whole or half sizes separated by commas, such as 39.5, 40.`,
+    };
+  }
+  const sizes: NormalizedSize[] = [
+    ...(draft.letterSize ? [{ system: "letter" as const, value: draft.letterSize }] : []),
+    ...waistSizes.map((value) => ({ system: "waist_length" as const, value })),
+    ...shoeSizes.map((value) => ({ system: "eu_shoe" as const, value })),
+  ];
+  if (sizes.length > MAX_FIT_SIZES) {
+    return {
+      ok: false,
+      error: `Enter no more than ${MAX_FIT_SIZES} sizes in total; you entered ${sizes.length}.`,
+    };
+  }
+  const fit: Fit = {};
+  if (draft.lines.length > 0) fit.lines = draft.lines;
+  if (draft.garmentTypes.length > 0) fit.garment_types = draft.garmentTypes;
+  if (sizes.length > 0) fit.sizes = sizes;
+  return { ok: true, fit: Object.keys(fit).length > 0 ? fit : undefined };
+}
+
+// Keeps the order of choices, so the same selection always produces the same request.
+function toggled<T>(choices: readonly T[], selected: readonly T[], value: T): T[] {
+  return choices.filter((choice) =>
+    choice === value ? !selected.includes(choice) : selected.includes(choice),
   );
 }
 
@@ -639,6 +801,7 @@ function preferenceKey(
   budgetAmount: string,
   budgetMode: BudgetMode,
   exclusions: Material[],
+  fit: FitDraft,
   ownedItems: OwnedItem[],
 ): string {
   return JSON.stringify({
@@ -647,6 +810,7 @@ function preferenceKey(
     amount_cents: Math.round(Number(budgetAmount) * 100),
     budget_mode: budgetMode,
     material_exclusions: [...exclusions].sort(),
+    fit,
     owned_items: ownedItems,
   });
 }
@@ -659,6 +823,7 @@ interface ProductLineProps {
   item: ItemRef;
   ownedItems: OwnedItem[];
   ownedNotices: OwnedNotice[];
+  fit: Fit | undefined;
   isLocked: boolean;
   lockDisabled: boolean;
   replaceDisabled: boolean;
@@ -674,13 +839,14 @@ function ProductLine({
   item,
   ownedItems,
   ownedNotices,
+  fit,
   isLocked,
   lockDisabled,
   replaceDisabled,
   onToggleLock,
   onReplaceItem,
 }: ProductLineProps) {
-  const hasAlternative = hasReplacementAlternative(catalog, ownedItems, item, slot);
+  const hasAlternative = hasReplacementAlternative(catalog, ownedItems, item, slot, fit);
   if (item.kind === "owned") {
     const owned = ownedItems.find((candidate) => candidate.id === item.id);
     const notices = ownedNotices.filter((notice) => notice.item.id === item.id);
@@ -747,7 +913,11 @@ function ProductLine({
         : entry.variant.composition.status === "conflicting"
           ? "Sources disagree on composition"
           : "Composition not reported";
-  const facts = [entry.product.brand, entry.variant.color, entry.variant.size]
+  const facts = [
+    entry.product.brand,
+    entry.variant.color,
+    entry.variant.size === null ? null : `Size ${entry.variant.size}`,
+  ]
     .filter((value): value is string => value !== null)
     .join(", ");
   const offerLink = offer && /^https:\/\//i.test(offer.url) ? offer.url : null;
@@ -804,6 +974,7 @@ interface LookCardProps {
   plan: Plan;
   ownedItems: OwnedItem[];
   ownedNotices: OwnedNotice[];
+  fit: Fit | undefined;
   locks: LockedPlacement[];
   lockDisabled: boolean;
   replaceDisabled: boolean;
@@ -817,6 +988,7 @@ function LookCard({
   plan,
   ownedItems,
   ownedNotices,
+  fit,
   locks,
   lockDisabled,
   replaceDisabled,
@@ -847,6 +1019,7 @@ function LookCard({
             <ProductLine
               key={`${look.id}-${slot}`}
               catalog={catalog}
+              fit={fit}
               isLocked={isLocked}
               item={item}
               lockDisabled={lockDisabled}
@@ -1127,10 +1300,12 @@ export function App() {
   const [budgetAmount, setBudgetAmount] = useState("");
   const [budgetMode, setBudgetMode] = useState<BudgetMode>("per_look");
   const [exclusions, setExclusions] = useState<Material[]>([]);
+  const [fitDraft, setFitDraft] = useState<FitDraft>(EMPTY_FIT_DRAFT);
   const [ownedItems, setOwnedItems] = useState<OwnedItemDraft[]>([]);
   const [locks, setLocks] = useState<LockedPlacement[]>([]);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [planOwnedItems, setPlanOwnedItems] = useState<OwnedItem[]>([]);
+  const [planFit, setPlanFit] = useState<Fit>();
   const [planNotices, setPlanNotices] = useState<OwnedNotice[]>([]);
   const [successfulPreferenceKey, setSuccessfulPreferenceKey] = useState<string | null>(null);
   const [requestState, setRequestState] = useState<RequestState>("idle");
@@ -1286,6 +1461,13 @@ export function App() {
       setRequestState("error");
       return;
     }
+    const parsedFit = parseFit(fitDraft);
+    if (!parsedFit.ok) {
+      setRequestMessage(parsedFit.error);
+      setRequestState("error");
+      return;
+    }
+    const fit = parsedFit.fit;
 
     const request: PlanRequest = {
       brief: { style_goal: styleGoal.trim(), preferred_colors: colors },
@@ -1293,6 +1475,7 @@ export function App() {
       state: {
         budget: { amount_cents: amountCents, mode: budgetMode },
         material_exclusions: exclusions,
+        fit,
         owned_items: ownedItems,
         locks: replacement && plan ? locksForReplacement(plan, replacement, locks) : locks,
         plan,
@@ -1304,6 +1487,7 @@ export function App() {
       budgetAmount,
       budgetMode,
       exclusions,
+      fitDraft,
       ownedItems,
     );
     setRequestState("loading");
@@ -1356,6 +1540,7 @@ export function App() {
         }
         setPlan(result.plan);
         setPlanOwnedItems(ownedItems);
+        setPlanFit(fit);
         setPlanNotices(result.notices);
         setSuccessfulPreferenceKey(submittedPreferenceKey);
         setRequestState("success");
@@ -1372,7 +1557,12 @@ export function App() {
               ? `Keeping the other items conflicts with these constraints: ${result.conflicts.map((item) => item.detail).join("; ")}`
               : "No replacement can keep the other items under the current constraints."
             : result.conflicts.length
-              ? `Kept items conflict with these constraints: ${result.conflicts.map((item) => item.detail).join("; ")}`
+              ? `${
+                  // A look_composition conflict means no item can complete a look at all, kept or not.
+                  request.state.locks.length && result.conflicts.some((item) => item.rule !== "look_composition")
+                    ? "Kept items conflict with"
+                    : "No plan can meet"
+                } these constraints: ${result.conflicts.map((item) => item.detail).join("; ")}`
               : "No plan can meet the kept items and current constraints.",
         );
       } else if (result.outcome === "provider_timeout") {
@@ -1394,7 +1584,14 @@ export function App() {
         const summary = replacement
           ? "No replacement passed the catalog checks."
           : "No plan passed the catalog checks. Adjust your preferences and try again.";
-        const violations = result.violations.slice(0, 3).map((item) => item.detail).join(" ");
+        // Fit violations come first, so a stated fit that no item meets is always explained.
+        const violations = [
+          ...result.violations.filter((item) => item.rule === "fit"),
+          ...result.violations.filter((item) => item.rule !== "fit"),
+        ]
+          .slice(0, 3)
+          .map((item) => item.detail)
+          .join(" ");
         const diagnostic = violations || result.error?.slice(0, 300) || "";
         setRequestMessage(diagnostic ? `${summary} ${diagnostic}` : summary);
       }
@@ -1434,6 +1631,7 @@ export function App() {
     budgetAmount,
     budgetMode,
     exclusions,
+    fitDraft,
     ownedItems,
   );
   const planCurrent = Boolean(plan && successfulPreferenceKey === currentPreferenceKey);
@@ -1476,7 +1674,7 @@ export function App() {
           <section className="preferences-panel" aria-labelledby="preferences-title">
             <div className="panel-heading">
               <h2 id="preferences-title">Your preferences</h2>
-              <p>FullAura checks the budget, delivery, stock and material exclusions in code.</p>
+              <p>FullAura checks the budget, fit, delivery, stock and material exclusions in code.</p>
             </div>
 
             {catalogState === "error" ? (
@@ -1552,6 +1750,112 @@ export function App() {
                     <span>All three looks together</span>
                   </label>
                 </fieldset>
+
+                <section className="fit-fields" aria-labelledby="fit-title">
+                  <h3 id="fit-title">Who the looks are for</h3>
+                  <fieldset className="fit-choices">
+                    <legend>Clothing lines</legend>
+                    <div className="choice-grid">
+                      {FIT_LINES.map((line) => (
+                        <label className="check-choice" key={line}>
+                          <input
+                            checked={fitDraft.lines.includes(line)}
+                            onChange={() =>
+                              setFitDraft((current) => ({
+                                ...current,
+                                lines: toggled(FIT_LINES, current.lines, line),
+                              }))
+                            }
+                            type="checkbox"
+                            value={line}
+                          />
+                          <span>{LINE_LABELS[line]}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="field-help">None checked shows every line. Unisex items always count.</p>
+                  </fieldset>
+
+                  <fieldset className="fit-choices">
+                    <legend>Bottoms and one-pieces</legend>
+                    <div className="choice-grid">
+                      {GARMENT_TYPES.map((garmentType) => (
+                        <label className="check-choice" key={garmentType}>
+                          <input
+                            checked={fitDraft.garmentTypes.includes(garmentType)}
+                            onChange={() =>
+                              setFitDraft((current) => ({
+                                ...current,
+                                garmentTypes: toggled(GARMENT_TYPES, current.garmentTypes, garmentType),
+                              }))
+                            }
+                            type="checkbox"
+                            value={garmentType}
+                          />
+                          <span>{GARMENT_TYPE_LABELS[garmentType]}</span>
+                        </label>
+                      ))}
+                    </div>
+                    <p className="field-help">None checked allows all.</p>
+                  </fieldset>
+
+                  <div className="form-field">
+                    <label htmlFor="fit-letter-size">Letter size</label>
+                    <select
+                      id="fit-letter-size"
+                      onChange={(event) => {
+                        const letterSize =
+                          LETTER_SIZES.find((size) => size === event.target.value) ?? "";
+                        setFitDraft((current) => ({ ...current, letterSize }));
+                      }}
+                      value={fitDraft.letterSize}
+                    >
+                      <option value="">Not set</option>
+                      {LETTER_SIZES.map((size) => (
+                        <option key={size} value={size}>{size}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="form-field">
+                    <label htmlFor="fit-waist-sizes">Waist sizes</label>
+                    <input
+                      autoComplete="off"
+                      id="fit-waist-sizes"
+                      maxLength={100}
+                      onChange={(event) => {
+                        const waistSizes = event.target.value;
+                        setFitDraft((current) => ({ ...current, waistSizes }));
+                      }}
+                      placeholder="30, 30/34"
+                      type="text"
+                      value={fitDraft.waistSizes}
+                    />
+                    <p className="field-help">
+                      Separate sizes with commas. A waist without a length, such as 33, matches every length.
+                    </p>
+                  </div>
+
+                  <div className="form-field">
+                    <label htmlFor="fit-shoe-sizes">EU shoe sizes</label>
+                    <input
+                      autoComplete="off"
+                      id="fit-shoe-sizes"
+                      maxLength={100}
+                      onChange={(event) => {
+                        const shoeSizes = event.target.value;
+                        setFitDraft((current) => ({ ...current, shoeSizes }));
+                      }}
+                      placeholder="39.5, 40"
+                      type="text"
+                      value={fitDraft.shoeSizes}
+                    />
+                    <p className="field-help">
+                      Separate sizes with commas. Half sizes are rare, so you can add the next whole size too.
+                    </p>
+                  </div>
+                  <p className="field-help">Up to {MAX_FIT_SIZES} sizes in total.</p>
+                </section>
 
                 <details className="exclusions-disclosure">
                   <summary>
@@ -1756,6 +2060,7 @@ export function App() {
                       onReplaceItem={replacePlanItem}
                       ownedItems={planOwnedItems}
                       ownedNotices={planNotices}
+                      fit={planFit}
                       plan={plan}
                     />
                   ))}

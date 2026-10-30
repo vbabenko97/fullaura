@@ -25,7 +25,7 @@ from urllib.request import Request
 
 from backend.app.catalog import Catalog, Category, Offer
 from backend.app.config import Settings
-from backend.app.constraints import check_plan, cost, item_violations
+from backend.app.constraints import check_plan, cost, fit_violations, item_violations
 from backend.app.planner import (
     BASETEN_URL,
     GENERATION_ATTEMPTS,
@@ -37,7 +37,7 @@ from backend.app.planner import (
     SparkClient,
     plan_looks,
 )
-from backend.app.state import Budget, BudgetMode, ItemKind, ItemRef, Look, Plan, Slot, State
+from backend.app.state import Budget, BudgetMode, Fit, ItemKind, ItemRef, Look, Plan, Slot, State
 
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG_FILE = ROOT / "backend" / "data" / "catalog.json"
@@ -77,9 +77,12 @@ class EvaluationCase:
     brief: Brief
     budget: Budget
     exclusions: frozenset[str]
+    fit: Fit = Fit()
 
     def state(self, plan: Plan | None = None) -> State:
-        return State(budget=self.budget, material_exclusions=self.exclusions, plan=plan)
+        return State(
+            budget=self.budget, material_exclusions=self.exclusions, fit=self.fit, plan=plan
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,13 +181,17 @@ CASES = (
 )
 
 
-def usable_offers(catalog: Catalog, exclusions: frozenset[str]) -> dict[str, Offer]:
-    """Choose each variant's cheapest offer that passes the planner's item checks."""
+def usable_offers(catalog: Catalog, state: State) -> dict[str, Offer]:
+    """Choose each variant's cheapest offer that passes the planner's item and fit checks."""
     usable: dict[str, Offer] = {}
     for product in catalog.products:
         for variant in product.variants:
+            if fit_violations(product, variant, state.fit):
+                continue
             offers = [
-                offer for offer in variant.offers if not item_violations(variant, offer, exclusions)
+                offer
+                for offer in variant.offers
+                if not item_violations(variant, offer, state.material_exclusions)
             ]
             if offers:
                 usable[variant.id] = min(
@@ -242,7 +249,7 @@ def candidate_looks(catalog: Catalog, offers: dict[str, Offer]) -> list[Candidat
 
 def cheapest_baseline(case: EvaluationCase, catalog: Catalog) -> tuple[Plan, int]:
     """Return the cheapest distinct three-look plan that passes the shared hard checks."""
-    offers = usable_offers(catalog, case.exclusions)
+    offers = usable_offers(catalog, case.state())
     candidates = candidate_looks(catalog, offers)
     chosen_looks: tuple[CandidateLook, ...] | None = None
     plan_cost: int | None = None
@@ -505,6 +512,7 @@ def main() -> None:
                 "budget_amount_cents": case.budget.amount_cents,
                 "budget_mode": case.budget.mode.value,
                 "material_exclusions": sorted(case.exclusions),
+                "fit": case.fit.model_dump(mode="json"),
             },
             "baseline": baseline_metrics,
         }

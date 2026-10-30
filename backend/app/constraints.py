@@ -16,13 +16,18 @@ from pydantic import BaseModel
 from backend.app.catalog import (
     MATERIALS,
     Catalog,
+    Category,
     CompositionStatus,
+    Line,
     Offer,
+    Product,
+    Size,
+    SizeSystem,
     Stock,
     Variant,
     generic_material,
 )
-from backend.app.state import Budget, BudgetMode, ItemKind, ItemRef, LockedPlacement, State
+from backend.app.state import Budget, BudgetMode, Fit, ItemKind, ItemRef, LockedPlacement, State
 
 DELIVERY_COUNTRY = "AT"
 _WORD = re.compile(r"[a-z]+(?:'[a-z]+)*")
@@ -48,6 +53,7 @@ class Rule(StrEnum):
     BUDGET = "budget"
     MATERIAL = "material"  # the composition lists an excluded material
     COMPOSITION_UNCHECKED = "composition_unchecked"  # not complete, so an exclusion cannot pass
+    FIT = "fit"  # outside the lines, garment types or sizes the person stated
     DELIVERY = "delivery"  # delivery to Austria is not confirmed
     STOCK = "stock"  # the selected offer reports the variant out of stock
     LOCK = "lock"
@@ -159,6 +165,55 @@ def _item_violations(variant: Variant, offer: Offer, exclusions: Iterable[str]) 
     return violations
 
 
+def fit_violations(product: Product, variant: Variant, fit: Fit) -> list[Violation]:
+    """Why this variant of the product is outside the person's stated fit; empty if it is not.
+    Like item_violations, the checks hold for every look."""
+    return _fit_violations(revalidated(product), revalidated(variant), revalidated(fit))
+
+
+def _fit_violations(product: Product, variant: Variant, fit: Fit) -> list[Violation]:
+    reasons = []
+    line = product.line
+    if fit.lines and line is not Line.UNISEX and line not in fit.lines:
+        lines = " or ".join(sorted(fit.lines))
+        reasons.append(
+            f"is from the {line} line, not {lines}"
+            if line
+            else f"has no line in its source, so it cannot be checked against {lines}"
+        )
+    garment = product.garment_type
+    if (
+        fit.garment_types
+        and product.category in (Category.BOTTOM, Category.ONE_PIECE)
+        and garment not in fit.garment_types
+    ):
+        garments = " or ".join(sorted(fit.garment_types))
+        reasons.append(
+            f"has garment type {garment}, not {garments}"
+            if garment
+            else f"has no garment type in its source, so it cannot be checked against {garments}"
+        )
+    size = variant.normalized_size
+    if fit.sizes and size is None and product.category is not Category.ACCESSORY:
+        reasons.append("has no comparable size, so it cannot be checked against the sizes given")
+    elif size is not None:
+        wanted = [given for given in fit.sizes if given.system is size.system]
+        if wanted and not any(_size_matches(size, given) for given in wanted):
+            sizes = " or ".join(given.value for given in wanted)
+            reasons.append(f"is {size.system} size {size.value}, not {sizes}")
+    item = ItemRef(kind=ItemKind.CATALOG, id=variant.id)
+    return [Violation(Rule.FIT, f"{variant.id} {reason}", item) for reason in reasons]
+
+
+def _size_matches(size: Size, given: Size) -> bool:
+    """Whether a variant's size is the size the person gave in the same system. Each size has
+    one stored form, so equal values are equal sizes; a waist given without a length matches
+    that waist in every length."""
+    if size.system is SizeSystem.WAIST_LENGTH and "/" not in given.value:
+        return size.value.split("/")[0] == given.value
+    return size.value == given.value
+
+
 def cost(
     items: Iterable[ItemRef], selected_offers: Mapping[str, str], catalog: Catalog
 ) -> int | None:
@@ -209,10 +264,11 @@ def check_plan(state: State, catalog: Catalog) -> Check:
                 for material in sorted(state.material_exclusions)
             )
             continue
-        variant = catalog.variant(item.id)
-        if variant is None:
+        variant, product = catalog.variant(item.id), catalog.product_of(item.id)
+        if variant is None or product is None:
             violations.append(Violation(Rule.UNKNOWN_ITEM, f"No catalog record {item.id}", item))
             continue
+        violations.extend(_fit_violations(product, variant, state.fit))
         offer_id = plan.selected_offers.get(item.id, "")
         offer = variant.offer(offer_id)
         if offer is None:
@@ -259,9 +315,13 @@ def lock_conflicts(state: State, catalog: Catalog) -> list[Violation]:
     for item in dict.fromkeys(lock.item for lock in state.locks):
         if item.kind is ItemKind.OWNED:
             continue
-        variant = catalog.variant(item.id)
-        if variant is None:
+        variant, product = catalog.variant(item.id), catalog.product_of(item.id)
+        if variant is None or product is None:
             violations.append(Violation(Rule.UNKNOWN_ITEM, f"No catalog record {item.id}", item))
+            continue
+        misfits = _fit_violations(product, variant, state.fit)
+        if misfits:
+            violations.extend(misfits)
             continue
         options = [
             _item_violations(variant, offer, state.material_exclusions) for offer in variant.offers

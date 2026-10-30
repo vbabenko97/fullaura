@@ -1,5 +1,5 @@
 {
-  "id": "fullaura-catalog-2026-10-28",
+  "id": "fullaura-catalog-2026-10-30",
   "synthetic": false,
   "products": [
     {
@@ -7,12 +7,18 @@
       "title": "MAARKOS HEAVY WEIGHT T-SHIRT",
       "brand": "Armedangels",
       "category": "top",
+      "line": "men",
+      "garment_type": null,
       "variants": [
         {
           "id": "ae-maarkos-moonshadow-m",
           "sku": null,
           "color": "moonshadow",
           "size": "M",
+          "normalized_size": {
+            "system": "letter",
+            "value": "M"
+          },
           "composition": {
             "status": "complete",
             "components": [
@@ -50,6 +56,53 @@
               }
             }
           ]
+        },
+        {
+          "id": "ae-maarkos-moonshadow-l",
+          "sku": "30008307000047",
+          "color": "moonshadow",
+          "size": "L",
+          "normalized_size": {
+            "system": "letter",
+            "value": "L"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 50,
+                "part": "main fabric"
+              },
+              {
+                "material": "cotton",
+                "percent": 50,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Hauptmaterial: 50% Baumwolle (bio), 50% Baumwolle (recycelt)"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/maarkos-heavy-weight-t-shirt-moonshadow",
+            "checked_at": "2026-10-30T09:55:00Z"
+          },
+          "offers": [
+            {
+              "id": "ae-maarkos-moonshadow-l-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/maarkos-heavy-weight-t-shirt-moonshadow",
+              "price_cents": 4990,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": null,
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/maarkos-heavy-weight-t-shirt-moonshadow",
+                "checked_at": "2026-10-30T09:55:00Z"
+              }
+            }
+          ]
         }
       ]
     },
@@ -58,12 +111,18 @@
       "title": "JAAMES LANGARMSHIRT",
       "brand": "Armedangels",
       "category": "top",
+      "line": "men",
+      "garment_type": null,
       "variants": [
         {
           "id": "ae-jaames-black-m",
           "sku": null,
           "color": "black",
           "size": "M",
+          "normalized_size": {
+            "system": "letter",
+            "value": "M"
+          },
           "composition": {
             "status": "complete",
             "components": [
@@ -96,6 +155,48 @@
               }
             }
           ]
+        },
+        {
+          "id": "ae-jaames-black-l",
+          "sku": "30008309000001",
+          "color": "black",
+          "size": "L",
+          "normalized_size": {
+            "system": "letter",
+            "value": "L"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 100,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Hauptmaterial: 100% Baumwolle (bio)"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/jaames-langarmhemd-black",
+            "checked_at": "2026-10-30T09:55:00Z"
+          },
+          "offers": [
+            {
+              "id": "ae-jaames-black-l-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/jaames-langarmhemd-black",
+              "price_cents": 3990,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": null,
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/jaames-langarmhemd-black",
+                "checked_at": "2026-10-30T09:55:00Z"
+              }
+            }
+          ]
         }
       ]
     },
@@ -104,12 +205,18 @@
       "title": "LOUKAA STRICKPULLOVER",
       "brand": "Armedangels",
       "category": "knitwear",
+      "line": "men",
+      "garment_type": null,
       "variants": [
         {
           "id": "ae-loukaa-dark-earth-m",
           "sku": null,
           "color": "dark earth",
           "size": "M",
+          "normalized_size": {
+            "system": "letter",
+            "value": "M"
+          },
           "composition": {
             "status": "complete",
             "components": [
@@ -142,6 +249,48 @@
               }
             }
           ]
+        },
+        {
+          "id": "ae-loukaa-dark-earth-l",
+          "sku": "30007473000053",
+          "color": "dark earth",
+          "size": "L",
+          "normalized_size": {
+            "system": "letter",
+            "value": "L"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 100,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Hauptmaterial: 100% Baumwolle (bio)"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/loukaa-knit-sweater-dark-earth",
+            "checked_at": "2026-10-30T09:55:00Z"
+          },
+          "offers": [
+            {
+              "id": "ae-loukaa-dark-earth-l-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/loukaa-knit-sweater-dark-earth",
+              "price_cents": 7990,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": null,
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/loukaa-knit-sweater-dark-earth",
+                "checked_at": "2026-10-30T09:55:00Z"
+              }
+            }
+          ]
         }
       ]
     },
@@ -150,12 +299,18 @@
       "title": "RECYCELTE WOLL-STRICKJACKE",
       "brand": "Armedangels",
       "category": "knitwear",
+      "line": "men",
+      "garment_type": null,
       "variants": [
         {
           "id": "ae-wool-cardigan-claystone-m",
           "sku": null,
           "color": "claystone melange",
           "size": "M",
+          "normalized_size": {
+            "system": "letter",
+            "value": "M"
+          },
           "composition": {
             "status": "complete",
             "components": [
@@ -188,6 +343,48 @@
               }
             }
           ]
+        },
+        {
+          "id": "ae-wool-cardigan-claystone-l",
+          "sku": "30008915000002",
+          "color": "claystone melange",
+          "size": "L",
+          "normalized_size": {
+            "system": "letter",
+            "value": "L"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "wool",
+                "percent": 100,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Hauptmaterial: 100% Wolle (recycelt)"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/recycelte-woll-strickjacke-claystone-melange",
+            "checked_at": "2026-10-30T09:55:00Z"
+          },
+          "offers": [
+            {
+              "id": "ae-wool-cardigan-claystone-l-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/recycelte-woll-strickjacke-claystone-melange",
+              "price_cents": 19990,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": null,
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/recycelte-woll-strickjacke-claystone-melange",
+                "checked_at": "2026-10-30T09:55:00Z"
+              }
+            }
+          ]
         }
       ]
     },
@@ -196,12 +393,18 @@
       "title": "AASTER CHINOHOSE",
       "brand": "Armedangels",
       "category": "bottom",
+      "line": "men",
+      "garment_type": "trousers",
       "variants": [
         {
           "id": "ae-aaster-space-steel-32-32",
           "sku": null,
           "color": "space steel",
           "size": "Weite 32 / Länge 32",
+          "normalized_size": {
+            "system": "waist_length",
+            "value": "32/32"
+          },
           "composition": {
             "status": "complete",
             "components": [
@@ -252,12 +455,18 @@
       "title": "KAAVO BARREL JEANS",
       "brand": "Armedangels",
       "category": "bottom",
+      "line": "men",
+      "garment_type": "jeans",
       "variants": [
         {
           "id": "ae-kaavo-lolite-32-32",
           "sku": null,
           "color": "Lolite",
           "size": "Weite 32 / Länge 32",
+          "normalized_size": {
+            "system": "waist_length",
+            "value": "32/32"
+          },
           "composition": {
             "status": "complete",
             "components": [
@@ -308,12 +517,18 @@
       "title": "SELVEDGE JEANS-OVERSHIRT",
       "brand": "Armedangels",
       "category": "outerwear",
+      "line": "men",
+      "garment_type": null,
       "variants": [
         {
           "id": "ae-selvedge-overshirt-midnight-air-m",
           "sku": null,
           "color": "midnight air",
           "size": "M",
+          "normalized_size": {
+            "system": "letter",
+            "value": "M"
+          },
           "composition": {
             "status": "complete",
             "components": [
@@ -351,6 +566,53 @@
               }
             }
           ]
+        },
+        {
+          "id": "ae-selvedge-overshirt-midnight-air-l",
+          "sku": "30008844000001",
+          "color": "midnight air",
+          "size": "L",
+          "normalized_size": {
+            "system": "letter",
+            "value": "L"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 100,
+                "part": "main fabric"
+              },
+              {
+                "material": "metal",
+                "percent": null,
+                "part": "buttons"
+              }
+            ],
+            "source_text": "Hauptmaterial: 100% Baumwolle (bio); Trimming: Knöpfe aus Metall"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/selvedge-jeans-overshirt-midnight-air",
+            "checked_at": "2026-10-30T09:55:00Z"
+          },
+          "offers": [
+            {
+              "id": "ae-selvedge-overshirt-midnight-air-l-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/selvedge-jeans-overshirt-midnight-air",
+              "price_cents": 15990,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": null,
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/selvedge-jeans-overshirt-midnight-air",
+                "checked_at": "2026-10-30T09:55:00Z"
+              }
+            }
+          ]
         }
       ]
     },
@@ -359,12 +621,18 @@
       "title": "CORD-MINI-KLEID MIT RUNDHALS",
       "brand": "Armedangels",
       "category": "one_piece",
+      "line": "women",
+      "garment_type": "dress",
       "variants": [
         {
           "id": "ae-cord-mini-dress-velvet-ember-m",
           "sku": null,
           "color": "velvet ember",
           "size": "M",
+          "normalized_size": {
+            "system": "letter",
+            "value": "M"
+          },
           "composition": {
             "status": "complete",
             "components": [
@@ -410,12 +678,18 @@
       "title": "LENOVAA SATIN-ROCK",
       "brand": "Armedangels",
       "category": "bottom",
+      "line": null,
+      "garment_type": "skirt",
       "variants": [
         {
           "id": "ae-lenovaa-dark-steel-m",
           "sku": "30007820000022",
           "color": "dark steel",
           "size": "M",
+          "normalized_size": {
+            "system": "letter",
+            "value": "M"
+          },
           "composition": {
             "status": "complete",
             "components": [
@@ -461,12 +735,18 @@
       "title": "REHMAA LEGGINGS",
       "brand": "Armedangels",
       "category": "bottom",
+      "line": null,
+      "garment_type": "leggings",
       "variants": [
         {
           "id": "ae-rehmaa-velvet-red-m",
           "sku": "30007644000020",
           "color": "velvet red",
           "size": "M",
+          "normalized_size": {
+            "system": "letter",
+            "value": "M"
+          },
           "composition": {
             "status": "complete",
             "components": [
@@ -512,12 +792,18 @@
       "title": "RELAXED JERSEY-SHORTS",
       "brand": "Armedangels",
       "category": "bottom",
+      "line": "women",
+      "garment_type": "shorts",
       "variants": [
         {
           "id": "ae-relaxed-jersey-shorts-dried-palm-m",
           "sku": "30008406000006",
           "color": "dried palm",
           "size": "M",
+          "normalized_size": {
+            "system": "letter",
+            "value": "M"
+          },
           "composition": {
             "status": "complete",
             "components": [
@@ -563,12 +849,18 @@
       "title": "Beach",
       "brand": "Giesswein",
       "category": "footwear",
+      "line": "unisex",
+      "garment_type": null,
       "variants": [
         {
           "id": "gw-beach-hellgrau-42",
           "sku": "85-10-44406-031-42",
           "color": "hellgrau-031",
           "size": "42",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "42"
+          },
           "composition": {
             "status": "complete",
             "components": [
@@ -624,12 +916,18 @@
       "title": "Wool Sneaker Women",
       "brand": "Giesswein",
       "category": "footwear",
+      "line": "women",
+      "garment_type": null,
       "variants": [
         {
           "id": "gw-wool-sneaker-women-schwarz-39",
           "sku": "74-10-49315-022-39",
           "color": "schwarz-022",
           "size": "39",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "39"
+          },
           "composition": {
             "status": "complete",
             "components": [
@@ -700,12 +998,18 @@
       "title": "Merino Runners MEN",
       "brand": "Giesswein",
       "category": "footwear",
+      "line": "men",
+      "garment_type": null,
       "variants": [
         {
           "id": "gw-merino-runners-men-schiefer-43",
           "sku": "68-10-49301-017-43",
           "color": "schiefer-017",
           "size": "43",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "43"
+          },
           "composition": {
             "status": "partial",
             "components": [
@@ -781,12 +1085,18 @@
       "title": "Merino Slides Lite Women",
       "brand": "Giesswein",
       "category": "footwear",
+      "line": "women",
+      "garment_type": null,
       "variants": [
         {
           "id": "gw-merino-slides-lite-women-ocean-blue-39",
           "sku": "83-10-44405-540-39",
           "color": "ocean blue-540",
           "size": "39",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "39"
+          },
           "composition": {
             "status": "complete",
             "components": [
@@ -841,6 +1151,125 @@
               "source": {
                 "url": "https://www.giesswein.com/products/merino-slides-lite-women",
                 "checked_at": "2026-10-28T11:49:45Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gea-tramper-flex-schwarz-43-product",
+      "title": "Tramper Flex",
+      "brand": "Waldviertler",
+      "category": "footwear",
+      "line": "unisex",
+      "garment_type": null,
+      "variants": [
+        {
+          "id": "gea-tramper-flex-schwarz-43",
+          "sku": null,
+          "color": "schwarz",
+          "size": "43, Weite G",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "43"
+          },
+          "composition": {
+            "status": "partial",
+            "components": [
+              {
+                "material": "leather",
+                "percent": null,
+                "part": "upper"
+              },
+              {
+                "material": "leather",
+                "percent": null,
+                "part": "lining"
+              },
+              {
+                "material": "rubber",
+                "percent": null,
+                "part": "sole"
+              }
+            ],
+            "source_text": "robuste Gummisohle mit starkem Profil; büffelstarke, hydrophobierte Oberleder; geschmeidiges Rindslederfutter; bewährtes Waldviertler Fußbett"
+          },
+          "source": {
+            "url": "https://gea-waldviertler.at/shop/tramper-flex.html",
+            "checked_at": "2026-10-30T09:55:00Z"
+          },
+          "offers": [
+            {
+              "id": "gea-tramper-flex-schwarz-43-offer",
+              "retailer": "GEA Waldviertler",
+              "url": "https://gea-waldviertler.at/shop/tramper-flex.html",
+              "price_cents": 23500,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": null,
+              "source": {
+                "url": "https://gea-waldviertler.at/shop/tramper-flex.html",
+                "checked_at": "2026-10-30T09:55:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gea-kommod-classic-schwarz-43-product",
+      "title": "Kommod Classic",
+      "brand": "Waldviertler",
+      "category": "footwear",
+      "line": "unisex",
+      "garment_type": null,
+      "variants": [
+        {
+          "id": "gea-kommod-classic-schwarz-43",
+          "sku": null,
+          "color": "Schwarz",
+          "size": "43, Weite G",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "43"
+          },
+          "composition": {
+            "status": "partial",
+            "components": [
+              {
+                "material": "leather",
+                "percent": null,
+                "part": "upper"
+              },
+              {
+                "material": "leather",
+                "percent": null,
+                "part": "lining"
+              }
+            ],
+            "source_text": "leichte Sohle mit Minusabsatz; starkes Oberleder; feinstes Rindslederfutter; bewährtes Waldviertler Fußbett"
+          },
+          "source": {
+            "url": "https://gea-waldviertler.at/shop/kommod-classic.html",
+            "checked_at": "2026-10-30T09:55:00Z"
+          },
+          "offers": [
+            {
+              "id": "gea-kommod-classic-schwarz-43-offer",
+              "retailer": "GEA Waldviertler",
+              "url": "https://gea-waldviertler.at/shop/kommod-classic.html",
+              "price_cents": 17500,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": null,
+              "source": {
+                "url": "https://gea-waldviertler.at/shop/kommod-classic.html",
+                "checked_at": "2026-10-30T09:55:00Z"
               }
             }
           ]

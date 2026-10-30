@@ -8,9 +8,9 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from backend.app.catalog import Catalog
-from backend.app.constraints import check_plan, item_violations
-from backend.app.state import Budget, ItemKind, ItemRef, Look, Plan, State
+from backend.app.catalog import Catalog, Size
+from backend.app.constraints import check_plan, fit_violations, item_violations
+from backend.app.state import Budget, Fit, ItemKind, ItemRef, Look, Plan, State
 
 ROOT = Path(__file__).resolve().parents[1]
 FIXTURE = json.loads(
@@ -72,6 +72,123 @@ def test_only_one_real_shoe_passes_a_wool_exclusion() -> None:
     ]
     passing = [v.id for v in shoes if not item_violations(v, v.offers[0], {"wool"})]
     assert passing == ["gw-beach-hellgrau-42"]
+
+
+def test_a_mens_fit_keeps_womens_lines_and_other_shoe_sizes_out_of_the_real_catalog() -> None:
+    given = (("letter", "M"), ("waist_length", "32"), ("eu_shoe", "42"), ("eu_shoe", "43"))
+    fit = Fit(lines={"men"}, sizes=[Size(system=s, value=v) for s, v in given])
+    fitting = {
+        variant.id
+        for product in REAL.products
+        for variant in product.variants
+        if not fit_violations(product, variant, fit)
+    }
+    assert fitting == {
+        "ae-maarkos-moonshadow-m",
+        "ae-jaames-black-m",
+        "ae-loukaa-dark-earth-m",
+        "ae-wool-cardigan-claystone-m",
+        "ae-aaster-space-steel-32-32",
+        "ae-kaavo-lolite-32-32",
+        "ae-selvedge-overshirt-midnight-air-m",
+        "gw-beach-hellgrau-42",  # unisex
+        "gw-merino-runners-men-schiefer-43",
+        "gea-tramper-flex-schwarz-43",  # unisex
+        "gea-kommod-classic-schwarz-43",  # unisex
+    }
+
+
+# An example fit that the real catalog's size L variants can serve; not any person's profile.
+MENS_SIZE_L = Fit(
+    lines={"men"},
+    garment_types={"trousers", "jeans"},
+    sizes=[
+        Size(system="letter", value="L"),
+        Size(system="waist_length", value="32/32"),
+        Size(system="eu_shoe", value="42"),
+        Size(system="eu_shoe", value="43"),
+    ],
+)
+
+
+@pytest.mark.parametrize(
+    ("exclusions", "shoes"),
+    [
+        # The GEA shoes have partial compositions, so a wool exclusion leaves only Beach.
+        (
+            set(),
+            (
+                "gea-kommod-classic-schwarz-43",
+                "gea-tramper-flex-schwarz-43",
+                "gw-beach-hellgrau-42",
+            ),
+        ),
+        ({"wool"}, ("gw-beach-hellgrau-42",) * 3),
+    ],
+)
+def test_the_real_catalog_builds_three_looks_for_a_mens_size_l_fit(
+    exclusions: set[str], shoes: tuple[str, str, str]
+) -> None:
+    looks = [
+        {"top": "ae-jaames-black-l", "bottom": "ae-aaster-space-steel-32-32"},
+        {"top": "ae-maarkos-moonshadow-l", "bottom": "ae-kaavo-lolite-32-32"},
+        {
+            "top": "ae-maarkos-moonshadow-l",
+            "mid_layer": "ae-loukaa-dark-earth-l",
+            "bottom": "ae-aaster-space-steel-32-32",
+        },
+    ]
+    looks = [{**items, "footwear": shoe} for items, shoe in zip(looks, shoes, strict=True)]
+    plan = Plan(
+        looks=[
+            Look(
+                id=f"look_{n}",
+                items={slot: ItemRef(kind=ItemKind.CATALOG, id=v) for slot, v in items.items()},
+            )
+            for n, items in enumerate(looks, start=1)
+        ],
+        selected_offers={v: f"{v}-offer" for items in looks for v in items.values()},
+    )
+    state = State(
+        budget=Budget(amount_cents=50000),
+        material_exclusions=exclusions,
+        fit=MENS_SIZE_L,
+        plan=plan,
+    )
+    assert check_plan(state, REAL).violations == ()
+
+
+@pytest.mark.parametrize(
+    ("system", "given", "stored"),
+    [
+        ("letter", "xl", "XL"),
+        ("letter", "3xl", "3XL"),
+        ("waist_length", "33", "33"),
+        ("waist_length", "33/32", "33/32"),
+        ("eu_shoe", "39,5", "39.5"),
+        ("eu_shoe", "43", "43"),
+    ],
+)
+def test_a_size_is_stored_in_one_form(system: str, given: str, stored: str) -> None:
+    assert Size(system=system, value=given).value == stored
+
+
+@pytest.mark.parametrize(
+    ("system", "value"),
+    [
+        ("letter", "XXXL"),
+        ("letter", "42"),
+        ("waist_length", "W32"),
+        ("waist_length", "32-34"),
+        ("eu_shoe", "42.3"),
+        ("eu_shoe", "M"),
+        ("eu_shoe", "٤٢"),  # digits other than 0-9
+        ("us_shoe", "9"),
+    ],
+)
+def test_a_size_outside_its_system_is_refused(system: str, value: str) -> None:
+    with pytest.raises(ValidationError):
+        Size(system=system, value=value)
 
 
 def test_the_synthetic_fixture_is_labeled_and_links_nowhere_real() -> None:
@@ -143,6 +260,16 @@ def variant(data: dict, variant_id: str) -> dict:
             lambda d: d["products"][1]["variants"][0].update(id="P01"), id="repeated-variant-id"
         ),
         pytest.param(lambda d: first_variant(d).update(offers=[]), id="variant-without-offer"),
+        pytest.param(lambda d: d["products"][0].update(line="kids"), id="unknown-line"),
+        pytest.param(
+            lambda d: d["products"][0].update(garment_type="jeans"), id="garment-type-on-a-top"
+        ),
+        pytest.param(
+            lambda d: first_variant(d).update(
+                normalized_size={"system": "waist_length", "value": "32"}
+            ),
+            id="variant-waist-without-length",
+        ),
     ],
 )
 def test_malformed_records_are_refused(corrupt: Callable[[dict], object]) -> None:

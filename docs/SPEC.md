@@ -1,6 +1,6 @@
 # Specification
 
-This file describes what the first version of FullAura does, the rules it keeps, and what it leaves out. Most of it is planned. The catalog record format, a first catalog of 15 real products, the hard-constraint checks, and a local development screen for preferences and sourced look results exist. The request-scoped preview route and interface exist, but photo uploads stay disabled until T-02 passes (see the [README](../README.md)). The build order is in [TASKS.md](TASKS.md), and the reasons behind each choice are in [DECISIONS.md](DECISIONS.md).
+This file describes what the first version of FullAura does, the rules it keeps, and what it leaves out. Most of it is planned. The catalog record format, a catalog of 22 real product variants, the hard-constraint checks, and a local development screen for preferences and sourced look results exist. The request-scoped preview route and interface exist, but photo uploads stay disabled until T-02 passes (see the [README](../README.md)). The build order is in [TASKS.md](TASKS.md), and the reasons behind each choice are in [DECISIONS.md](DECISIONS.md).
 
 ## What a person does
 
@@ -12,7 +12,7 @@ The first version has an English interface, shows prices in EUR, and offers only
 
 | Area | First version |
 | --- | --- |
-| Inputs | A portrait and a full-body photo; style goal, preferred colors, budget, materials to exclude; up to three owned items (optional) |
+| Inputs | A portrait and a full-body photo; style goal, preferred colors, budget, materials to exclude; whom the looks are for: clothing lines, kinds of bottoms and one-pieces, and sizes (optional); up to three owned items (optional) |
 | Products | A small catalog that FullAura has permission to use (see [Catalog records](#catalog-records)) |
 | Planning | Three looks; code checks the [hard constraints](#hard-constraints) |
 | Models | Muse Spark for planning and tool calls; Muse Image for previews; subject to the feasibility test (T-02 in [TASKS.md](TASKS.md)) |
@@ -30,7 +30,7 @@ repair attempt; if the plan still fails, the response has no plan and reports th
 
 ## Catalog records
 
-A catalog record describes one product and its variants. A variant is one purchasable version of the product, such as one size and color, with its SKU and composition. Each variant has one or more offers, and an offer is one retailer's price in EUR, the countries it confirms delivery to, its stock and its shopping link. Every variant and offer keeps its source and the time its data was last checked against that source. Size and stock are recorded when the source gives them. FullAura recommends only products that have a catalog record, and it chooses them before it generates a preview. Data that a record lacks stays unknown and is shown as unknown in the output. [DATA.md](DATA.md) has the rules for catalog sources and their rights.
+A catalog record describes one product and its variants. A variant is one purchasable version of the product, such as one size and color, with its SKU and composition. Each variant has one or more offers, and an offer is one retailer's price in EUR, the countries it confirms delivery to, its stock and its shopping link. Every variant and offer keeps its source and the time its data was last checked against that source. Size and stock are recorded when the source gives them. A product also records the clothing line its retailer lists it under (women's, men's or unisex) and, for a bottom or one-piece, its garment type, such as trousers, jeans or dress. A variant records its size as the source labels it and, when it can be compared, in one sizing system: letter sizes, waist and length, or EU shoe sizes. FullAura does not convert sizes between systems. FullAura recommends only products that have a catalog record, and it chooses them before it generates a preview. Data that a record lacks stays unknown and is shown as unknown in the output. [DATA.md](DATA.md) has the rules for catalog sources and their rights.
 
 A plan selects one offer for each variant it uses, and every look that contains the variant uses that offer's price, delivery and stock ([D-20](DECISIONS.md#d-20-a-plan-buys-each-variant-through-one-selected-offer)).
 
@@ -40,21 +40,22 @@ FullAura keeps delivery to a country and stock in a local shop as separate facts
 
 ## Hard constraints
 
-A hard constraint is a rule that code checks before FullAura shows a plan. A catalog product that fails a check is left out of the plan. The first version has five:
+A hard constraint is a rule that code checks before FullAura shows a plan. A catalog product that fails a check is left out of the plan. The first version has six:
 
 - **Budget.** The cost stays within the budget. The person chooses whether the budget applies to each look or to the whole plan, meaning all three looks together. Each look is the default, and the interface then shows that the three looks together can cost more than the amount entered. When it applies to each look, code checks each look on its own. When it applies to the whole plan, a product variant that appears in more than one look counts once; two colors or sizes of one product are different variants. Each variant costs the price of its selected offer. A catalog product whose price is unknown fails this check.
 - **Material exclusions.** Exclusions are hard filters for catalog products: while an exclusion is active, a catalog product that contains an excluded material fails this check, and so does one whose composition cannot be checked. Only a complete composition can be checked. The check covers every material the record lists, including a trim whose material the source names, such as a metal zip; a trim that the source does not name, or names only vaguely, such as a zip "aus Plastik", is not checked. An exclusion names a material from the same fixed list as the catalog, so an exclusion of PU is an exclusion of polyurethane, and FullAura does not accept an exclusion whose name is not on the list ([D-23](DECISIONS.md#d-23-materials-are-compared-by-names-from-a-fixed-list)). The interface says that exclusions work this way. With no exclusion active, a catalog product with unknown composition can be used, and the interface labels its composition as unknown. Owned items follow their own rule (see [Owned items](#owned-items)).
 - **Delivery.** Every catalog product can be delivered to Austria. A product whose selected offer does not confirm delivery to Austria fails this check.
 - **Stock.** A product whose selected offer reports it out of stock fails this check; another offer of the same variant can be selected instead. When the offer gives no stock, the product can be used, and the interface shows its stock as unknown ([D-24](DECISIONS.md#d-24-an-offer-reported-out-of-stock-fails)).
+- **Fit.** The person can state whom the looks are for: the clothing lines to show, the kinds of bottoms and one-pieces they wear, and the sizes they accept in each sizing system, such as M, waist 30, and EU 39.5 or 40. FullAura never infers these from photographs. While lines are chosen, a catalog product must belong to one of them or be unisex; a product with no recorded line fails. While garment types are chosen, a bottom or one-piece must have one of them; one with no recorded type fails. When the person gives a size in a variant's sizing system, the variant must match one of those sizes; a waist without a length matches every length. A variant passes the size check when the person gave no size in its system, and fails it when the person gave any size and the variant's size cannot be compared. Owned items are not checked ([D-36](DECISIONS.md#d-36-the-person-states-whom-the-looks-are-for)).
 - **Locked items.** A locked item is one the person chose to keep. It stays in the look where the person locked it, in the same position, such as footwear, through every edit. The same item in another look can still change ([D-22](DECISIONS.md#d-22-a-lock-holds-one-position-in-one-look)).
 
-When no plan meets every hard constraint, for example because the locked items cost more than the budget, FullAura reports that the plan is infeasible. It says so only when code shows that no plan can pass. When the model's plans keep failing the checks, or the model does not answer in time, FullAura says that instead and does not call the request infeasible.
+When no plan meets every hard constraint, for example because the locked items cost more than the budget, or because no catalog item that passes the item checks and no owned item can complete a top and bottom or a one-piece, FullAura reports that the plan is infeasible. It says so only when code shows that no plan can pass. When the model's plans keep failing the checks, or the model does not answer in time, FullAura says that instead and does not call the request infeasible.
 
-When a person replaces an item, the request identifies the current item, look and slot. The person cannot replace a locked item. Every other position in all three looks, including empty positions, stays as it was. Code requires a different item in the selected position and checks the complete returned plan against the current budget, exclusions, delivery, stock, composition and locks. If replacement fails, the previous plan remains displayed.
+When a person replaces an item, the request identifies the current item, look and slot. The person cannot replace a locked item. Every other position in all three looks, including empty positions, stays as it was. Code requires a different item in the selected position and checks the complete returned plan against the current budget, exclusions, delivery, stock, composition, fit and locks. If replacement fails, the previous plan remains displayed.
 
-The interface disables replacement when no other catalog variant or owned item has a category that can fill the position. Current constraints can still leave no valid replacement.
+The interface disables replacement when no other catalog variant that passes the fit check, and no owned item, has a category that can fill the position. Current constraints can still leave no valid replacement.
 
-The selected variants and offers, budget, exclusions, owned items and locked items are kept in structured application state, and code validates the hard constraints against that state. FullAura does not present a material exclusion as a medical assurance.
+The selected variants and offers, budget, exclusions, fit, owned items and locked items are kept in structured application state, and code validates the hard constraints against that state. FullAura does not present a material exclusion as a medical assurance.
 
 ## Owned items
 

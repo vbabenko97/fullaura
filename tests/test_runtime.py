@@ -47,9 +47,9 @@ def test_development_catalog_route_returns_catalog_facts_without_provider_creden
         response = client.get("/api/catalog")
 
     assert response.status_code == 200
-    assert response.json()["id"] == "fullaura-catalog-2026-10-28"
+    assert response.json()["id"] == "fullaura-catalog-2026-10-30"
     assert response.json()["synthetic"] is False
-    assert len(response.json()["products"]) == 15
+    assert len(response.json()["products"]) == 17
 
 
 @pytest.mark.parametrize("environment", ["development", "production"])
