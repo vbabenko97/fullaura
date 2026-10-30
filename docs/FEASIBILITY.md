@@ -73,8 +73,10 @@ Each check shows passed / planned images.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 20261026T210402Z | exploratory | 2026-10-26 | 4 / 4 | 12.7 s / 17.0 s | $0.04 | 4 / 4 | 4 / 4 | 4 / 4 | 4 / 4 | 2 / 2 | 0, 0, 0 |
 | 20261026T211334Z | exploratory | 2026-10-26 | 2 / 2 | 15.3 s / 16.5 s | $0.02 | 2 / 2 | 2 / 2 | 2 / 2 | 2 / 2 | none planned | 0, 0, 0 |
+| 20261030T184918Z | exploratory | 2026-10-30 | 6 / 6 | 13.9 s / 15.0 s | $0.06 | 6 / 6 | 6 / 6 | 6 / 6 | 6 / 6 | 2 / 2 | 0, 0, 0 |
 
-Both exploratory runs used the author's portrait and full-body photo, and every call succeeded on the first attempt.
+All exploratory runs used the author's portrait and full-body photo, and every call succeeded on the first attempt.
 
 - 20261026T210402Z used a generated product image of a plain navy sweater as the garment, and an edit to a generated burgundy version of it. A plain garment makes the product details check easy.
 - 20261026T211334Z used the catalog photo of a Levi's Classic Worker Overshirt in a black and white check (product 195870289, from lsco.scene7.com), to test whether the check pattern, the two flap pockets, the buttons and the red tab survive. It had no edit. The author judged the proportions not ideal but acceptable and the product details preserved; the number of buttons was not compared with the catalog photo. FullAura has no permission from the rights holder for this photo, so it is for internal testing only and must not appear in a demo, a recording or the repository.
+- 20261030T184918Z used the product photos of three catalog items from armedangels.com: the Maarkos T-shirt in moonshadow, the Kaavo jeans in lolite and the Jaames long-sleeve top in black. One case showed the author full body in the T-shirt and jeans, then edited the T-shirt into the long-sleeve top. The other showed the author from the waist up in the long-sleeve top alone, to test a single garment and a partial frame. The author passed every check. FullAura has no permission for these photos either, so the same internal-only rule applies to them and to the generated images.
