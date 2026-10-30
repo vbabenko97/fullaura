@@ -6,7 +6,7 @@ Personal style plans built around your preferences, budget, and existing wardrob
 
 FullAura aims to combine outfits, optional hair and beard previews, and links to real products. A plan should remain consistent when you keep an item, change a preference, or lower the budget.
 
-**Status: limited public planning pilot at the [Azure demo](https://fullaura-demo.blackbay-aaeee2c5.francecentral.azurecontainerapps.io).** The React interface reads a catalog of 22 real product variants and collects a style goal, colors, budget, material exclusions, whom the looks are for (clothing lines, kinds of bottoms and one-pieces, and sizes), and up to three owned items. It displays successful plans checked against the hard constraints, lets a person keep items before an update, and replaces one unlocked item while preserving every other position. Production catalog and planning routes stay closed by default and require `FULLAURA_PUBLIC_DEMO_ENABLED=true`; the current Azure pilot enables them. Each anonymous browser session requires an 18+ confirmation and permits three planning requests, including updates and replacements. Session state is held in process memory, so it requires one worker and one replica and resets on restart. This per-session cap is not an account-wide spending limit. The preview route stays development-only and photo uploads stay disabled until the formal T-02 feasibility test passes. Product images and hosting are not implemented.
+**Status: closed beta.** The [Azure site](https://fullaura-demo.blackbay-aaeee2c5.francecentral.azurecontainerapps.io) serves invited people only ([docs/BETA.md](docs/BETA.md)). An invited person confirms they are 18 or older, states a style goal, budget, shoes, sizes and optional wishes, and gets three looks from a catalog of real products that ship to Austria, checked in code against the hard constraints. They can try a look on their own photos as an experimental visualization, keep items, lower the budget, replace one item, copy or print a shared shopping list, save plans on their device, restore them, and send feedback. Each invite has 8 planning requests and 12 try-ons, and a shared ledger stops model calls when the beta's $8 planning or $3 image budget is used up. The try-on has not passed the formal feasibility test (T-02), and hair and beard previews are not implemented.
 
 ## Run locally
 
@@ -17,6 +17,13 @@ git clone https://github.com/vbabenko97/fullaura.git
 cd fullaura
 cp .env.example .env
 uv sync --frozen
+uv run --frozen python -m scripts.pilot_invites --count 1 --base-url http://localhost:5173 \
+    --folder data/private/beta-dev
+```
+
+Put the digest from `data/private/beta-dev/invite-hashes.txt` into `.env` as `FULLAURA_INVITE_HASHES`, then start the backend:
+
+```bash
 uv run --env-file .env uvicorn backend.app.main:app --reload
 ```
 
@@ -28,9 +35,11 @@ npm ci
 npm run dev
 ```
 
-Open <http://localhost:5173>. Vite forwards `/api` requests to the backend at port 8000. Development API docs are at <http://localhost:8000/api/docs>.
+Open the link in `data/private/beta-dev/invites.csv`. Vite forwards `/api` requests to the backend at port 8000. Development API docs are at <http://localhost:8000/api/docs>.
 
-In development, the interface creates an anonymous session, requires an 18+ confirmation before planning, reads `GET /api/catalog`, submits `POST /api/plans`, and checks `GET /api/previews/status`. A session can make three planning requests; generating, updating and replacing each count. The server asks Muse Spark Open on Baseten for three looks from the catalog and checks them against the hard constraints. A planning request needs `BASETEN_API_KEY` in `.env`, which Git ignores. Submitting a request uses provider quota and may incur cost. Production leaves planning routes off unless `FULLAURA_PUBLIC_DEMO_ENABLED=true`; the current Azure pilot uses the Free Trial spending limit and Baseten's hard $100 hackathon credit cap. The Azure budget is an alert, not a cap, and the Baseten balance is not visible. Preview uploads remain disabled unless the formal T-02 result passes and `FULLAURA_T02_PREVIEWS_PASSED=true` is set in `.env`; the route remains development-only. An enabled preview request accepts two upright JPEGs, removes metadata, keeps photo data in memory, and cancels provider work at the shared 120-second deadline or when the browser disconnects. It needs Meta Standard-mode access through `MODEL_API_KEY`. Loading the interface and catalog needs no cloud credentials. Two scripts also call models, with keys from `.env`. The feasibility test script ([docs/FEASIBILITY.md](docs/FEASIBILITY.md)) calls Meta with `MODEL_API_KEY`. The model smoke check makes one small call to Muse Spark Open on Baseten, with `BASETEN_API_KEY`, and one to Muse Image on Meta, and prints each call's status, latency and token usage:
+Development always opens the beta; production opens it only with `FULLAURA_BETA_ENABLED=true`. Without `FULLAURA_STORE_URL`, development keeps quotas, spending and feedback in memory; `file:///absolute/folder` keeps them across restarts. Without `FULLAURA_SESSION_SECRET`, each start signs cookies with a new secret, so the invite link must be opened again.
+
+Planning needs `BASETEN_API_KEY` in `.env`, which Git ignores, and the try-on needs Meta Standard-mode access through `MODEL_API_KEY`. Both calls cost money and count against the invite's quota and the beta's budget. The server asks Muse Spark Open on Baseten for three looks and checks them against the hard constraints; it writes the try-on prompt from the checked look, and the browser sends only two photos, redrawn as JPEGs without metadata. Loading the interface and catalog needs no cloud credentials. Two scripts also call models, with keys from `.env`: the feasibility test script ([docs/FEASIBILITY.md](docs/FEASIBILITY.md)) calls Meta, and the model smoke check makes one small call to each model and prints its status, latency and token usage:
 
 ```bash
 uv run --frozen --env-file .env python -m scripts.smoke_models
@@ -47,13 +56,13 @@ uv run --frozen pytest
 npm --prefix frontend ci
 npm --prefix frontend test
 npm --prefix frontend run build
+npx --prefix frontend playwright install chromium   # once
+npm --prefix frontend run e2e
 ```
 
-CI runs these checks, builds the container, and checks its HTTP endpoints. It does not deploy or call Meta.
+CI runs these checks, builds the container, and checks its HTTP endpoints. It does not deploy or call a model provider.
 
-Frontend tests drive the preference form and single-item replacement with deterministic planning API fixtures. They use the checked-in non-synthetic catalog, label scripted plans as test data, and do not call a model provider.
-
-With the development servers running, `/test/fixture.html` drives plan generation, a kept item, a reduced-budget update and a one-item replacement for visual review. Its banner marks the scripted plans as fixtures; it fetches the real catalog and never calls a model provider.
+Frontend unit tests drive the interface against a scripted API with the checked-in catalog. `npm run e2e` serves the built app with `scripts/e2e_server.py`, whose planner and image model are deterministic stand-ins, and drives the whole beta flow on a desktop and a phone viewport: invite, plan, try-on, keep, lower budget, update, replace, save, restore, copy, print and feedback. It writes screenshots to the ignored `runs/e2e/screens/`. Nothing it shows is model output.
 
 ## Run the production container
 
@@ -62,7 +71,7 @@ docker build -t fullaura:local .
 docker run --rm -p 127.0.0.1:8000:8000 fullaura:local
 ```
 
-Open <http://localhost:8000>. The container serves both the built frontend and API, runs as a non-root user, and disables development API docs. `GET /api/health` checks the process; `GET /api/ready` also checks that the frontend entry point exists. Neither endpoint verifies a model provider.
+Open <http://localhost:8000>. The container serves both the built frontend and API, runs as a non-root user, disables development API docs, and keeps the beta closed. With `FULLAURA_BETA_ENABLED=true` it also needs `FULLAURA_SESSION_SECRET` of 32 or more characters, `FULLAURA_INVITE_HASHES` and a persistent `FULLAURA_STORE_URL`, or it refuses to start. `GET /api/health` checks the process; `GET /api/ready` also checks that the frontend entry point exists. Neither endpoint verifies a model provider.
 
 While the container is running, check it from another terminal:
 
@@ -75,7 +84,8 @@ uv run --frozen python scripts/smoke_http.py
 - [Product specification](docs/SPEC.md)
 - [Tasks in build order](docs/TASKS.md)
 - [Decision log](docs/DECISIONS.md)
-- [Azure deployment plan](docs/DEPLOYMENT.md)
+- [Closed beta for participants and the operator](docs/BETA.md)
+- [Azure deployment](docs/DEPLOYMENT.md)
 - [Data and asset provenance](docs/DATA.md)
 - [Planning evaluation protocol](docs/EVALUATION.md)
 - [Contributor and coding-agent guidance](AGENTS.md)

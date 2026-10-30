@@ -26,6 +26,7 @@ import {
 } from "./plan";
 import type { Preferences } from "./plan";
 import { PreferencesForm } from "./PreferencesForm";
+import { PrivacyNotice } from "./PrivacyNotice";
 import { deleteSavedPlan, keepCurrentPlan, loadCurrentPlan, loadSavedPlans, savePlan } from "./planStorage";
 import { SavedPlans } from "./SavedPlans";
 import { ShoppingList } from "./ShoppingList";
@@ -627,6 +628,7 @@ export function App() {
           </div>
         </div>
       )}
+      <PrivacyNotice />
     </main>
   );
 }

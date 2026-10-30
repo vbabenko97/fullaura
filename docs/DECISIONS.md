@@ -236,7 +236,7 @@ Each decision has a number that is never reused and a status: accepted, proposed
 ## D-31: No persistent server copies of personal photos
 
 - **Date:** 2026-10-28
-- **Status:** accepted
+- **Status:** accepted; the T-02 gate in its consequences is replaced by [D-44](#d-44-the-betas-try-on-is-experimental-and-does-not-wait-for-t-02)
 - **Decision:** When photo uploads are enabled, FullAura keeps originals, metadata-stripped inputs and generated previews in memory only for the request. It stores no server copy, cache, backup, database record or raw provider response. It deletes any required temporary files in `finally` on every success and failure path, and removes leftovers from interrupted processes during startup before accepting uploads. If cleanup or the startup sweep fails, photo processing stays blocked until cleanup succeeds. [DATA.md](DATA.md#photo-handling-for-upload-support) describes the cleanup order.
 - **Reason:** A short server retention period is unnecessary for the first flow and increases the amount of personal data that needs storage, access control and deletion handling.
 - **Consequences:** The request-scoped route and interface are implemented, but the route returns 503 before reading the body until T-02 passes and `FULLAURA_T02_PREVIEWS_PASSED=true` is set. The route remains development-only. The browser holds selected photos and may retain a returned preview according to its own behavior; a model provider's retention remains governed by its published terms and the user-facing processing notice.
@@ -244,7 +244,7 @@ Each decision has a number that is never reused and a status: accepted, proposed
 ## D-32: Preview requests have one deadline and cancel on disconnect
 
 - **Date:** 2026-10-29
-- **Status:** accepted
+- **Status:** accepted; the T-02 gate in its decision is replaced by [D-44](#d-44-the-betas-try-on-is-experimental-and-does-not-wait-for-t-02)
 - **Decision:** One monotonic 120-second deadline covers receiving the bounded multipart request, provider attempts and retry waits. The asynchronous HTTP request receives only the remaining time and is cancelled when the deadline expires. If the browser disconnects while the provider is working, the server cancels that task. Request and preview buffers are cleared on success, timeout, disconnect and failure. Preview uploads remain disabled until the formal T-02 result passes and `FULLAURA_T02_PREVIEWS_PASSED=true` is set; production stays disabled.
 - **Reason:** Per-operation network timeouts do not bound upload plus retry duration, and a synchronous request cannot be reliably cancelled when the caller leaves.
 - **Consequences:** A local preview request ends with HTTP 504 at the shared deadline. A disconnected browser receives no response, and no provider work continues after the server detects the disconnect. Public model access still needs the T-04 safeguards described in [TASKS.md](TASKS.md#t-04-one-complete-flow).
@@ -260,7 +260,7 @@ Each decision has a number that is never reused and a status: accepted, proposed
 ## D-34: Open the pilot with anonymous limited sessions
 
 - **Date:** 2026-10-29
-- **Status:** accepted
+- **Status:** superseded by [D-43](#d-43-an-invite-only-beta-replaces-the-anonymous-demo)
 - **Decision:** Production exposes the catalog and planning routes only when `FULLAURA_PUBLIC_DEMO_ENABLED=true`. Each browser session uses a random opaque `HttpOnly`, `Secure`, `SameSite=Lax` cookie. The server stores age confirmation and planning-request count in memory and expires inactive sessions after 24 hours. Planning requires an explicit 18+ confirmation and permits three requests per session; initial plans, updates and replacements count. Photo previews stay disabled in production pending T-02.
 - **Reason:** A small link-accessible pilot needs a clear age gate and a bounded number of paid planning submissions without adding accounts or a database.
 - **Consequences:** The session limit assumes one process, one worker and one replica. A process restart resets request counts, and a person can start a new browser session. This is not an aggregate spending ceiling or abuse-proof access control. Verify Azure and provider account-level spending controls before enabling the public routes. The interface explains the current photo state and the processing that would apply if the T-02 gate is later passed.
@@ -292,7 +292,7 @@ Each decision has a number that is never reused and a status: accepted, proposed
 ## D-38: Previews depend on the formal test materials by 31 October
 
 - **Date:** 2026-10-30
-- **Status:** accepted
+- **Status:** superseded by [D-44](#d-44-the-betas-try-on-is-experimental-and-does-not-wait-for-t-02)
 - **Decision:** The formal preview test (T-02) runs only if two more consenting subjects and the garment images are available by the evening of 2026-10-31, Vienna time. Otherwise the demo follows [D-11](#d-11-test-previews-first-and-keep-the-plan-useful-without-them) and shows no previews.
 - **Reason:** Four days remain before the internal deadline, and the planning flow for a stated wearer needs them. Missing test materials are not a result about the model.
 - **Consequences:** If the materials do not arrive, T-02 records that the formal test did not run and why, and the submission does not present previews as tested.
@@ -328,3 +328,36 @@ Each decision has a number that is never reused and a status: accepted, proposed
 - **Decision:** T-06 compares the full planner and a deterministic baseline on the same fixed, non-personal cases. The baseline chooses the three cheapest distinct complete outfits from variants that pass the existing item checks, then validates each complete plan with `check_plan`. Code records hard-constraint outcomes and provider usage for every case. A person judges only `mens-fit-per-look` ([D-40](#d-40-the-t-06-comparison-adds-a-case-with-an-example-fit)): for each look of both plans, they answer the two questions of [D-41](#d-41-the-demo-is-accepted-on-its-wearers-yes-or-no-answers-set-before-the-run) as the person who made the request. The cases without a fit check hard constraints only. This replaces the four 1–5 scores of [D-35](#d-35-compare-planning-with-the-cheapest-admissible-outfit-baseline). [EVALUATION.md](EVALUATION.md) defines the cases and measurements.
 - **Reason:** In the cases without a fit, plans mix men's and women's lines and sizes, so no single person can say whether they would try the looks on. The four scales asked for styling judgments that the available rater cannot make reliably. A reproducible price-only baseline still gives the planner a concrete comparison.
 - **Consequences:** The human comparison rests on one case with three looks per approach, which supports a pilot observation only. The 2026-10-29 run has no fit case and gets no human answers; its machine-checked results stay recorded. The baseline does not establish general quality, fit, stock availability or broad preference. T-06 remains open until the human answers, the demo and submission are complete.
+
+## D-43: An invite-only beta replaces the anonymous demo
+
+- **Date:** 2026-10-30
+- **Status:** accepted
+- **Decision:** With `FULLAURA_BETA_ENABLED=true`, the production app serves invited sessions only; without it, everything except health, readiness and the session status stays closed. An invite is a random code; the server holds only SHA-256 digests of the codes and signs a session cookie that names the invite. Each invite confirms age 18 or older once, may make 8 planning requests and 12 try-ons, and runs one model request at a time. Before each model call the server reserves the call's maximum cost at list prices, including every retry, in a ledger shared by all invites: $8 for planning and $3 for images. After the call it records the actual cost, or keeps the whole reservation when the outcome is unknown. A request carries a UUID, so a repeat never starts a second paid call, and a call that a stopped process left running is never retried and keeps its reservation. Quotas, the ledger and feedback live in a private Azure Blob Storage container that the app reaches with its managed identity, and every change is a conditional write on the document's ETag. When the store cannot be reached, model calls stop and plans stay available. `FULLAURA_PILOT_ENDS_AT` closes model calls at the end of the pilot. This replaces [D-34](#d-34-open-the-pilot-with-anonymous-limited-sessions).
+- **Reason:** The author and friends use the product in a closed beta with $25 for extra costs ($8 planning, $3 images, $10 Azure, $4 reserve). D-34's in-memory per-session cap reset on every restart and was not a spending limit. Writing to Blob through its REST API with a managed-identity token needs no Azure SDK, and ETags keep two writers from losing an update ([concurrency in Blob Storage](https://learn.microsoft.com/en-us/azure/storage/blobs/concurrency-manage)).
+- **Consequences:** The demo URL needs an invite, so a hackathon judge needs one too. The ledger holds list-price estimates, not provider invoices; the Azure budget still only notifies. The store holds no photo, preview, plan, profile or provider response. Plans still live in one process's memory, so the app keeps one replica; quotas and money no longer depend on it.
+
+## D-44: The beta's try-on is experimental and does not wait for T-02
+
+- **Date:** 2026-10-30
+- **Status:** accepted
+- **Decision:** In the beta, an invited person who agrees to a separate photo notice can try one look of their current plan on two of their own photos. The browser redraws a JPEG, PNG or WebP photo as an upright JPEG without metadata; the server still accepts only JPEG and removes metadata again. The server writes the prompt from the checked look: garment kind, catalog color, title and complete materials of each catalog item, and the person's own description of an owned item. It sends no product image and no text from the browser. The interface labels the result an experimental visualization that shows approximate colors, shapes and combinations, not the exact products, fit or size. A changed plan hides an earlier try-on. `FULLAURA_T02_PREVIEWS_PASSED` is removed, because no route depends on it. The T-02 protocol, its thresholds and its results stay as they are; a beta try-on is not a T-02 run.
+- **Reason:** The author decided on 2026-10-30 that a useful beta matters more than the hackathon schedule and that try-on on one's own photo is part of it. Exploratory runs passed every check ([FEASIBILITY.md](FEASIBILITY.md#results)), and an honest approximate label keeps the promise within what has been seen. A prompt written from the server's checked plan cannot be redirected by the browser.
+- **Consequences:** T-02 stays open, so the try-on's quality has no formal evidence; an agent's visual check of synthetic runs is a preliminary check only. [D-31](#d-31-no-persistent-server-copies-of-personal-photos) and [D-32](#d-32-preview-requests-have-one-deadline-and-cancel-on-disconnect) still govern photo handling. This replaces [D-38](#d-38-previews-depend-on-the-formal-test-materials-by-31-october).
+
+## D-45: People choose closed, open or any shoes
+
+- **Date:** 2026-10-30
+- **Status:** accepted
+- **Decision:** A plan request carries a footwear choice: closed, open or any. Each catalog shoe records its closure from the retailer's own product type, such as a sneaker or a slide. With closed or open, every look needs footwear, and a catalog shoe of the other kind or with no recorded closure fails as a hard constraint; owned shoes count and are not checked. The interface starts at closed shoes. Occasion and season join the brief as wishes for the model; code does not check them.
+- **Reason:** In the T-06 fit case an open slide ended up in an autumn office look ([EVALUATION.md](EVALUATION.md#human-scoring)), and nothing in the request could rule it out. The closed beta's coverage scenarios need closed shoes in every look.
+- **Consequences:** Every catalog shoe needs a closure for a closed or open choice to use it. When no usable shoe of the chosen kind exists, the request is infeasible without a model call.
+
+## D-46: The server keeps the checked plan, and the browser keeps saved copies
+
+- **Date:** 2026-10-30
+- **Status:** accepted
+- **Decision:** A successful plan comes with an opaque token. The server keeps the last checked plan of each browser session in memory, and an update, a replacement or a try-on names it by that token; the browser never sends a plan with these requests. A failed request leaves the plan and its token current. The browser keeps its working plan for the tab and up to ten plans saved on the device, with their shopping lists and without photos or try-ons. `POST /api/plans/restore` checks a saved plan again against the current catalog and constraints, chooses its offers again and issues a new token, without a model call.
+- **Reason:** A try-on prompt and a replacement must come from a plan the server checked, not one a browser could change. The plan memory ends with the process, and the app scales to zero, so a plan must survive in the browser.
+- **Consequences:** After a restart or a scale-down, the browser restores its plan before the next request. A saved plan that no longer passes the checks cannot be restored, but its saved shopping list stays readable.
+
