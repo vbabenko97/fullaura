@@ -214,6 +214,23 @@ def _size_matches(size: Size, given: Size) -> bool:
     return size.value == given.value
 
 
+def cheapest_usable_offers(catalog: Catalog, state: State) -> dict[str, Offer]:
+    """For each variant that can appear in a plan, its cheapest offer that passes the item and
+    fit checks. Offer IDs break price ties, so the choice is stable."""
+    exclusions = state.material_exclusions
+    usable = {}
+    for product in catalog.products:
+        for variant in product.variants:
+            if fit_violations(product, variant, state.fit):
+                continue
+            offers = [o for o in variant.offers if not item_violations(variant, o, exclusions)]
+            if offers:
+                usable[variant.id] = min(
+                    offers, key=lambda offer: (offer.price_cents or 0, offer.id)
+                )
+    return usable
+
+
 def cost(
     items: Iterable[ItemRef], selected_offers: Mapping[str, str], catalog: Catalog
 ) -> int | None:

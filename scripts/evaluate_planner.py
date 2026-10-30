@@ -25,7 +25,7 @@ from urllib.request import Request
 
 from backend.app.catalog import Catalog, Category, Offer, Size
 from backend.app.config import Settings
-from backend.app.constraints import check_plan, cost, fit_violations, item_violations
+from backend.app.constraints import cheapest_usable_offers, check_plan, cost
 from backend.app.planner import (
     BASETEN_URL,
     GENERATION_ATTEMPTS,
@@ -205,26 +205,6 @@ CASES = (
 )
 
 
-def usable_offers(catalog: Catalog, state: State) -> dict[str, Offer]:
-    """Choose each variant's cheapest offer that passes the planner's item and fit checks."""
-    usable: dict[str, Offer] = {}
-    for product in catalog.products:
-        for variant in product.variants:
-            if fit_violations(product, variant, state.fit):
-                continue
-            offers = [
-                offer
-                for offer in variant.offers
-                if not item_violations(variant, offer, state.material_exclusions)
-            ]
-            if offers:
-                usable[variant.id] = min(
-                    offers,
-                    key=lambda offer: (offer.price_cents or 0, offer.id),
-                )
-    return usable
-
-
 def candidate_looks(catalog: Catalog, offers: dict[str, Offer]) -> list[CandidateLook]:
     """Enumerate base outfits with footwear; extra layers are outside this baseline."""
     tops = [
@@ -273,7 +253,7 @@ def candidate_looks(catalog: Catalog, offers: dict[str, Offer]) -> list[Candidat
 
 def cheapest_baseline(case: EvaluationCase, catalog: Catalog) -> tuple[Plan, int]:
     """Return the cheapest distinct three-look plan that passes the shared hard checks."""
-    offers = usable_offers(catalog, case.state())
+    offers = cheapest_usable_offers(catalog, case.state())
     candidates = candidate_looks(catalog, offers)
     chosen_looks: tuple[CandidateLook, ...] | None = None
     plan_cost: int | None = None

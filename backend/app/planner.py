@@ -29,9 +29,8 @@ from backend.app.constraints import (
     Check,
     Rule,
     Violation,
+    cheapest_usable_offers,
     check_plan,
-    fit_violations,
-    item_violations,
     lock_conflicts,
 )
 from backend.app.meta_images import RETRY_STATUS, _error_detail
@@ -329,7 +328,7 @@ def plan_looks(
     """Three checked looks for the brief, or the reason there are none."""
     usage = Usage()
     conflicts = lock_conflicts(state, catalog)
-    offers = _cheapest_usable_offers(catalog, state)
+    offers = cheapest_usable_offers(catalog, state)
     conflicts += _base_outfit_conflicts(state, catalog, offers)
     if conflicts:
         return _logged(PlanResult(Outcome.INFEASIBLE, usage, conflicts=tuple(conflicts)), client, 0)
@@ -569,20 +568,6 @@ def _replacement_violations(
                     )
                 )
     return violations
-
-
-def _cheapest_usable_offers(catalog: Catalog, state: State) -> dict[str, Offer]:
-    """For each variant that can appear in a plan, its cheapest offer that passes the checks."""
-    exclusions = state.material_exclusions
-    usable = {}
-    for product in catalog.products:
-        for variant in product.variants:
-            if fit_violations(product, variant, state.fit):
-                continue
-            offers = [o for o in variant.offers if not item_violations(variant, o, exclusions)]
-            if offers:
-                usable[variant.id] = min(offers, key=lambda offer: offer.price_cents or 0)
-    return usable
 
 
 def _base_outfit_conflicts(
