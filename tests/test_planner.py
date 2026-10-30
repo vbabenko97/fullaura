@@ -472,12 +472,14 @@ def test_an_owned_item_completes_a_look_that_the_fit_leaves_without_a_bottom() -
     assert (result.outcome, len(sent)) == (Outcome.SUCCESS, 1)  # owned items are exempt
 
 
-def test_logs_hold_usage_but_not_the_brief(caplog: pytest.LogCaptureFixture) -> None:
+def test_logs_hold_usage_but_nothing_the_person_entered(caplog: pytest.LogCaptureFixture) -> None:
+    coat = OwnedItem(id="O01", category="outerwear", color="camel", description="grandma's coat")
     client, _, _ = spark(VALID)
     with caplog.at_level(logging.INFO, logger="backend.app.planner"):
-        plan_looks(BRIEF, state(), CATALOG, client)
+        plan_looks(BRIEF, state(owned_items=(coat,)), CATALOG, client)
     assert "outcome=success" in caplog.text and "prompt_tokens=1000" in caplog.text
-    assert "dinners" not in caplog.text and "ivory" not in caplog.text
+    for entered in ("dinners", "ivory", "camel", "grandma"):
+        assert entered not in caplog.text
 
 
 def body() -> dict[str, Any]:

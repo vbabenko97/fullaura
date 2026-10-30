@@ -1,13 +1,15 @@
 """Check the deployment boundary between the API and frontend assets."""
 
 import asyncio
+import subprocess
+import sys
 from collections.abc import Sequence
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
-from backend.app.config import Settings
+from backend.app.config import PROJECT_ROOT, Settings
 from backend.app.main import PREVIEW_DISABLED_DETAIL, create_app
 from backend.app.meta_images import ImageResult, InputImage
 
@@ -40,6 +42,24 @@ def test_api_stays_available_without_frontend_or_provider_credentials(tmp_path: 
         assert client.get("/api/health").json() == {"status": "ok", "service": "fullaura"}
         assert client.get("/api/ready").status_code == 200
         assert client.get("/").status_code == 503
+
+
+def test_uvicorn_default_logging_keeps_planner_usage_records() -> None:
+    # A separate process, because Uvicorn's logging setup changes global state.
+    script = (
+        "import logging, uvicorn\n"
+        "uvicorn.Config('backend.app.main:app').load()\n"
+        "logging.getLogger('backend.app.planner').info('plan outcome=success')\n"
+    )
+    run = subprocess.run(
+        [sys.executable, "-c", script],
+        cwd=PROJECT_ROOT,
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=True,
+    )
+    assert "plan outcome=success" in run.stderr
 
 
 def test_development_catalog_route_returns_catalog_facts_without_provider_credentials() -> None:
