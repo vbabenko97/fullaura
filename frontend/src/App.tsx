@@ -147,7 +147,8 @@ export function App() {
     loadedCatalog: Catalog | null = catalog,
   ): Promise<{ plan: CurrentPlan | null; response: PlanResponse | null; error: unknown }> {
     try {
-      const response = parsePlanResponse(await postJson("/api/plans/restore", saved));
+      const body = { brief: saved.brief, state: saved.state, catalog_id: saved.catalog_id };
+      const response = parsePlanResponse(await postJson("/api/plans/restore", body));
       if (response.outcome !== "success" || !response.plan || !response.plan_token || !loadedCatalog) {
         return { plan: null, response, error: null };
       }
@@ -225,7 +226,15 @@ export function App() {
         setPreferences(preferencesFrom(working));
         setLocks(working.state.locks);
         const result = await restore(working, loaded);
-        if (!cancelled && !result.plan) keepCurrentPlan(null);
+        if (!cancelled && !result.plan) {
+          keepCurrentPlan(null);
+          setRequestState("error");
+          setRequestMessage(
+            result.response
+              ? "Your last plan no longer passes today's checks. Generate a new plan, or open a saved one below."
+              : errorMessage(result.error),
+          );
+        }
       }
     }
     void start();
@@ -360,6 +369,7 @@ export function App() {
         }
         // Keep the person's own locks; a replacement's temporary locks hold only for that request.
         adopt(result, request.brief, { ...request.state, locks }, key);
+        revealResults();
         setRequestState("success");
         setRequestMessage(
           replacement
@@ -570,7 +580,7 @@ export function App() {
                         onToggleLock={toggleLock}
                         onTryOn={(lookId) => {
                           setTryOnLook(lookId);
-                          document.getElementById("tryon-title")?.scrollIntoView({ block: "start" });
+                          document.getElementById("tryon-title")?.scrollIntoView?.({ block: "start" });
                         }}
                         ownedItems={current.state.owned_items}
                         ownedNotices={current.notices}
@@ -658,6 +668,14 @@ function failureMessage(result: PlanResponse, replacement: boolean, hadLocks: bo
     .join(" ");
   const diagnostic = violations || result.error?.slice(0, 300) || "";
   return diagnostic ? `${summary} ${diagnostic}` : summary;
+}
+
+/** On a narrow screen the looks sit below the form; bring them into view once they change. */
+function revealResults() {
+  const heading = document.getElementById("results-title");
+  if (!heading) return;
+  const top = heading.getBoundingClientRect().top;
+  if (top < 0 || top > window.innerHeight) heading.scrollIntoView?.({ block: "start" });
 }
 
 function savedFrom(plan: CurrentPlan, catalog: Catalog): SavedPlan {

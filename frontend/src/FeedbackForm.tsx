@@ -65,7 +65,7 @@ export function FeedbackForm({ feedbackIds, onChanged }: FeedbackFormProps) {
         <p>Four short answers. Feedback is kept without your plan, preferences or photos, and is deleted 30 days after the beta.</p>
       </div>
       <form className="feedback-form" onSubmit={(event) => void submit(event)}>
-        <fieldset className="budget-mode">
+        <fieldset className="budget-mode choice-row">
           <legend>Would you wear at least one of the looks?</legend>
           {(["yes", "no"] as const).map((answer) => (
             <label className="radio-choice" key={answer}>
@@ -74,7 +74,7 @@ export function FeedbackForm({ feedbackIds, onChanged }: FeedbackFormProps) {
             </label>
           ))}
         </fieldset>
-        <fieldset className="budget-mode">
+        <fieldset className="budget-mode choice-row">
           <legend>How useful was FullAura overall? (1 not at all, 5 very)</legend>
           {SCALE.map((score) => (
             <label className="radio-choice" key={score}>
@@ -83,7 +83,7 @@ export function FeedbackForm({ feedbackIds, onChanged }: FeedbackFormProps) {
             </label>
           ))}
         </fieldset>
-        <fieldset className="budget-mode">
+        <fieldset className="budget-mode choice-row">
           <legend>How good was the try-on? (1 poor, 5 very good)</legend>
           {SCALE.map((score) => (
             <label className="radio-choice" key={score}>

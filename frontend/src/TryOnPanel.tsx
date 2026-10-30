@@ -170,15 +170,16 @@ export function TryOnPanel({
             </button>
           </p>
         ) : (
-          <label className="check-choice">
-            <input
-              checked={false}
+          <div>
+            <button
+              className="secondary-button"
               disabled={consentBusy}
-              onChange={(event) => void changeConsent(event.target.checked)}
-              type="checkbox"
-            />
-            <span>I agree to this processing of my photos.</span>
-          </label>
+              onClick={() => void changeConsent(true)}
+              type="button"
+            >
+              I agree to this processing of my photos
+            </button>
+          </div>
         )}
       </div>
 
@@ -203,7 +204,7 @@ export function TryOnPanel({
             type="file"
           />
         </div>
-        <fieldset className="budget-mode">
+        <fieldset className="budget-mode choice-row">
           <legend>Look to try on</legend>
           {lookIds.map((id) => (
             <label className="radio-choice" key={id}>
