@@ -98,12 +98,16 @@ def test_a_mens_fit_keeps_womens_lines_and_other_shoe_sizes_out_of_the_real_cata
     }
 
 
-DEMO_WEARER = Fit(
+# An example fit that the real catalog's size L variants can serve; not any person's profile.
+MENS_SIZE_L = Fit(
     lines={"men"},
-    garment_types={"trousers", "jeans", "shorts"},
-    sizes=[Size(system="letter", value="L")]
-    + [Size(system="waist_length", value=str(waist)) for waist in (31, 32, 33, 34)]
-    + [Size(system="eu_shoe", value=size) for size in ("42", "42.5", "43", "44")],
+    garment_types={"trousers", "jeans"},
+    sizes=[
+        Size(system="letter", value="L"),
+        Size(system="waist_length", value="32/32"),
+        Size(system="eu_shoe", value="42"),
+        Size(system="eu_shoe", value="43"),
+    ],
 )
 
 
@@ -122,7 +126,7 @@ DEMO_WEARER = Fit(
         ({"wool"}, ("gw-beach-hellgrau-42",) * 3),
     ],
 )
-def test_the_real_catalog_builds_three_looks_for_the_demo_wearer(
+def test_the_real_catalog_builds_three_looks_for_a_mens_size_l_fit(
     exclusions: set[str], shoes: tuple[str, str, str]
 ) -> None:
     looks = [
@@ -148,7 +152,7 @@ def test_the_real_catalog_builds_three_looks_for_the_demo_wearer(
     state = State(
         budget=Budget(amount_cents=50000),
         material_exclusions=exclusions,
-        fit=DEMO_WEARER,
+        fit=MENS_SIZE_L,
         plan=plan,
     )
     assert check_plan(state, REAL).violations == ()
@@ -161,7 +165,7 @@ def test_the_real_catalog_builds_three_looks_for_the_demo_wearer(
         ("letter", "3xl", "3XL"),
         ("waist_length", "33", "33"),
         ("waist_length", "33/32", "33/32"),
-        ("eu_shoe", "42,5", "42.5"),
+        ("eu_shoe", "39,5", "39.5"),
         ("eu_shoe", "43", "43"),
     ],
 )

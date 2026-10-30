@@ -672,7 +672,7 @@ function parseFit(draft: FitDraft): FitResult {
   if (invalidShoeSize !== undefined) {
     return {
       ok: false,
-      error: `${invalidShoeSize} is not an EU shoe size. Enter whole or half sizes separated by commas, such as 42.5, 43.`,
+      error: `${invalidShoeSize} is not an EU shoe size. Enter whole or half sizes separated by commas, such as 39.5, 40.`,
     };
   }
   const sizes: NormalizedSize[] = [
@@ -1827,7 +1827,7 @@ export function App() {
                         const waistSizes = event.target.value;
                         setFitDraft((current) => ({ ...current, waistSizes }));
                       }}
-                      placeholder="32, 33/32"
+                      placeholder="30, 30/34"
                       type="text"
                       value={fitDraft.waistSizes}
                     />
@@ -1846,7 +1846,7 @@ export function App() {
                         const shoeSizes = event.target.value;
                         setFitDraft((current) => ({ ...current, shoeSizes }));
                       }}
-                      placeholder="42.5, 43"
+                      placeholder="39.5, 40"
                       type="text"
                       value={fitDraft.shoeSizes}
                     />

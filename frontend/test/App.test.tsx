@@ -678,8 +678,8 @@ describe(`${FIXTURE_LABEL}: preferences-to-results flow`, () => {
     submitPreferences("Looks for a stated wearer", "250");
     fireEvent.click(screen.getByLabelText("Men's"));
     fireEvent.change(screen.getByLabelText("Letter size"), { target: { value: "L" } });
-    fireEvent.change(screen.getByLabelText("Waist sizes"), { target: { value: "31, 32,33/32" } });
-    fireEvent.change(screen.getByLabelText("EU shoe sizes"), { target: { value: "42, 42.5, 43, 44" } });
+    fireEvent.change(screen.getByLabelText("Waist sizes"), { target: { value: "29, 30,30/34" } });
+    fireEvent.change(screen.getByLabelText("EU shoe sizes"), { target: { value: "39, 39.5, 40" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
 
     await screen.findByText("The three looks passed the catalog and budget checks.");
@@ -688,13 +688,12 @@ describe(`${FIXTURE_LABEL}: preferences-to-results flow`, () => {
       lines: ["men"],
       sizes: [
         { system: "letter", value: "L" },
-        { system: "waist_length", value: "31" },
-        { system: "waist_length", value: "32" },
-        { system: "waist_length", value: "33/32" },
-        { system: "eu_shoe", value: "42" },
-        { system: "eu_shoe", value: "42.5" },
-        { system: "eu_shoe", value: "43" },
-        { system: "eu_shoe", value: "44" },
+        { system: "waist_length", value: "29" },
+        { system: "waist_length", value: "30" },
+        { system: "waist_length", value: "30/34" },
+        { system: "eu_shoe", value: "39" },
+        { system: "eu_shoe", value: "39.5" },
+        { system: "eu_shoe", value: "40" },
       ],
     });
     expect(fit).not.toHaveProperty("garment_types");
@@ -717,7 +716,7 @@ describe(`${FIXTURE_LABEL}: preferences-to-results flow`, () => {
     fireEvent.click(screen.getByLabelText("Trousers"));
     fireEvent.click(screen.getByLabelText("Jeans"));
     fireEvent.change(screen.getByLabelText("Letter size"), { target: { value: "M" } });
-    fireEvent.change(screen.getByLabelText("EU shoe sizes"), { target: { value: "42.5, 43" } });
+    fireEvent.change(screen.getByLabelText("EU shoe sizes"), { target: { value: "39.5, 40" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
     await screen.findByText("The three looks passed the catalog and budget checks.");
 
@@ -733,8 +732,8 @@ describe(`${FIXTURE_LABEL}: preferences-to-results flow`, () => {
       garment_types: ["trousers", "jeans"],
       sizes: [
         { system: "letter", value: "M" },
-        { system: "eu_shoe", value: "42.5" },
-        { system: "eu_shoe", value: "43" },
+        { system: "eu_shoe", value: "39.5" },
+        { system: "eu_shoe", value: "40" },
       ],
     };
     expect(object(object(requests[0]).state).fit).toEqual(expectedFit);
