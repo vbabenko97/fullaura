@@ -44,6 +44,14 @@ All three model plans passed hard checks and contained three distinct looks. Acr
 
 The model-selected catalog price exceeded the baseline in two cases and matched it in the whole-plan case. This is a comparison with a price heuristic on these three fixed cases. No human judgments were recorded, and the results do not establish general planning quality or user preference.
 
+The two per-look baseline plans contain the same three looks: none of the cheapest items contains wool, so the wool exclusion does not change the baseline's selection. In `wool-free-whole-plan`, the baseline and Muse Spark plans use the same five catalog items, which cost €219.55 against the €220 budget, and differ only in how they combine them. Human scores for that case can therefore reflect only the combinations.
+
+## Human scoring
+
+Human scores for the 2026-10-29 run go on a blind sheet in the ignored `runs/t06/20261029T183234323281Z-blind/` folder; the runner does not create this sheet. `blind_review.md` lists each case's two plans as options A and B, with item names, catalog colors and retailer links, and `blind_scores.csv` takes the four scores and a note for each option, using the column names of `human_scores.csv`. The sheet hides prices and approach names, and the A/B assignment and the look order are shuffled for each case. The key, `blind_key.json`, stays in the run folder, where `run.json` and `human_scores.csv` also reveal which option is which. After scoring, copy each row into `human_scores.csv` using the key.
+
+Scores are blind only when the rater does not know which option is which. A rater who has seen the key or been told the mapping gives an open assessment, and the results must say so. For this run, the project author has seen the mapping, so the author's scores are an open assessment. The sheet hides the labels but not the baseline's behavior: the per-look baseline repeats its looks across two cases, the sheet has no product images, and the retailer pages that show the items also show their prices. A rater who knows the baseline rule may recognize the baseline from these cues, so record with the scores whether the rater knew the rule.
+
 ## Measures
 
 The runner records machine-checked results separately from human judgments:
