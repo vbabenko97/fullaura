@@ -2,7 +2,7 @@
 
 This report covers T-02 in [TASKS.md](TASKS.md): whether Muse Image can show a person in specific garments while it keeps their identity and the garments' details, and whether a targeted edit makes the requested change while the rest of the look stays the same. It holds the protocol, the thresholds and the results of each run. The test is a small feasibility study: its results show whether previews are worth building on, not that they are reliable in production. Personal photos and previews stay in `data/private/` and never appear here ([D-13](DECISIONS.md#d-13-personal-data-stays-out-of-git)).
 
-Status: the thresholds were approved on 2026-10-26, and the exploratory runs are done. The formal evaluation is set up and waits for its inputs; `--dry-run` lists every input still missing.
+Status: the thresholds were approved on 2026-10-26, and the exploratory runs are done. The formal evaluation is set up and waits for its inputs; `--dry-run` lists every input still missing. The closed beta's experimental try-on ([D-44](DECISIONS.md#d-44-the-betas-try-on-is-experimental-and-does-not-wait-for-t-02)) is not part of this test; its runs are not scored here and do not count toward the thresholds.
 
 ## Model and costs
 

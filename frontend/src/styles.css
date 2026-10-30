@@ -1045,3 +1045,25 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+.privacy-footer {
+  width: 100%;
+  max-width: var(--container);
+  margin-inline: auto;
+  padding: var(--space-lg) var(--gutter) var(--space-2xl);
+  border-top: 1px solid var(--color-rule);
+  color: var(--color-ink-2);
+  font-size: var(--text-sm);
+}
+
+.privacy-footer summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.privacy-footer .gate-facts {
+  max-width: 72ch;
+}
