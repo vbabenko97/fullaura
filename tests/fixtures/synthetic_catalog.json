@@ -7,6 +7,7 @@
       "title": "Ivory button shirt",
       "brand": null,
       "category": "top",
+      "line": "men",
       "variants": [
         {
           "id": "P01",
@@ -99,6 +100,7 @@
       "title": "Navy overshirt",
       "brand": null,
       "category": "top",
+      "line": "men",
       "variants": [
         {
           "id": "P03",
@@ -185,6 +187,8 @@
       "title": "Olive relaxed chinos",
       "brand": null,
       "category": "bottom",
+      "line": "men",
+      "garment_type": "trousers",
       "variants": [
         {
           "id": "P05",
@@ -373,6 +377,8 @@
       "title": "Teal midi skirt",
       "brand": null,
       "category": "bottom",
+      "line": "women",
+      "garment_type": "skirt",
       "variants": [
         {
           "id": "P09",
@@ -516,6 +522,8 @@
       "title": "Cobalt dress",
       "brand": null,
       "category": "one_piece",
+      "line": "women",
+      "garment_type": "dress",
       "variants": [
         {
           "id": "P12",
@@ -783,12 +791,17 @@
       "title": "Canvas slip-ons",
       "brand": null,
       "category": "footwear",
+      "line": "unisex",
       "variants": [
         {
           "id": "P18",
           "sku": null,
           "color": null,
-          "size": null,
+          "size": "42",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "42"
+          },
           "composition": {
             "status": "complete",
             "components": [

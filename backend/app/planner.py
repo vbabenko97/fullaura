@@ -30,6 +30,7 @@ from backend.app.constraints import (
     Rule,
     Violation,
     check_plan,
+    fit_violations,
     item_violations,
     lock_conflicts,
 )
@@ -49,7 +50,9 @@ logger = logging.getLogger(__name__)
 
 class Outcome(StrEnum):
     SUCCESS = "success"
-    INFEASIBLE = "infeasible"  # the locks alone break a hard constraint, so no plan can pass
+    # The locks alone break a hard constraint, or no usable items complete a look, so no plan
+    # can pass
+    INFEASIBLE = "infeasible"
     GENERATION_FAILED = "generation_failed"  # the model's plans failed the checks or the format
     PROVIDER_TIMEOUT = "provider_timeout"
     PROVIDER_ERROR = "provider_error"
@@ -326,10 +329,11 @@ def plan_looks(
     """Three checked looks for the brief, or the reason there are none."""
     usage = Usage()
     conflicts = lock_conflicts(state, catalog)
+    offers = _cheapest_usable_offers(catalog, state)
+    conflicts += _base_outfit_conflicts(state, catalog, offers)
     if conflicts:
         return _logged(PlanResult(Outcome.INFEASIBLE, usage, conflicts=tuple(conflicts)), client, 0)
 
-    offers = _cheapest_usable_offers(catalog, state.material_exclusions)
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
         {
@@ -567,15 +571,42 @@ def _replacement_violations(
     return violations
 
 
-def _cheapest_usable_offers(catalog: Catalog, exclusions: frozenset[str]) -> dict[str, Offer]:
+def _cheapest_usable_offers(catalog: Catalog, state: State) -> dict[str, Offer]:
     """For each variant that can appear in a plan, its cheapest offer that passes the checks."""
+    exclusions = state.material_exclusions
     usable = {}
     for product in catalog.products:
         for variant in product.variants:
+            if fit_violations(product, variant, state.fit):
+                continue
             offers = [o for o in variant.offers if not item_violations(variant, o, exclusions)]
             if offers:
                 usable[variant.id] = min(offers, key=lambda offer: offer.price_cents or 0)
     return usable
+
+
+def _base_outfit_conflicts(
+    state: State, catalog: Catalog, offers: dict[str, Offer]
+) -> list[Violation]:
+    """A violation when no usable catalog variant or owned item completes a top and bottom or a
+    one-piece, so no plan can pass. Budget and locks are left to the other checks."""
+    categories = {item.category for item in state.owned_items} | {
+        product.category
+        for product in catalog.products
+        for variant in product.variants
+        if variant.id in offers
+    }
+    if Category.ONE_PIECE in categories or (
+        categories & _SLOT_CATEGORIES[Slot.TOP] and Category.BOTTOM in categories
+    ):
+        return []
+    return [
+        Violation(
+            Rule.LOOK_COMPOSITION,
+            "No catalog variant that passes the checks, and no owned item, completes a top "
+            "and bottom or a one_piece",
+        )
+    ]
 
 
 def _request(

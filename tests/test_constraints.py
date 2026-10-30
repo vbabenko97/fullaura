@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from backend.app.catalog import Catalog, Component, Composition, Product, Stock, Variant
+from backend.app.catalog import Catalog, Component, Composition, Product, Size, Stock, Variant
 from backend.app.constraints import (
     Notice,
     NoticeKind,
@@ -19,6 +19,7 @@ from backend.app.constraints import (
     Violation,
     check_plan,
     cost,
+    fit_violations,
     item_violations,
     lock_conflicts,
     names_material,
@@ -26,6 +27,7 @@ from backend.app.constraints import (
 from backend.app.state import (
     Budget,
     BudgetMode,
+    Fit,
     ItemKind,
     ItemRef,
     LockedPlacement,
@@ -407,6 +409,167 @@ def test_a_description_names_a_material_as_whole_words_without_negation(
     description: str, material: str, named: bool
 ) -> None:
     assert names_material(description, material) is named
+
+
+# Fit: the lines, garment types and sizes the person states
+
+MEN = Fit(lines={"men"})
+
+
+def fitting(
+    category: str = "bottom",
+    line: str | None = None,
+    garment_type: str | None = None,
+    size: str | None = None,
+) -> Product:
+    """A one-variant product like P05 with these fit facts; a size is written "system value"."""
+    base = CATALOG.product_of("P05")
+    system, _, value = (size or "").partition(" ")
+    normalized = {"system": system, "value": value} if size else None
+    variant = base.variants[0].model_dump() | {"normalized_size": normalized}
+    facts = {"category": category, "line": line, "garment_type": garment_type}
+    return Product.model_validate(base.model_dump() | facts | {"variants": [variant]})
+
+
+def sizes(*given: str) -> Fit:
+    """A fit with only sizes, each written "system value"."""
+    return Fit(sizes=[Size(system=s, value=v) for s, v in (size.split() for size in given)])
+
+
+@pytest.mark.parametrize(
+    ("product", "fit", "detail"),
+    [
+        pytest.param(
+            fitting(line="women"), MEN, "P05 is from the women line, not men", id="wrong-line"
+        ),
+        pytest.param(fitting(line="unisex"), MEN, None, id="unisex-passes-a-men-filter"),
+        pytest.param(
+            fitting(line=None),
+            MEN,
+            "P05 has no line in its source, so it cannot be checked against men",
+            id="no-line",
+        ),
+        pytest.param(fitting(line="men"), Fit(lines={"men", "women"}), None, id="line-in-set"),
+        pytest.param(
+            fitting(garment_type="skirt"),
+            Fit(garment_types={"trousers", "jeans"}),
+            "P05 has garment type skirt, not jeans or trousers",
+            id="garment-type-outside-the-set",
+        ),
+        pytest.param(
+            fitting(garment_type=None),
+            Fit(garment_types={"trousers"}),
+            "P05 has no garment type in its source, so it cannot be checked against trousers",
+            id="bottom-without-garment-type",
+        ),
+        pytest.param(
+            fitting(category="one_piece", garment_type="dress"),
+            Fit(garment_types={"dress"}),
+            None,
+            id="one-piece-in-the-set",
+        ),
+        pytest.param(
+            fitting(category="top"), Fit(garment_types={"trousers"}), None, id="tops-unaffected"
+        ),
+        pytest.param(
+            fitting("top", size="letter M"), sizes("letter L", "letter m"), None, id="letter"
+        ),
+        pytest.param(
+            fitting("top", size="letter L"),
+            sizes("letter M"),
+            "P05 is letter size L, not M",
+            id="other-letter",
+        ),
+        pytest.param(
+            fitting(size="waist_length 33/34"),
+            sizes("waist_length 33"),
+            None,
+            id="waist-alone-matches-any-length",
+        ),
+        pytest.param(
+            fitting(size="waist_length 32/32"),
+            sizes("waist_length 33"),
+            "P05 is waist_length size 32/32, not 33",
+            id="other-waist",
+        ),
+        pytest.param(
+            fitting(size="waist_length 33/32"),
+            sizes("waist_length 33/32"),
+            None,
+            id="waist-and-length",
+        ),
+        pytest.param(
+            fitting(size="waist_length 33/34"),
+            sizes("waist_length 33/32"),
+            "P05 is waist_length size 33/34, not 33/32",
+            id="waist-with-other-length",
+        ),
+        pytest.param(
+            fitting("footwear", size="eu_shoe 42.5"),
+            sizes("eu_shoe 42,5"),
+            None,
+            id="half-shoe-size",
+        ),
+        pytest.param(
+            fitting("footwear", size="eu_shoe 42"),
+            sizes("eu_shoe 42.5", "eu_shoe 43"),
+            "P05 is eu_shoe size 42, not 42.5 or 43",
+            id="shoe-size-between-those-given",
+        ),
+        pytest.param(
+            fitting("footwear", size="eu_shoe 39"),
+            sizes("letter M"),
+            None,
+            id="no-size-given-in-its-system",
+        ),
+        pytest.param(
+            fitting(size=None),
+            sizes("letter M"),
+            "P05 has no comparable size, so it cannot be checked against the sizes given",
+            id="unknown-size",
+        ),
+        pytest.param(
+            fitting("accessory", size=None), sizes("letter M"), None, id="accessory-unknown-size"
+        ),
+        pytest.param(fitting(), Fit(), None, id="an-empty-fit-filters-nothing"),
+    ],
+)
+def test_a_catalog_variant_must_fit_the_stated_lines_garment_types_and_sizes(
+    product: Product, fit: Fit, detail: str | None
+) -> None:
+    violations = fit_violations(product, product.variants[0], fit)
+    assert found(violations) == ([(Rule.FIT, "P05", None)] if detail else [])
+    assert [violation.detail for violation in violations] == ([detail] if detail else [])
+
+
+def test_check_plan_fails_catalog_items_outside_the_fit_but_not_owned_items() -> None:
+    looks = plan(
+        {"top": "P01", "bottom": "P09", "footwear": "O01"},  # P09 is a women's skirt
+        {"top": "P03", "bottom": "P05", "footwear": "P18"},  # P18 is unisex
+        {"top": "P01", "bottom": "P05", "footwear": "O01"},  # O01 has no line
+    )
+    check = check_plan(state(10**6, fit=MEN, owned_items=(BOOTS,), plan=looks), CATALOG)
+    assert found(check.violations) == [(Rule.FIT, "P09", None)]
+    assert check_plan(state(10**6, owned_items=(BOOTS,), plan=looks), CATALOG).passed
+
+
+def test_a_locked_product_outside_a_new_fit_is_a_conflict() -> None:
+    looks = plan(
+        {"top": "P01", "bottom": "P09"},
+        {"top": "P01", "bottom": "P05"},
+        {"top": "P03", "bottom": "P05"},
+    )
+    locks = (lock("look_1", "bottom", "P09"),)
+    assert lock_conflicts(state(10**6, locks=locks, plan=looks), CATALOG) == []
+    conflicts = lock_conflicts(state(10**6, fit=MEN, locks=locks, plan=looks), CATALOG)
+    assert found(conflicts) == [(Rule.FIT, "P09", None)]
+
+
+def test_a_fit_holds_up_to_twelve_sizes() -> None:
+    twelve = [Size(system="eu_shoe", value=str(number)) for number in range(36, 48)]
+    assert len(Fit(sizes=twelve).sizes) == 12
+    with pytest.raises(ValidationError):
+        Fit(sizes=[*twelve, Size(system="eu_shoe", value="48")])
 
 
 # Locks (G06, G07, G12)

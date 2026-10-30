@@ -1,12 +1,14 @@
 """Catalog records: a product has variants, and a variant is sold through one or more offers.
 
 A record states only what its source reports. A value the source does not give is null in the
-data and None here, never a guess (docs/DATA.md). Every field is required, so a catalog file
-must write an unknown value as an explicit null.
+data and None here, never a guess (docs/DATA.md). Every field except a product's line and
+garment type and a variant's normalized size is required, so a catalog file must write an
+unknown value as an explicit null.
 """
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from enum import StrEnum
 from typing import Annotated, Literal, Self
@@ -18,6 +20,8 @@ from pydantic import (
     ConfigDict,
     Field,
     HttpUrl,
+    ValidationInfo,
+    field_validator,
     model_validator,
 )
 
@@ -78,6 +82,60 @@ class Category(StrEnum):
     OUTERWEAR = "outerwear"
     FOOTWEAR = "footwear"
     ACCESSORY = "accessory"
+
+
+class Line(StrEnum):
+    """The retailer's own department for a product."""
+
+    WOMEN = "women"
+    MEN = "men"
+    UNISEX = "unisex"
+
+
+class GarmentType(StrEnum):
+    """What kind of bottom or one-piece a product is."""
+
+    TROUSERS = "trousers"
+    JEANS = "jeans"
+    SHORTS = "shorts"
+    SKIRT = "skirt"
+    LEGGINGS = "leggings"
+    DRESS = "dress"
+
+
+class SizeSystem(StrEnum):
+    LETTER = "letter"
+    WAIST_LENGTH = "waist_length"  # inches: a waist such as 32, or a waist and length, 32/34
+    EU_SHOE = "eu_shoe"  # such as 42 or 42.5
+
+
+_SIZE_PATTERNS = {
+    SizeSystem.LETTER: r"XXS|XS|S|M|L|XL|XXL|3XL",
+    SizeSystem.WAIST_LENGTH: r"[0-9]{2}(/[0-9]{2})?",
+    SizeSystem.EU_SHOE: r"[0-9]{2}(\.5)?",
+}
+
+
+class Size(Record):
+    """A size in a form code can compare. Each size has one stored form, letters in capitals
+    and a half shoe size with a dot, so two sizes are equal exactly when their values are."""
+
+    system: SizeSystem
+    value: str
+
+    @field_validator("value")
+    @classmethod
+    def _value_fits_its_system(cls, value: str, info: ValidationInfo) -> str:
+        system = info.data.get("system")
+        if system is None:  # the system is invalid and reports its own error
+            return value
+        if system is SizeSystem.LETTER:
+            value = value.upper()
+        elif system is SizeSystem.EU_SHOE:
+            value = value.replace(",", ".")
+        if not re.fullmatch(_SIZE_PATTERNS[system], value):
+            raise ValueError(f"{value!r} is not a {system} size")
+        return value
 
 
 class CompositionStatus(StrEnum):
@@ -156,10 +214,18 @@ class Variant(Record):
     id: Id
     sku: str | None
     color: str | None
-    size: str | None
+    size: str | None  # the source's own label, such as "Weite 32 / Länge 32"
+    normalized_size: Size | None = None  # the same size in a form code can compare
     composition: Composition
     source: Source
     offers: tuple[Offer, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _a_waist_size_has_a_length(self) -> Self:
+        size = self.normalized_size
+        if size and size.system is SizeSystem.WAIST_LENGTH and "/" not in size.value:
+            raise ValueError(f"Variant {self.id} needs a waist and a length, such as 32/32")
+        return self
 
     def offer(self, offer_id: str) -> Offer | None:
         return next((offer for offer in self.offers if offer.id == offer_id), None)
@@ -170,7 +236,15 @@ class Product(Record):
     title: str
     brand: str | None
     category: Category
+    line: Line | None = None  # None when the source gives no line
+    garment_type: GarmentType | None = None  # for a bottom or one-piece; None when not given
     variants: tuple[Variant, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _only_bottoms_and_one_pieces_have_a_garment_type(self) -> Self:
+        if self.garment_type and self.category not in (Category.BOTTOM, Category.ONE_PIECE):
+            raise ValueError(f"A {self.category} product cannot have a garment type")
+        return self
 
 
 class Catalog(Record):
@@ -198,6 +272,16 @@ class Catalog(Record):
                 for product in self.products
                 for variant in product.variants
                 if variant.id == variant_id
+            ),
+            None,
+        )
+
+    def product_of(self, variant_id: str) -> Product | None:
+        return next(
+            (
+                product
+                for product in self.products
+                if any(variant.id == variant_id for variant in product.variants)
             ),
             None,
         )

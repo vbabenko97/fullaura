@@ -272,3 +272,35 @@ Each decision has a number that is never reused and a status: accepted, proposed
 - **Decision:** T-06 compares the full planner and a deterministic baseline on the same fixed, non-personal cases. The baseline chooses the three cheapest distinct complete outfits from variants that pass the existing item checks, then validates each complete plan with `check_plan`. Hard-constraint outcomes and provider usage are recorded by code; style relevance, color coherence, visual variety and wearability remain separate human scores. [EVALUATION.md](EVALUATION.md) defines the cases and measurements.
 - **Reason:** A reproducible price-only baseline gives the live planner a concrete comparison while retaining the existing hard constraints. A human judges style and color instead of pretending the baseline or code can score taste.
 - **Consequences:** The three-case live comparison is recorded in [EVALUATION.md](EVALUATION.md). The baseline does not establish general quality, fit, stock availability or broad preference. T-06 remains open until human scoring, the demo and submission are complete.
+
+## D-36: The person states whom the looks are for
+
+- **Date:** 2026-10-30
+- **Status:** accepted
+- **Decision:** A plan request can carry a fit: the clothing lines to show (women's, men's), the kinds of bottoms and one-pieces the person wears, and the sizes they accept in each sizing system (letter, waist and length, EU shoe). Code checks fit as a hard constraint on catalog items; owned items are exempt. A product that its retailer lists as unisex passes any choice of line. Each product records its line and garment type as the retailer labels them, and each variant its size in the retailer's own system; FullAura does not convert sizes between systems. A variant whose size cannot be compared fails once the person gives any size, and a system in which the person gives no size is not checked. FullAura never infers line, garment types or sizes from photographs. [SPEC.md](SPEC.md#hard-constraints) has the rule.
+- **Reason:** In the T-06 comparison every plan passed the hard constraints, yet plans mixed men's and women's lines, and one combined shoes in EU 39 and 42, so no single person could wear it. Neither the request nor the catalog said whom the looks were for. An explicit statement makes "for this person" checkable without inferring a sensitive trait.
+- **Consequences:** The catalog needs variants in the sizes a wearer gives and a garment type and line on each product that should stay eligible; a product without them drops out while the matching choice is active. A matching size label does not guarantee fit, because size charts differ between models.
+
+## D-37: The demo is accepted on its wearer's scores, set before the run
+
+- **Date:** 2026-10-30
+- **Status:** accepted
+- **Decision:** The project author is the demo wearer. The author states a fit, gets a plan, and scores each of the three looks on the T-06 scale; the demo flow is accepted when every look scores at least 4 for style relevance and for wearability. This acceptance is recorded apart from the T-06 comparison, which scores whole plans on fixed, non-personal cases.
+- **Reason:** The threshold is fixed before the run so that the result cannot be adjusted to it. One named wearer makes "three looks that suit a person" testable within the hackathon.
+- **Consequences:** The acceptance shows the flow works for one person; it is not evidence of general preference or fit.
+
+## D-38: Previews depend on the formal test materials by 31 October
+
+- **Date:** 2026-10-30
+- **Status:** accepted
+- **Decision:** The formal preview test (T-02) runs only if two more consenting subjects and the garment images are available by the evening of 2026-10-31, Vienna time. Otherwise the demo follows [D-11](#d-11-test-previews-first-and-keep-the-plan-useful-without-them) and shows no previews.
+- **Reason:** Four days remain before the internal deadline, and the planning flow for a stated wearer needs them. Missing test materials are not a result about the model.
+- **Consequences:** If the materials do not arrive, T-02 records that the formal test did not run and why, and the submission does not present previews as tested.
+
+## D-39: Closed shoes come from GEA Waldviertler, with partial compositions
+
+- **Date:** 2026-10-30
+- **Status:** accepted
+- **Decision:** The catalog adds two closed leather shoes from GEA Waldviertler, Tramper Flex and Kommod Classic, whose product pages say they are for women and men. The pages name the upper, the lining and, for Tramper Flex, the sole, but not the footbed, so both compositions are partial under [D-27](#d-27-a-composition-is-complete-when-it-names-every-labelled-part) and the shoes drop out while any material exclusion is active.
+- **Reason:** The demo wearer needs closed shoes, and the only wool-free shoe in the first catalog is an open slide ([D-26](#d-26-the-first-catalog-records-facts-from-armedangels-and-giesswein-without-images)). None of the 17 stores checked on 2026-10-30 combined terms that allow recording facts, delivery to Austria and a complete shoe composition. Glore, Bergzeit, Legero, Shoepassion, Lloyd, Wildling, Nat-2, Duckfeet and NAE Vegan restrict the use of their content; avesu's successor shop disallows all crawlers; Shoezuu does not ship to Austria; Ethletic names neither a clothing line nor an insole material; Grüne Erde sells clothing for women only. Treating the named lining as the whole "lining and insole" part would declare the shoes wool-free without knowing the footbed material.
+- **Consequences:** Without a material exclusion, the demo wearer can get closed shoes; with a wool exclusion, Beach is still the only shoe for every look.

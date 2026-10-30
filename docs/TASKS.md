@@ -9,6 +9,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-03](#t-03-catalog-and-hard-constraints) Catalog and hard constraints | done | 2026-10-28 |
 | [T-04](#t-04-one-complete-flow) One complete flow | done | 2026-10-29 |
 | [T-05](#t-05-azure-demo) Azure demo | done | 2026-10-29 |
+| [T-08](#t-08-looks-for-a-stated-wearer) Looks for a stated wearer | next | |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -34,7 +35,7 @@ Done when: the thresholds were set before the run, `docs/FEASIBILITY.md` reports
 
 Define a typed product schema and a small catalog that FullAura has permission to use. Implement the hard constraints and locked-item state, including owned items and both budget modes, before any model orchestration. Keep the catalog data under `backend/`, because the container image leaves out `data/`.
 
-The schema, the application state and the hard-constraint checks are in `backend/app/catalog.py`, `state.py` and `constraints.py`, with tests against a synthetic catalog in `tests/fixtures/`. The catalog, `backend/data/catalog.json`, holds the facts of 15 real product variants from Armedangels and Giesswein and no retailer images ([D-26](DECISIONS.md#d-26-the-first-catalog-records-facts-from-armedangels-and-giesswein-without-images)); its sources are in the register in [DATA.md](DATA.md). Product facts need a source whose terms of use allow FullAura to record them, and product images need a license, a feed whose terms permit display, or FullAura's own photos ([D-25](DECISIONS.md#d-25-product-facts-and-product-images-need-different-rights)). A test checks that the catalog builds three looks that pass every check, with no exclusion and under a wool exclusion.
+The schema, the application state and the hard-constraint checks are in `backend/app/catalog.py`, `state.py` and `constraints.py`, with tests against a synthetic catalog in `tests/fixtures/`. The catalog, `backend/data/catalog.json`, holds the facts of real product variants from Armedangels and Giesswein, and since T-08 from GEA Waldviertler, and no retailer images ([D-26](DECISIONS.md#d-26-the-first-catalog-records-facts-from-armedangels-and-giesswein-without-images), [D-39](DECISIONS.md#d-39-closed-shoes-come-from-gea-waldviertler-with-partial-compositions)); its sources are in the register in [DATA.md](DATA.md). Product facts need a source whose terms of use allow FullAura to record them, and product images need a license, a feed whose terms permit display, or FullAura's own photos ([D-25](DECISIONS.md#d-25-product-facts-and-product-images-need-different-rights)). A test checks that the catalog builds three looks that pass every check, with no exclusion and under a wool exclusion.
 
 Done when: each catalog source is recorded in the register in [DATA.md](DATA.md), and tests cover every hard constraint in [SPEC.md](SPEC.md#hard-constraints), including the cases that fail.
 
@@ -53,6 +54,12 @@ Done when: a person can go through the whole flow locally, from inputs to an edi
 Deploy the tested container with secrets kept on the backend only, access controls that fit the pilot, and monitoring that excludes personal inputs. The code requires an explicit opt-in flag for public planning and limits each browser session to three requests. This does not provide an account-wide cost cap. [DEPLOYMENT.md](DEPLOYMENT.md) has the settings and the steps. Azure Container Apps is the accepted direction ([D-12](DECISIONS.md#d-12-one-azure-container-app-for-the-demo)). Before deploying, validate the region quota, the credit balance and the cost controls, as step 2 of the deployment sequence says.
 
 Done when: the checks in step 5 of the deployment sequence pass, and the URL, source commit, resource names and deployed image digest are recorded in DEPLOYMENT.md. Record a previous working rollback digest when one exists; the first deployment has no earlier working image.
+
+## T-08: Looks for a stated wearer
+
+In the T-06 comparison every plan passed the hard constraints, but plans mixed men's and women's lines and one combined shoes in EU 39 and 42, because nothing said whom the looks were for. The person now states the clothing lines, the kinds of bottoms and one-pieces they wear and their sizes, and code checks them as a hard constraint ([D-36](DECISIONS.md#d-36-the-person-states-whom-the-looks-are-for)). The catalog records each product's line and garment type and a comparable size for each variant. For the demo wearer it gains variants in their sizes and closed wool-free shoes from a source whose terms are recorded in [DATA.md](DATA.md).
+
+Done when: the checks in the [README](../README.md#check-a-change) pass; a new T-06 run on this code records no hard-constraint violation for either approach, with the earlier run kept; and on the deployed site the demo wearer gets three looks for their stated fit, keeps an item, lowers the budget and replaces an unlocked item, every result respects the fit, and each of the three looks scores at least 4 for style relevance and wearability ([D-37](DECISIONS.md#d-37-the-demo-is-accepted-on-its-wearers-scores-set-before-the-run)).
 
 ## T-06: Evaluation and submission
 

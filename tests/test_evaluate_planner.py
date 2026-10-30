@@ -2,15 +2,17 @@
 
 import io
 import json
+from dataclasses import replace
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request
 
 import pytest
 
-from backend.app.catalog import Catalog
+from backend.app.catalog import Catalog, Size
 from backend.app.constraints import check_plan
 from backend.app.planner import GENERATION_ATTEMPTS, ProviderError, SparkClient
+from backend.app.state import Fit, Slot
 from scripts.evaluate_planner import (
     CASES,
     MAX_HTTP_ATTEMPTS_PER_GENERATION,
@@ -39,6 +41,20 @@ def test_each_fixed_case_has_three_distinct_checked_baseline_looks() -> None:
             == 3
         )
         assert plan_cost_cents(case, plan, CATALOG) == baseline_cost
+
+
+def test_the_baseline_keeps_to_a_stated_fit() -> None:
+    # Without a fit, the cheapest looks pair men's tops with leggings that have no line and
+    # women's shorts.
+    fit = Fit(lines={"men"}, sizes=[Size(system="eu_shoe", value="42")])
+    case = replace(CASES[1], fit=fit)  # open materials, EUR 250.00 per look
+    plan, _ = cheapest_baseline(case, CATALOG)  # raises unless check_plan passes with the fit
+    assert check_plan(case.state(plan), CATALOG).passed
+    assert {look.items[Slot.BOTTOM].id for look in plan.looks} <= {
+        "ae-aaster-space-steel-32-32",
+        "ae-kaavo-lolite-32-32",
+    }
+    assert {look.items[Slot.FOOTWEAR].id for look in plan.looks} == {"gw-beach-hellgrau-42"}
 
 
 def test_cheapest_baseline_is_reproducible() -> None:

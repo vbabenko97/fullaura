@@ -1,5 +1,5 @@
-"""Structured application state: the plan, and the budget, exclusions, owned items and locks
-that code checks it against (docs/SPEC.md#hard-constraints)."""
+"""Structured application state: the plan, and the budget, exclusions, fit, owned items and
+locks that code checks it against (docs/SPEC.md#hard-constraints)."""
 
 from __future__ import annotations
 
@@ -9,10 +9,11 @@ from typing import Annotated, Self
 
 from pydantic import Field, PositiveInt, model_validator
 
-from backend.app.catalog import Category, Id, Material, Record
+from backend.app.catalog import Category, GarmentType, Id, Line, Material, Record, Size
 
 LOOKS_PER_PLAN = 3
 MAX_OWNED_ITEMS = 3
+MAX_FIT_SIZES = 12
 
 
 class BudgetMode(StrEnum):
@@ -23,6 +24,15 @@ class BudgetMode(StrEnum):
 class Budget(Record):
     amount_cents: PositiveInt  # EUR
     mode: BudgetMode = BudgetMode.PER_LOOK  # the default, D-17 in docs/DECISIONS.md
+
+
+class Fit(Record):
+    """Whom the looks are for, as the person states it; never inferred from photographs. An
+    empty field filters nothing."""
+
+    lines: frozenset[Line] = frozenset()
+    garment_types: frozenset[GarmentType] = frozenset()
+    sizes: tuple[Size, ...] = Field(default=(), max_length=MAX_FIT_SIZES)
 
 
 class Slot(StrEnum):
@@ -105,6 +115,7 @@ class LockedPlacement(Record):
 class State(Record):
     budget: Budget
     material_exclusions: frozenset[Material] = frozenset()
+    fit: Fit = Fit()
     owned_items: tuple[OwnedItem, ...] = Field(default=(), max_length=MAX_OWNED_ITEMS)
     locks: tuple[LockedPlacement, ...] = ()
     plan: Plan | None = None

@@ -27,7 +27,18 @@ from backend.app.planner import (
     _post_json,
     plan_looks,
 )
-from backend.app.state import Budget, ItemKind, ItemRef, LockedPlacement, Look, Plan, Slot, State
+from backend.app.state import (
+    Budget,
+    Fit,
+    ItemKind,
+    ItemRef,
+    LockedPlacement,
+    Look,
+    OwnedItem,
+    Plan,
+    Slot,
+    State,
+)
 
 FIXTURE = Path(__file__).parent / "fixtures" / "synthetic_catalog.json"
 CATALOG = Catalog.model_validate_json(FIXTURE.read_text(encoding="utf-8"))
@@ -428,6 +439,39 @@ def test_locks_that_break_the_budget_are_infeasible_without_a_model_call() -> No
     assert [conflict.rule for conflict in result.conflicts] == [Rule.BUDGET]
 
 
+MENS_LOOKS = reply(LOOK_1, LOOK_2, {"top": "P01", "bottom": "P05"})  # P09 is a women's skirt
+
+
+def test_a_catalog_variant_outside_the_fit_gets_one_repair() -> None:
+    client, sent, _ = spark(VALID, MENS_LOOKS)
+    result = plan_looks(BRIEF, state(fit=Fit(lines={"men"})), CATALOG, client)
+    assert (result.outcome, result.usage.calls) == (Outcome.SUCCESS, 2)
+    assert result.proposal_metrics.constraint_violations_by_rule == ((Rule.FIT.value, 1),)
+    assert "P09 is from the women line, not men" in sent[1]["messages"][-1]["content"]
+
+
+NO_MENS_BOTTOM = Fit(lines={"men"}, garment_types={"jeans"})  # P05 is the only men's bottom
+
+
+def test_a_fit_that_leaves_no_complete_look_is_infeasible_without_a_model_call() -> None:
+    client, sent, _ = spark()
+    result = plan_looks(BRIEF, state(fit=NO_MENS_BOTTOM), CATALOG, client)
+    assert (result.outcome, sent) == (Outcome.INFEASIBLE, [])
+    assert [conflict.rule for conflict in result.conflicts] == [Rule.LOOK_COMPOSITION]
+
+
+def test_an_owned_item_completes_a_look_that_the_fit_leaves_without_a_bottom() -> None:
+    jeans = OwnedItem(id="O01", category="bottom", color="blue", description="blue jeans")
+    looks = reply(
+        {"top": "P01", "bottom": "O01", "footwear": "P18"},
+        {"top": "P03", "bottom": "O01"},
+        {"top": "P01", "bottom": "O01"},
+    )
+    client, sent, _ = spark(looks)
+    result = plan_looks(BRIEF, state(fit=NO_MENS_BOTTOM, owned_items=(jeans,)), CATALOG, client)
+    assert (result.outcome, len(sent)) == (Outcome.SUCCESS, 1)  # owned items are exempt
+
+
 def test_logs_hold_usage_but_not_the_brief(caplog: pytest.LogCaptureFixture) -> None:
     client, _, _ = spark(VALID)
     with caplog.at_level(logging.INFO, logger="backend.app.planner"):
@@ -466,6 +510,23 @@ def test_the_api_returns_a_checked_plan(tmp_path: Path) -> None:
     )
     assert len(payload["plan"]["looks"]) == 3
     assert payload["usage"]["http_attempts"] == 1
+
+
+def test_the_model_sees_only_catalog_variants_in_the_stated_fit(tmp_path: Path) -> None:
+    client, sent, _ = spark(MENS_LOOKS)
+    app = create_app(Settings(web_dist=tmp_path, catalog_file=FIXTURE), spark=client)
+    fit = {"lines": ["men"], "garment_types": ["trousers", "jeans", "shorts"]}
+    with TestClient(app) as http:
+        authorize_demo(http)
+        response = http.post("/api/plans", json=body() | {"state": body()["state"] | {"fit": fit}})
+        catalog = http.get("/api/catalog").json()
+    assert response.json()["outcome"] == "success"
+    request = json.loads(sent[0]["messages"][1]["content"])
+    # Without a line, outside the line or with wool, a variant never reaches the model.
+    assert {candidate["id"] for candidate in request["candidates"]} == {"P01", "P03", "P05", "P18"}
+    shoes = next(product for product in catalog["products"] if product["id"] == "product_P18")
+    assert (shoes["line"], shoes["garment_type"]) == ("unisex", None)
+    assert shoes["variants"][0]["normalized_size"] == {"system": "eu_shoe", "value": "42"}
 
 
 def test_the_api_hides_a_plan_that_still_fails_checks(tmp_path: Path) -> None:

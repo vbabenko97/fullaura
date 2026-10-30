@@ -122,6 +122,7 @@
 
 .form-field input,
 .form-field textarea,
+.form-field select,
 .owned-entry input,
 .owned-entry select {
   width: 100%;
@@ -141,6 +142,7 @@
 
 .form-field input:hover,
 .form-field textarea:hover,
+.form-field select:hover,
 .owned-entry input:hover,
 .owned-entry select:hover {
   border-color: var(--color-muted);
@@ -148,6 +150,7 @@
 
 .form-field input:disabled,
 .form-field textarea:disabled,
+.form-field select:disabled,
 .owned-entry input:disabled,
 .owned-entry select:disabled {
   background: var(--color-paper-2);
@@ -168,7 +171,8 @@
   line-height: 1.4;
 }
 
-.budget-mode {
+.budget-mode,
+.fit-choices {
   display: grid;
   gap: var(--space-2xs);
   margin: 0;
@@ -177,6 +181,7 @@
 }
 
 .budget-mode legend,
+.fit-choices legend,
 .owned-entry legend {
   margin-bottom: var(--space-2xs);
   color: var(--color-ink-2);
@@ -235,7 +240,8 @@
   margin-block: var(--space-xs);
 }
 
-.material-list {
+.material-list,
+.choice-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   column-gap: var(--space-sm);
@@ -246,7 +252,8 @@
   text-transform: capitalize;
 }
 
-.owned-items {
+.owned-items,
+.fit-fields {
   display: grid;
   gap: var(--space-sm);
   border-top: 1px solid var(--color-rule);
@@ -260,7 +267,8 @@
   gap: var(--space-sm);
 }
 
-.owned-heading h3 {
+.owned-heading h3,
+.fit-fields h3 {
   font-size: var(--text-md);
 }
 
@@ -792,7 +800,8 @@
     padding: var(--space-md);
   }
 
-  .material-list {
+  .material-list,
+  .choice-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
