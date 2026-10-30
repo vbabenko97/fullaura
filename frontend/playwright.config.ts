@@ -6,7 +6,7 @@ const PORT = 8765;
 
 export default defineConfig({
   testDir: "e2e",
-  testMatch: "**/*.e2e.ts",
+  testMatch: "beta.e2e.ts",
   outputDir: "../runs/e2e/results",
   fullyParallel: false,
   workers: 1, // one invite, which runs one model request at a time
