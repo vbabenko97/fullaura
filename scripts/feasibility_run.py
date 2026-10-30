@@ -43,6 +43,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 from backend.app.meta_images import (
+    IMAGE_MODEL,
     ImageRequestError,
     ImageResult,
     InputImage,
@@ -53,7 +54,6 @@ from backend.app.meta_images import (
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CASES = ROOT / "data" / "private" / "feasibility" / "formal" / "cases.json"
 PRICE_PER_IMAGE_USD = 0.01  # Meta pricing page, checked 2026-10-26
-IMAGE_MODEL = "muse-image-1.0"  # in the account's model list on 2026-10-26
 REQUIRED = ("id", "subject", "photos", "garments", "look_prompt")
 CASE_ID = re.compile(r"[A-Za-z0-9_-]+")
 PLACEHOLDER = re.compile(r"<[^<>]+>")  # left over from the prompt template, such as <garment>

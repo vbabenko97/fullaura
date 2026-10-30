@@ -38,7 +38,7 @@ def test_reports_a_rejected_request_without_the_key(monkeypatch: pytest.MonkeyPa
     body = json.dumps({"error": {"type": "authentication_error", "message": message}})
     sent: list[Request] = []
     monkeypatch.setattr(smoke_models, "urlopen", fake_urlopen(http_error(401, body.encode()), sent))
-    result = smoke_models.check_baseten(KEY, smoke_models.BASETEN_URL, smoke_models.BASETEN_MODEL)
+    result = smoke_models.check_baseten(KEY, smoke_models.BASETEN_URL, smoke_models.SPARK_MODEL)
     assert result["status"] == "failed"
     assert result["error"] == "HTTP 401 (authentication_error): invalid key [redacted]"
     assert KEY not in json.dumps(result)
@@ -54,7 +54,7 @@ def test_an_empty_or_cut_off_reply_fails(
 ) -> None:
     reply = {"choices": [{"message": {"content": content}, "finish_reason": finish_reason}]}
     monkeypatch.setattr(smoke_models, "urlopen", fake_urlopen(reply, []))
-    result = smoke_models.check_baseten(KEY, smoke_models.BASETEN_URL, smoke_models.BASETEN_MODEL)
+    result = smoke_models.check_baseten(KEY, smoke_models.BASETEN_URL, smoke_models.SPARK_MODEL)
     assert (result["status"], result["error"]) == ("failed", "The reply is empty or was cut off")
 
 

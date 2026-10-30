@@ -32,12 +32,6 @@ PHOTO_MIME_TYPE = "image/jpeg"
 PREVIEW_FIELDS = {b"portrait", b"full_body", b"prompt"}
 
 
-class ImageEditor(Protocol):
-    def edit(
-        self, prompt: str, images: Sequence[InputImage], *, size: str | None = None
-    ) -> ImageResult: ...
-
-
 class AsyncImageEditor(Protocol):
     async def edit_async(
         self,
@@ -85,52 +79,6 @@ def _clear_exception_frames(error: BaseException) -> None:
             pending.append(current.__context__)
         if isinstance(current, BaseExceptionGroup):
             pending.extend(current.exceptions)
-
-
-def create_preview(
-    prompt: str,
-    portrait: bytearray,
-    full_body: bytearray,
-    editor: ImageEditor,
-) -> PreviewImage:
-    """Edit two upright JPEGs and release every input buffer when the provider returns."""
-    prepared: list[InputImage] = []
-    cleaned: bytes | None = None
-    result: ImageResult | None = None
-    actual_mime_type: str | None = None
-    try:
-        if not prompt.strip():
-            raise PhotoInputError("A preview prompt is required")
-        for photo in (portrait, full_body):
-            if not photo or len(photo) > MAX_PHOTO_BYTES:
-                raise PhotoInputError("Each photo must be a non-empty JPEG no larger than 10 MiB")
-            if image_mime_type(photo) != PHOTO_MIME_TYPE:
-                raise PhotoInputError("Photos must be JPEG images")
-            try:
-                cleaned = strip_jpeg_metadata(photo)
-            except ValueError as error:
-                raise PhotoInputError(str(error)) from None
-            prepared.append(InputImage(cleaned, PHOTO_MIME_TYPE))
-
-        result = editor.edit(prompt, prepared)
-        actual_mime_type = image_mime_type(result.image)
-        if (
-            not result.image
-            or len(result.image) > MAX_PREVIEW_BYTES
-            or actual_mime_type != result.mime_type
-        ):
-            raise PhotoProcessingError("The provider returned an invalid preview image")
-        return PreviewImage(bytearray(result.image), result.mime_type)
-    except BaseException as error:
-        _clear_exception_frames(error)
-        raise
-    finally:
-        portrait.clear()
-        full_body.clear()
-        prepared.clear()
-        cleaned = None
-        result = None
-        actual_mime_type = None
 
 
 async def create_preview_async(
@@ -189,14 +137,12 @@ async def read_preview_uploads(request: Request) -> tuple[str, bytearray, bytear
     if content_length:
         try:
             declared_length = int(content_length)
-            if declared_length < 0:
-                raise ValueError
-            if declared_length > MAX_PREVIEW_REQUEST_BYTES:
-                raise PhotoTooLargeError("The preview request must be no larger than 20 MiB")
-        except ValueError as error:
-            if isinstance(error, PhotoTooLargeError):
-                raise
+        except ValueError:
             raise PhotoInputError("Invalid preview request size") from None
+        if declared_length < 0:
+            raise PhotoInputError("Invalid preview request size")
+        if declared_length > MAX_PREVIEW_REQUEST_BYTES:
+            raise PhotoTooLargeError("The preview request must be no larger than 20 MiB")
 
     content_type, options = parse_options_header(request.headers.get("content-type", "").encode())
     boundary = options.get(b"boundary")

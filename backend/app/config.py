@@ -6,6 +6,8 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from backend.app.meta_images import IMAGE_MODEL
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
@@ -22,7 +24,7 @@ class Settings:
     # T-02 must pass before the development preview route accepts photos.
     t02_previews_passed: bool = False
     model_api_key: str = field(default="", repr=False)
-    meta_image_model: str = "muse-image-1.0"
+    meta_image_model: str = IMAGE_MODEL
 
     def __post_init__(self) -> None:
         if self.environment not in {"development", "production"}:
@@ -40,5 +42,5 @@ class Settings:
             baseten_model=os.getenv("BASETEN_MODEL", ""),
             t02_previews_passed=os.getenv("FULLAURA_T02_PREVIEWS_PASSED", "").lower() == "true",
             model_api_key=os.getenv("MODEL_API_KEY", ""),
-            meta_image_model=os.getenv("META_IMAGE_MODEL", "muse-image-1.0"),
+            meta_image_model=os.getenv("META_IMAGE_MODEL", IMAGE_MODEL),
         )

@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import asyncio
 import http.client
-import io
 import json
 import logging
 import time
@@ -21,7 +20,6 @@ from typing import Annotated, Any, Self
 from urllib.error import HTTPError
 from urllib.request import Request
 
-import httpx2
 from pydantic import Field, model_validator
 
 from backend.app.catalog import Catalog, Category, Offer, Record
@@ -33,7 +31,7 @@ from backend.app.constraints import (
     check_plan,
     lock_conflicts,
 )
-from backend.app.meta_images import RETRY_STATUS, _error_detail
+from backend.app.meta_images import RETRY_STATUS, error_detail, post_json_async
 from backend.app.state import ItemKind, ItemRef, Look, Plan, Slot, State
 
 BASETEN_URL = "https://inference.baseten.co/v1"  # Baseten Model APIs docs, checked 2026-10-27
@@ -161,33 +159,7 @@ class ProviderError(RuntimeError):
 
 
 def _post_json(request: Request, timeout_s: float) -> dict[str, Any]:
-    async def send() -> dict[str, Any]:
-        async with asyncio.timeout(timeout_s):
-            async with httpx2.AsyncClient(timeout=None) as client:
-                response = await client.request(
-                    request.get_method(),
-                    request.full_url,
-                    headers=dict(request.header_items()),
-                    content=request.data,
-                )
-        if response.status_code >= 300:
-            raise HTTPError(
-                request.full_url,
-                response.status_code,
-                response.reason_phrase,
-                response.headers,
-                io.BytesIO(response.content),
-            )
-        return response.json()
-
-    try:
-        return asyncio.run(send())
-    except TimeoutError:
-        raise
-    except httpx2.TimeoutException as error:
-        raise TimeoutError(str(error)) from None
-    except httpx2.RequestError as error:
-        raise OSError(str(error)) from None
+    return asyncio.run(post_json_async(request, timeout_s))
 
 
 @dataclass(slots=True)
@@ -206,6 +178,8 @@ class SparkClient:
     def __post_init__(self) -> None:
         if not self.api_key:
             raise ValueError("BASETEN_API_KEY is not set")
+        if self.max_attempts < 1:
+            raise ValueError("max_attempts must be at least 1")
 
     def complete(
         self,
@@ -238,7 +212,7 @@ class SparkClient:
                 http_attempts += 1
                 payload = self.post(request, min(self.timeout_s, remaining_s))
             except HTTPError as error:
-                failure = f"HTTP {error.code}{_error_detail(error, self.api_key)}"
+                failure = f"HTTP {error.code}{error_detail(error, self.api_key)}"
                 timed_out = error.code in (408, 504)
                 if error.code not in RETRY_STATUS:
                     raise ProviderError(failure, http_attempts=http_attempts) from None
@@ -456,22 +430,17 @@ def _preserve_replacement_positions(
     catalog_items = {
         item.id for look in looks for item in look.items.values() if item.kind is ItemKind.CATALOG
     }
-    selected_offers = {}
-    for variant_id in catalog_items:
-        offer = offers.get(variant_id)
-        if offer is not None:
-            selected_offers[variant_id] = offer.id
-            continue
-        variant = catalog.variant(variant_id)
-        selected_offers[variant_id] = (
-            variant.offers[0].id
-            if variant is not None
-            else proposed.selected_offers.get(
-                variant_id, current.selected_offers.get(variant_id, "none")
-            )
-        )
-
+    selected_offers = {vid: _offer_id(vid, catalog, offers) for vid in catalog_items}
     return Plan(looks=tuple(looks), selected_offers=selected_offers)
+
+
+def _offer_id(variant_id: str, catalog: Catalog, offers: dict[str, Offer]) -> str:
+    """The variant's cheapest usable offer, chosen by code."""
+    if variant_id in offers:
+        return offers[variant_id].id
+    # A variant that cannot pass keeps an offer of its own, so check_plan reports why.
+    variant = catalog.variant(variant_id)
+    return variant.offers[0].id if variant else "none"
 
 
 _SLOT_CATEGORIES: dict[Slot, frozenset[Category]] = {
@@ -646,14 +615,6 @@ def _request(
 
 def _plan_from_reply(reply: str, state: State, catalog: Catalog, offers: dict[str, Offer]) -> Plan:
     """The reply's looks as a plan, with each catalog variant's offer chosen by code."""
-
-    def offer_id(variant_id: str) -> str:
-        if variant_id in offers:
-            return offers[variant_id].id
-        # A variant that cannot pass keeps an offer of its own, so check_plan reports why.
-        variant = catalog.variant(variant_id)
-        return variant.offers[0].id if variant else "none"
-
     start, end = reply.find("{"), reply.rfind("}")
     try:
         looks = json.loads(reply[start : end + 1])["looks"]
@@ -676,7 +637,9 @@ def _plan_from_reply(reply: str, state: State, catalog: Catalog, offers: dict[st
             for ref in look.items.values()
             if ref.kind is ItemKind.CATALOG
         }
-        return Plan(looks=plan_looks, selected_offers={vid: offer_id(vid) for vid in used})
+        return Plan(
+            looks=plan_looks, selected_offers={vid: _offer_id(vid, catalog, offers) for vid in used}
+        )
     except (ValueError, LookupError, TypeError, AttributeError) as error:
         # ValidationError is a ValueError: two looks, an item in two slots, a bad slot name.
         raise ValueError(f"The reply is not a plan in the required JSON form ({error})") from None
