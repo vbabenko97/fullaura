@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import time
 from collections.abc import Awaitable, Callable
 
@@ -364,5 +365,13 @@ def create_app(
 
     return app
 
+
+# Uvicorn configures only its own loggers, which would drop the planner's INFO usage records.
+# The handler covers this package alone, so library request logs stay off. Every record at INFO
+# or above from this package reaches the production log, so none may hold what a person entered.
+_app_log_handler = logging.StreamHandler()
+_app_log_handler.setFormatter(logging.Formatter("%(levelname)s: %(name)s: %(message)s"))
+logging.getLogger("backend.app").addHandler(_app_log_handler)
+logging.getLogger("backend.app").setLevel(logging.INFO)
 
 app = create_app()

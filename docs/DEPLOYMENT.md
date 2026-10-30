@@ -29,6 +29,8 @@ The existing `fullaura-monthly` budget is $20 per month from 2026-10-01 through 
 
 On 2026-10-29, Baseten's pinned answer in the hackathon `#baseten` channel confirmed that the $100 grant is attached to the hackathon API key, not a personal workspace; personal workspace budgets do not apply. Baseten said no payment method is needed and the key cannot be charged beyond $100. The remaining credit cannot be viewed. The planning API returns prompt and completion token counts, which provide an activity record but not a live dollar balance.
 
+Revision `fullaura-demo--0000001` does not record planning usage in its log. Its image, built from `18ed8df`, writes the usage line at INFO level, and the server's logging setup discards it. An image that includes the log handler in `backend/app/main.py` writes one `backend.app.planner` line for each planning request the planner completes, whatever its outcome. The line gives the outcome, model, model calls, HTTP attempts, token counts, completed proposals, format failures, constraint failures, constraint violations and latency. It holds nothing the person entered: no brief, colors, budget, material exclusions, sizes or owned items. The Container Apps environment sends the container log to the Log Analytics workspace.
+
 ## Smoke check
 
 The HTTPS smoke check passed on 2026-10-29. After the revision scaled to zero, a follow-up request restarted it and `/`, `/api/health`, and `/api/ready` again returned `200`.
