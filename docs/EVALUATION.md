@@ -17,7 +17,7 @@ These cases contain no personal data. They test both budget modes, a material ex
 
 ## Baseline
 
-For each case, the baseline uses the cheapest offer for each catalog variant that passes the same item eligibility checks as the planner. It enumerates outfits with a top and bottom, or a one-piece, plus footwear. It selects the three cheapest distinct outfits whose complete plan passes `check_plan`. Per-look cases minimize the sum of the three look prices; whole-plan cases minimize the price of the distinct catalog items across all three looks. Stable item-ID ordering breaks price ties.
+For each case, the baseline uses the cheapest offer for each catalog variant that passes the same item eligibility checks as the planner. It enumerates outfits with a top and bottom, or a one-piece, plus footwear. It selects the three cheapest distinct outfits whose complete plan passes `check_plan`. Per-look cases minimize the sum of the three look prices; whole-plan cases minimize the price of the distinct catalog items across all three looks, searching the sets of three among the 60 cheapest outfits, because every set would be hundreds of millions of combinations in a catalog of about fifty variants. Stable item-ID ordering breaks price ties.
 
 The baseline makes no model calls. Its rule is intentionally narrow: it does not rank style, color coordination, or outfit variety beyond requiring three different item combinations.
 

@@ -36,6 +36,8 @@ A catalog file follows the record format in `backend/app/catalog.py` and lives u
 
 Record a product's clothing line only when the retailer states it, through a department tag or category such as "Herren", or text on the product page such as "für Damen und Herren", which makes it unisex; otherwise write `null`. Record a variant's comparable size in the system the retailer uses, without converting it, and `null` when the label fits no system ([D-36](DECISIONS.md#d-36-the-person-states-whom-the-looks-are-for)).
 
+Each shoe's closure, closed or open, comes from the retailer's own product type, such as "Sneaker" or "Slide"; the Giesswein and GEA closures were added on 2026-10-30 from their product names and categories.
+
 Add public demo assets only after completing this register:
 
 | Asset or dataset | Source URL | Permission or license | Allowed image use | Attribution | Retrieved |
@@ -43,5 +45,29 @@ Add public demo assets only after completing this register:
 | Product facts for 16 Armedangels variants in `backend/data/catalog.json` | <https://www.armedangels.com/de-at/> | Facts only. The [terms of use](https://www.armedangels.com/at-de/agb), checked on 2026-10-28, have no clause on using site content, and robots.txt allows crawlers on product pages. Clothing lines come from the product pages' department tags, checked on 2026-10-30. | None; no images are used | None required | 2026-10-28; size L variants 2026-10-30 |
 | Product facts for 4 Giesswein footwear variants in `backend/data/catalog.json` | <https://www.giesswein.com/> | Facts only. The [terms of use](https://www.giesswein.com/pages/agb) and the [imprint](https://www.giesswein.com/pages/impressum), checked on 2026-10-28, have no clause on using site content, and robots.txt allows crawlers on product pages. Clothing lines come from the product pages' tags, checked on 2026-10-30. | None; no images are used | None required | 2026-10-28 |
 | Product facts for 2 GEA Waldviertler footwear variants in `backend/data/catalog.json` | <https://gea-waldviertler.at/> | Facts only. The [terms for Austria](https://gea-waldviertler.at/bestellung-versand-agb/agb-at/) and the [imprint](https://gea-waldviertler.at/impressum/), checked on 2026-10-30, have no clause on using site content, and robots.txt disallows only URLs with parameters, search, checkout, customer and admin paths. Both product pages say "für Damen und Herren". | None; no images are used | None required | 2026-10-30 |
+| Product facts for 23 Tom Tailor variants in `backend/data/catalog.json`: men's chinos and closed sneakers, women's tops, trousers, leggings and closed sneakers | <https://www.tom-tailor.at/de/> | Facts only. The [terms](https://www.tom-tailor.at/de/agb) and the [imprint](https://www.tom-tailor.at/de/impressum), checked on 2026-10-30, have no clause on using site content; robots.txt allows product pages under `/de/p/`. AGB 3.1: "Lieferungen sind nur innerhalb Österreichs möglich." Lines come from the breadcrumb ("Herren", "Damen"); every shoe is under "Schuhe > Sneaker", so it is closed. Compositions come from the page's material data, which names Obermaterial, Innenfutter, Sohle and Innensohle for shoes. | None; no images are used | None required | 2026-10-30 |
+| Product facts for 2 Tom Tailor sneaker variants sold by Tchibo in `backend/data/catalog.json` | <https://www.tchibo.at/> | Facts only. The [terms](https://www.tchibo.at/c/service-agb), "Stand: Oktober 2026", and the [imprint](https://www.tchibo.at/c/service-impressum), checked on 2026-10-30, have no clause on using site content; robots.txt allows product pages. AGB 1 and 8: "Eine Lieferung erfolgt nur innerhalb Österreichs." The line comes from the women's shoe category. The composition names no parts, so it is partial. | None; no images are used | None required | 2026-10-30 |
 
 Model output shown in a recording should include enough run metadata to reproduce the process without exposing a person's original photographs or credentials. Label cached examples and fixtures in the UI and demo.
+
+## Catalog coverage
+
+The closed beta needs the catalog to serve a few typical wearers, so `tests/test_catalog_coverage.py` checks four example profiles in three scenarios. The profiles are examples, not any person's sizes:
+
+| Profile | Line | Sizes |
+| --- | --- | --- |
+| Men's M | men's | M, waist and length 32/32, EU shoe 42 |
+| Men's L | men's | L, 34/32, EU shoe 43 |
+| Women's S | women's | S, EU shoe 38 |
+| Women's L | women's | L, EU shoe 40 |
+
+| Scenario | Budget | Exclusion |
+| --- | --- | --- |
+| Office in autumn | €250 per look | wool |
+| Casual | €150 per look | none |
+| Casual capsule | €300 for the whole plan | wool |
+
+For each of the twelve cases, code must find three different complete looks with closed shoes in every look that pass every hard constraint, from catalog items alone, and at least one position that a different catalog item can fill while the plan still passes. A case that fails is a catalog gap, to be closed with sourced records and never by relaxing a constraint or inventing data. The search combines the 60 cheapest looks of each case.
+
+On 2026-10-30 all twelve cases pass. Known risks: women's L under a wool exclusion depends on one shoe, the Tom Tailor platform sneaker in EU 40, so its selling out would break two cases; four shoe prices are sale prices, although the cases still pass at their regular prices; and men's looks use the Armedangels tops. The stores checked and rejected on the way are summarized in [D-47](DECISIONS.md#d-47-tom-tailor-and-tchibo-supply-affordable-basics-and-closed-shoes).
+

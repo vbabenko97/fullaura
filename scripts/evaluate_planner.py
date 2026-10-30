@@ -253,6 +253,11 @@ def candidate_looks(catalog: Catalog, offers: dict[str, Offer]) -> list[Candidat
     return sorted(result, key=lambda look: (look.cost_cents, look.signature))
 
 
+# A whole-plan baseline combines only this many of the cheapest outfits: every set of three
+# would be hundreds of millions of combinations once the catalog holds about fifty variants.
+WHOLE_PLAN_SEARCH_LOOKS = 60
+
+
 def cheapest_baseline(case: EvaluationCase, catalog: Catalog) -> tuple[Plan, int]:
     """Return the cheapest distinct three-look plan that passes the shared hard checks."""
     offers = cheapest_usable_offers(catalog, case.state())
@@ -267,7 +272,7 @@ def cheapest_baseline(case: EvaluationCase, catalog: Catalog) -> tuple[Plan, int
     else:
         best_rank: tuple[int, tuple[tuple[str, ...], ...]] | None = None
         best_looks: tuple[CandidateLook, ...] | None = None
-        for chosen in itertools.combinations(candidates, 3):
+        for chosen in itertools.combinations(candidates[:WHOLE_PLAN_SEARCH_LOOKS], 3):
             variant_ids = {variant_id for look in chosen for _, variant_id in look.items}
             total = sum(offers[variant_id].price_cents or 0 for variant_id in variant_ids)
             if total > case.budget.amount_cents:
