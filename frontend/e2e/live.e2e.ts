@@ -123,3 +123,78 @@ for (const persona of PERSONAS) {
     writeFileSync(join(out, `${persona.name}-look1-tryon.${extension}`), Buffer.from(data.base64, "base64"));
   });
 }
+
+test("live: the whole flow on one persona", async ({ page }) => {
+  test.skip(!invite || process.env.FULLAURA_LIVE_FULL !== "1", "Set FULLAURA_LIVE_FULL=1 for the whole flow");
+  const persona = PERSONAS[0];
+  mkdirSync(out, { recursive: true });
+  await page.addInitScript(() => {
+    window.print = () => {
+      document.body.dataset.printed = "yes";
+    };
+  });
+  await page.goto(`/#invite=${encodeURIComponent(invite)}`);
+  const age = page.getByRole("checkbox", { name: "I confirm that I am 18 or older." });
+  const preferences = page.getByRole("heading", { name: "Your preferences" });
+  await expect(age.or(preferences)).toBeVisible();
+  if (await age.isVisible()) {
+    await age.check();
+    await page.getByRole("button", { name: "Continue" }).click();
+  }
+  await page.getByLabel("Occasion").selectOption("office");
+  await page.getByLabel("Season").selectOption("autumn");
+  await page.getByLabel("What should the looks work for?").fill(persona.goal);
+  await page.getByLabel("Budget in EUR").fill("300");
+  await page.getByRole("checkbox", { name: persona.line, exact: true }).check();
+  await page.getByLabel("Letter size").selectOption(persona.letter);
+  await page.getByLabel("Waist sizes").fill(persona.waist);
+  await page.getByLabel("EU shoe sizes").fill(persona.shoes);
+  const passed = page.getByText(/The three looks passed the catalog checks/);
+  await page.getByRole("button", { name: "Generate three looks" }).click();
+  await expect(passed).toBeVisible({ timeout: 180_000 });
+  await page.screenshot({ path: join(out, "full-1-plan.png"), fullPage: true });
+
+  const consent = page.getByRole("button", { name: "I agree to this processing of my photos" });
+  if (await consent.isVisible()) await consent.click();
+  await page.getByLabel("Portrait photo").setInputFiles(join(personasFolder, `${persona.name}-portrait.webp`));
+  await page.getByLabel("Full-body photo").setInputFiles(join(personasFolder, `${persona.name}-full-body.webp`));
+  await page.getByRole("button", { name: "Try on look 1" }).click();
+  await expect(page.getByRole("img", { name: "Experimental try-on of look 1" })).toBeVisible({ timeout: 150_000 });
+  await page.screenshot({ path: join(out, "full-2-try-on.png"), fullPage: true });
+
+  const keep = page.getByRole("button", { name: /^Keep .* in look_1$/ }).first();
+  const kept = (await keep.getAttribute("aria-label"))?.replace(/^Keep /, "Release ") ?? "";
+  await keep.click();
+  await page.getByLabel("Budget in EUR").fill("260");
+  await page.getByRole("button", { name: "Update three looks" }).click();
+  await expect(passed.or(page.getByRole("alert")).first()).toBeVisible({ timeout: 180_000 });
+  await expect(passed).toBeVisible();
+  await expect(page.getByRole("button", { name: kept })).toHaveAttribute("aria-pressed", "true");
+  await expect(page.getByRole("img", { name: /Experimental try-on/ })).toHaveCount(0);
+
+  await page.getByRole("button", { name: /^Replace .* in look_2$/ }).first().click();
+  const replaced = page.getByText(/The item was replaced/);
+  await expect(replaced.or(page.getByRole("alert")).first()).toBeVisible({ timeout: 180_000 });
+  writeFileSync(join(out, "full-3-replace.txt"), (await page.locator(".request-message").innerText()) + "\n");
+  await page.screenshot({ path: join(out, "full-3-replaced.png"), fullPage: true });
+
+  await page.getByRole("button", { name: "Save this plan" }).click();
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "look 1" })).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("button", { name: "Restore" }).first().click();
+  await expect(page.getByText(/The saved plan still passes every check/)).toBeVisible({ timeout: 60_000 });
+  await page.getByRole("button", { name: "Copy list" }).click();
+  await page.getByRole("button", { name: "Print" }).click();
+  await expect(page.locator("body")).toHaveAttribute("data-printed", "yes");
+
+  const feedback = page.locator("section", { has: page.getByRole("heading", { name: "Tell us how it went" }) });
+  await feedback.getByRole("radio", { name: "Yes", exact: true }).check();
+  await feedback.getByRole("group", { name: /How useful/ }).getByRole("radio", { name: "4", exact: true }).check();
+  await feedback.getByRole("radio", { name: "I can't judge it" }).check();
+  await feedback.getByLabel(/A problem with the products/).fill("Operator check with a synthetic persona");
+  await feedback.getByRole("button", { name: "Send feedback" }).click();
+  await expect(page.getByText("Thank you. Your feedback is saved.")).toBeVisible();
+  await feedback.getByRole("button", { name: /^Delete answer/ }).first().click();
+  await expect(page.getByText("Your feedback was deleted.")).toBeVisible();
+  await page.screenshot({ path: join(out, "full-4-done.png"), fullPage: true });
+});

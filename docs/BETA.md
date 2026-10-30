@@ -41,3 +41,9 @@ The operator, the person who deploys the beta and hands out invites, follows the
 4. To withdraw one invite, deploy again without its digest. To stop the beta at once, set `FULLAURA_BETA_ENABLED=false`, or stop the app (see [DEPLOYMENT.md](DEPLOYMENT.md#stopping-the-beta)).
 
 The store keeps, per invite, the time of the age confirmation and the photo consent, request counts and feedback IDs; the ledger, the record of each model call, and the feedback answers. A lifecycle rule deletes every record 30 days after its last change, so all pilot data is gone within 30 days after the pilot ends. A participant's feedback can be deleted by the participant at any time, and the operator can delete an invite's records earlier with the commands in [DEPLOYMENT.md](DEPLOYMENT.md#stopping-the-beta).
+
+## Checks before the beta opened
+
+On 2026-10-30 three synthetic adult personas, generated with Muse Image for testing and showing no real person, went through planning and a try-on against a local server with the real providers: a men's M office look under €250 without wool, a women's S casual look under €150, and a women's L capsule under €300 for the whole plan without wool. All three plans passed the hard constraints on the first model call, and all three try-ons succeeded on the first attempt, in 13 to 19 seconds. The run cost $0.023 for planning and $0.03 for images; generating the personas cost $0.06.
+
+An agent that had not seen the code reviewed the try-ons against the input photos and the looks. It judged all three usable as experimental visualizations, with no warped faces, extra limbs, text or broken backgrounds. It noted that the results read as the clothes placed on the same photo, that a top under a sweater shows only at the collar and cuffs, and that a white T-shirt in one look matched the white T-shirt in that persona's own photo. This is an automated preliminary check, not human evidence of quality.
