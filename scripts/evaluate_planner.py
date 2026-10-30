@@ -23,7 +23,7 @@ from typing import Any
 from urllib.error import HTTPError
 from urllib.request import Request
 
-from backend.app.catalog import Catalog, Category, Offer
+from backend.app.catalog import Catalog, Category, Offer, Size
 from backend.app.config import Settings
 from backend.app.constraints import check_plan, cost, fit_violations, item_violations
 from backend.app.planner import (
@@ -41,7 +41,7 @@ from backend.app.state import Budget, BudgetMode, Fit, ItemKind, ItemRef, Look, 
 
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG_FILE = ROOT / "backend" / "data" / "catalog.json"
-MAX_LIVE_HTTP_ATTEMPTS = 12
+MAX_LIVE_HTTP_ATTEMPTS = 16
 MAX_HTTP_ATTEMPTS_PER_GENERATION = 2
 INPUT_USD_PER_MILLION_TOKENS = 1.25
 OUTPUT_USD_PER_MILLION_TOKENS = 4.25
@@ -177,6 +177,26 @@ CASES = (
         ),
         budget=Budget(amount_cents=22_000, mode=BudgetMode.WHOLE_PLAN),
         exclusions=frozenset({"wool"}),
+    ),
+    # An example fit, not a real person's; without an exclusion the closed GEA shoes stay in.
+    EvaluationCase(
+        id="mens-fit-per-look",
+        brief=Brief(
+            style_goal="smart casual for autumn office days",
+            preferred_colors=("navy", "grey", "black"),
+        ),
+        budget=Budget(amount_cents=25_000, mode=BudgetMode.PER_LOOK),
+        exclusions=frozenset(),
+        fit=Fit(
+            lines={"men"},
+            garment_types={"trousers", "jeans"},
+            sizes=(
+                Size(system="letter", value="L"),
+                Size(system="waist_length", value="32/32"),
+                Size(system="eu_shoe", value="42"),
+                Size(system="eu_shoe", value="43"),
+            ),
+        ),
     ),
 )
 

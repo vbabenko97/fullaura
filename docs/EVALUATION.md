@@ -4,15 +4,16 @@ The T-06 protocol compares Muse Spark's generated and code-checked plans with a 
 
 ## Cases
 
-The runner defines three requests in `scripts/evaluate_planner.py` and loads the same 15-record real catalog used by the application.
+The runner defines four requests in `scripts/evaluate_planner.py` and loads the real catalog used by the application. The live comparison of 2026-10-29 ran the first three.
 
-| Case | Request | Budget | Exclusion |
-| --- | --- | --- | --- |
-| `wool-free-per-look` | Quiet smart casual for dinners; black, grey and earth tones | €180 per look | Wool |
-| `open-materials-per-look` | Relaxed casual for mild spring weather; black, blue and red | €250 per look | None |
-| `wool-free-whole-plan` | Minimal travel capsule with varied outfits; black, grey and neutral | €220 for the whole plan | Wool |
+| Case | Request | Budget | Exclusion | Fit |
+| --- | --- | --- | --- | --- |
+| `wool-free-per-look` | Quiet smart casual for dinners; black, grey and earth tones | €180 per look | Wool | None |
+| `open-materials-per-look` | Relaxed casual for mild spring weather; black, blue and red | €250 per look | None | None |
+| `wool-free-whole-plan` | Minimal travel capsule with varied outfits; black, grey and neutral | €220 for the whole plan | Wool | None |
+| `mens-fit-per-look` | Smart casual for autumn office days; navy, grey and black | €250 per look | None | Men's line; trousers or jeans; size L, waist and length 32/32, EU shoe 42 or 43 |
 
-These cases contain no personal data. They test both budget modes and a material exclusion. The styles and colors are inputs to human scoring; code does not treat them as hard constraints.
+These cases contain no personal data. They test both budget modes, a material exclusion and a stated fit ([D-40](DECISIONS.md#d-40-the-t-06-comparison-adds-a-case-with-an-example-fit)). The fit in `mens-fit-per-look` is an example, not a real person's. That case has no exclusion, so the closed GEA shoes, which drop out under any exclusion, stay available. The first three cases state no fit and check for regressions. The styles and colors are inputs to human scoring; code does not treat them as hard constraints.
 
 ## Baseline
 
@@ -73,7 +74,7 @@ An offline run is the default and creates the baseline plans and a blank human-s
 uv run --frozen python -m scripts.evaluate_planner
 ```
 
-A live run calls Baseten's exact hackathon model. The three-case run is capped at 12 HTTP attempts: up to two model generations per case, with up to two HTTP attempts per generation. At 6,000 output tokens per attempt, 72,000 output tokens would cost about $0.306 at the listed output rate, plus input tokens. This is an estimate for the configured token limits, not a complete cost ceiling.
+A live run calls Baseten's exact hackathon model. The four-case run is capped at 16 HTTP attempts: up to two model generations per case, with up to two HTTP attempts per generation. At 6,000 output tokens per attempt, 96,000 output tokens would cost about $0.408 at the listed output rate, plus input tokens. This is an estimate for the configured token limits, not a complete cost ceiling.
 
 ```bash
 uv run --frozen --env-file .env python -m scripts.evaluate_planner \
@@ -82,4 +83,4 @@ uv run --frozen --env-file .env python -m scripts.evaluate_planner \
 
 The live runner uses `BASETEN_API_KEY` from the environment and enforces `meta-models/muse-spark-open-1026` at `https://inference.baseten.co/v1`. `--live` without at least one `--case-id` is rejected. The PR records aggregate run results; raw provider responses remain in the ignored run folder.
 
-Each run writes `run.json` and `human_scores.csv` under ignored `runs/t06/`. A live run also writes `provider_responses.jsonl`. The run manifest records the case inputs, model endpoint and ID, catalog and source-code hashes, attempt ceiling, token rates and Git revision. Review the automated outcome first; score only plans that were produced. Keep model and baseline scores paired by case. A small catalog and three fixed cases support a pilot comparison only; they do not establish general quality, fit, stock availability or broad user preference.
+Each run writes `run.json` and `human_scores.csv` under ignored `runs/t06/`. A live run also writes `provider_responses.jsonl`. The run manifest records the case inputs, model endpoint and ID, catalog and source-code hashes, attempt ceiling, token rates and Git revision. Review the automated outcome first; score only plans that were produced. Keep model and baseline scores paired by case. A small catalog and four fixed cases support a pilot comparison only; they do not establish general quality, fit, stock availability or broad user preference.

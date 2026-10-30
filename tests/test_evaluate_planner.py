@@ -62,9 +62,9 @@ def test_cheapest_baseline_is_reproducible() -> None:
         assert cheapest_baseline(case, CATALOG) == cheapest_baseline(case, CATALOG)
 
 
-def test_three_case_live_run_is_capped_at_twelve_http_attempts() -> None:
-    assert len(CASES) * GENERATION_ATTEMPTS * MAX_HTTP_ATTEMPTS_PER_GENERATION == 12
-    assert MAX_LIVE_HTTP_ATTEMPTS == 12
+def test_four_case_live_run_is_capped_at_sixteen_http_attempts() -> None:
+    assert len(CASES) * GENERATION_ATTEMPTS * MAX_HTTP_ATTEMPTS_PER_GENERATION == 16
+    assert MAX_LIVE_HTTP_ATTEMPTS == 16
 
 
 def test_response_recorder_stores_payloads_and_blocks_attempts_over_the_cap(
