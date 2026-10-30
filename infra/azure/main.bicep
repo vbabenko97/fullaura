@@ -77,6 +77,17 @@ resource environment 'Microsoft.App/managedEnvironments@2025-07-01' = {
         workloadProfileType: 'Consumption'
       }
     ]
+    publicNetworkAccess: 'Enabled'
+    peerAuthentication: {
+      mtls: {
+        enabled: false
+      }
+    }
+    peerTrafficConfiguration: {
+      encryption: {
+        enabled: false
+      }
+    }
   }
 }
 
@@ -156,6 +167,12 @@ resource app 'Microsoft.App/containerApps@2025-07-01' = {
         allowInsecure: false
         targetPort: 8000
         transport: 'auto'
+        traffic: [
+          {
+            latestRevision: true
+            weight: 100
+          }
+        ]
       }
       secrets: concat(
         [
@@ -240,6 +257,8 @@ resource app 'Microsoft.App/containerApps@2025-07-01' = {
       scale: {
         minReplicas: 0
         maxReplicas: 1
+        cooldownPeriod: 300
+        pollingInterval: 30
       }
     }
   }
