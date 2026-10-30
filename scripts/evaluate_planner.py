@@ -45,6 +45,12 @@ MAX_LIVE_HTTP_ATTEMPTS = 12  # shared by all cases in a run
 MAX_HTTP_ATTEMPTS_PER_GENERATION = 2
 INPUT_USD_PER_MILLION_TOKENS = 1.25
 OUTPUT_USD_PER_MILLION_TOKENS = 4.25
+# A person answers only for the example-fit case (D-42); other cases leave these blank.
+HUMAN_ANSWER_COLUMNS = tuple(
+    f"look_{look}_{question}_yes_no"
+    for look in (1, 2, 3)
+    for question in ("as_requested", "would_try_on")
+)
 SCORE_COLUMNS = (
     "case_id",
     "approach",
@@ -63,10 +69,7 @@ SCORE_COLUMNS = (
     "estimated_model_api_cost_usd",
     "latency_s",
     "catalog_cost_cents",
-    "style_relevance_1_5",
-    "color_coherence_1_5",
-    "visual_variety_1_5",
-    "wearability_1_5",
+    *HUMAN_ANSWER_COLUMNS,
     "notes",
 )
 
@@ -178,7 +181,8 @@ CASES = (
         budget=Budget(amount_cents=22_000, mode=BudgetMode.WHOLE_PLAN),
         exclusions=frozenset({"wool"}),
     ),
-    # An example fit, not a real person's; without an exclusion the closed GEA shoes stay in.
+    # An example fit, not a real person's; without an exclusion the closed shoes pass the item
+    # checks, though none fits €250 with a top and bottom (EVALUATION.md).
     EvaluationCase(
         id="mens-fit-per-look",
         brief=Brief(
@@ -399,10 +403,7 @@ def score_row(case_id: str, approach: str, metrics: dict[str, Any]) -> dict[str,
         "estimated_model_api_cost_usd": str(metrics.get("estimated_model_api_cost_usd", 0)),
         "latency_s": str(metrics.get("latency_s", "")),
         "catalog_cost_cents": str(metrics.get("catalog_cost_cents", "")),
-        "style_relevance_1_5": "",
-        "color_coherence_1_5": "",
-        "visual_variety_1_5": "",
-        "wearability_1_5": "",
+        **dict.fromkeys(HUMAN_ANSWER_COLUMNS, ""),
         "notes": "",
     }
 

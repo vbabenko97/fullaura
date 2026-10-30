@@ -59,7 +59,9 @@ Done when: the checks in step 5 of the deployment sequence pass, and the URL, so
 
 In the T-06 comparison every plan passed the hard constraints, but plans mixed men's and women's lines and one combined shoes in EU 39 and 42, because nothing said whom the looks were for. The person now states the clothing lines, the kinds of bottoms and one-pieces they wear and their sizes, and code checks them as a hard constraint ([D-36](DECISIONS.md#d-36-the-person-states-whom-the-looks-are-for)). The catalog records each product's line and garment type and a comparable size for each variant. For the demo wearer it gains variants in their sizes and closed wool-free shoes from a source whose terms are recorded in [DATA.md](DATA.md).
 
-Done when: the checks in the [README](../README.md#check-a-change) pass; a new T-06 run on this code, including the example-fit case ([D-40](DECISIONS.md#d-40-the-t-06-comparison-adds-a-case-with-an-example-fit)), records no hard-constraint violation for either approach, with the earlier run kept; and on the deployed site the demo wearer gets three looks for their stated fit, keeps an item, lowers the budget and replaces an unlocked item, every result respects the fit, and each of the three looks scores at least 4 for style relevance and wearability ([D-37](DECISIONS.md#d-37-the-demo-is-accepted-on-its-wearers-scores-set-before-the-run)).
+The live T-06 run of 2026-10-30 on commit `dd8ba66` meets the second condition below: both approaches passed every hard check in all four cases ([EVALUATION.md](EVALUATION.md#2026-10-30)). The demo wearer's acceptance remains.
+
+Done when: the checks in the [README](../README.md#check-a-change) pass; a new T-06 run on this code, including the example-fit case ([D-40](DECISIONS.md#d-40-the-t-06-comparison-adds-a-case-with-an-example-fit)), records no hard-constraint violation for either approach, with the earlier run kept; and on the deployed site the demo wearer gets three looks for their stated fit, keeps an item, lowers the budget and replaces an unlocked item, every result respects the fit, and the wearer answers yes to both acceptance questions for each of the three looks of the first plan ([D-41](DECISIONS.md#d-41-the-demo-is-accepted-on-its-wearers-yes-or-no-answers-set-before-the-run)).
 
 ## T-06: Evaluation and submission
 
@@ -67,7 +69,7 @@ The submission deadline is 2026-11-04 21:00 ET, which is 2026-11-05 03:00 in Vie
 
 Compare the full workflow with a simple baseline on the same cases. Record constraint failures and human judgments separately. Prepare the demo video and the public contribution summary. Three minutes is the working target for the video; check the final format in the submission form.
 
-The fixed cases, deterministic baseline and live comparison metrics are recorded in [EVALUATION.md](EVALUATION.md). Human scoring, the demo video and submission remain outstanding, so T-06 remains planned.
+The fixed cases, deterministic baseline, live comparison metrics and the author's answers for the example-fit case are recorded in [EVALUATION.md](EVALUATION.md). The demo video and submission remain outstanding, so T-06 remains planned.
 
 Done when: the submission is sent and its confirmation is received. Being ready to submit does not finish the task, so record each step on its own line:
 
