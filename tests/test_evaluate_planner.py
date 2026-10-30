@@ -2,7 +2,9 @@
 
 import io
 import json
+import sys
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request
@@ -11,11 +13,11 @@ import pytest
 
 from backend.app.catalog import Catalog, Size
 from backend.app.constraints import check_plan
-from backend.app.planner import GENERATION_ATTEMPTS, ProviderError, SparkClient
+from backend.app.planner import ProviderError, SparkClient
 from backend.app.state import Fit, Slot
+from scripts import evaluate_planner
 from scripts.evaluate_planner import (
     CASES,
-    MAX_HTTP_ATTEMPTS_PER_GENERATION,
     MAX_LIVE_HTTP_ATTEMPTS,
     ProviderResponseRecorder,
     cheapest_baseline,
@@ -62,9 +64,47 @@ def test_cheapest_baseline_is_reproducible() -> None:
         assert cheapest_baseline(case, CATALOG) == cheapest_baseline(case, CATALOG)
 
 
-def test_three_case_live_run_is_capped_at_twelve_http_attempts() -> None:
-    assert len(CASES) * GENERATION_ATTEMPTS * MAX_HTTP_ATTEMPTS_PER_GENERATION == 12
-    assert MAX_LIVE_HTTP_ATTEMPTS == 12
+@pytest.mark.parametrize(
+    ("server_errors", "attempts_per_case"),
+    [
+        # A generation that gets a 500 retries, and every reply is unusable, so each
+        # generation is followed by a repair.
+        pytest.param({1, 3, 5, 7, 9, 11}, [4, 4, 4], id="cap-spent"),
+        pytest.param({1, 3, 5, 7, 9}, [4, 4, 3], id="one-attempt-left"),
+    ],
+)
+def test_a_live_run_starts_a_case_only_with_its_full_share_of_twelve_attempts_left(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    server_errors: set[int],
+    attempts_per_case: list[int],
+) -> None:
+    sent = 0
+
+    def post(request: Request, timeout_s: float) -> dict:
+        nonlocal sent
+        sent += 1
+        if sent in server_errors:
+            raise HTTPError(request.full_url, 500, "Server Error", {}, io.BytesIO(b"{}"))
+        return {"choices": [{"message": {"content": "not a plan"}, "finish_reason": "stop"}]}
+
+    client = partial(SparkClient, post=post, sleep=lambda _: None)
+    monkeypatch.setattr(evaluate_planner, "SparkClient", client)
+    monkeypatch.setenv("BASETEN_API_KEY", "test-secret")
+    monkeypatch.delenv("BASETEN_MODEL", raising=False)
+    monkeypatch.delenv("BASETEN_BASE_URL", raising=False)
+    case_args = [arg for case in CASES for arg in ("--case-id", case.id)]
+    monkeypatch.setattr(sys, "argv", ["evaluate_planner", "--live", *case_args])
+
+    evaluate_planner.main(output_root=tmp_path)
+
+    run = json.loads(next(tmp_path.glob("*/run.json")).read_text(encoding="utf-8"))
+    assert run["attempt_limits"]["total_http_attempts"] == MAX_LIVE_HTTP_ATTEMPTS == 12
+    assert sent == run["http_attempts_used"] == sum(attempts_per_case)
+    assert run["attempt_limit_reached"]
+    *spent, last = (run["cases"][case.id] for case in CASES)
+    assert [case["muse_spark"]["http_attempts"] for case in spent] == attempts_per_case
+    assert "muse_spark" not in last and last["muse_spark_not_run"]
 
 
 def test_response_recorder_stores_payloads_and_blocks_attempts_over_the_cap(
