@@ -264,3 +264,11 @@ Each decision has a number that is never reused and a status: accepted, proposed
 - **Decision:** Production exposes the catalog and planning routes only when `FULLAURA_PUBLIC_DEMO_ENABLED=true`. Each browser session uses a random opaque `HttpOnly`, `Secure`, `SameSite=Lax` cookie. The server stores age confirmation and planning-request count in memory and expires inactive sessions after 24 hours. Planning requires an explicit 18+ confirmation and permits three requests per session; initial plans, updates and replacements count. Photo previews stay disabled in production pending T-02.
 - **Reason:** A small link-accessible pilot needs a clear age gate and a bounded number of paid planning submissions without adding accounts or a database.
 - **Consequences:** The session limit assumes one process, one worker and one replica. A process restart resets request counts, and a person can start a new browser session. This is not an aggregate spending ceiling or abuse-proof access control. Verify Azure and provider account-level spending controls before enabling the public routes. The interface explains the current photo state and the processing that would apply if the T-02 gate is later passed.
+
+## D-35: Compare planning with the cheapest admissible outfit baseline
+
+- **Date:** 2026-10-29
+- **Status:** accepted
+- **Decision:** T-06 compares the full planner and a deterministic baseline on the same fixed, non-personal cases. The baseline chooses the three cheapest distinct complete outfits from variants that pass the existing item checks, then validates each complete plan with `check_plan`. Hard-constraint outcomes and provider usage are recorded by code; style relevance, color coherence, visual variety and wearability remain separate human scores. [EVALUATION.md](EVALUATION.md) defines the cases and measurements.
+- **Reason:** A reproducible price-only baseline gives the live planner a concrete comparison while retaining the existing hard constraints. A human judges style and color instead of pretending the baseline or code can score taste.
+- **Consequences:** The three-case live comparison is recorded in [EVALUATION.md](EVALUATION.md). The baseline does not establish general quality, fit, stock availability or broad preference. T-06 remains open until human scoring, the demo and submission are complete.

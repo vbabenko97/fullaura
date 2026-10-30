@@ -77,6 +77,7 @@ uv run --frozen python scripts/smoke_http.py
 - [Decision log](docs/DECISIONS.md)
 - [Azure deployment plan](docs/DEPLOYMENT.md)
 - [Data and asset provenance](docs/DATA.md)
+- [Planning evaluation protocol](docs/EVALUATION.md)
 - [Contributor and coding-agent guidance](AGENTS.md)
 
 Development began on 26 October 2026 for the Meta Global AI Developer Hackathon, under the name LookPilot; the project became FullAura on 27 October 2026 ([D-19](docs/DECISIONS.md#d-19-the-product-is-named-fullaura)). The intended track is Indie Developer, under Build for Your World. Commit history and the final demo must identify the work built during the event.
