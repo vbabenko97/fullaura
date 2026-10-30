@@ -1,0 +1,86 @@
+import { formatMoney } from "./format";
+import { lookCost } from "./plan";
+import { ProductLine } from "./ProductLine";
+import { SLOTS } from "./types";
+import type {
+  Catalog,
+  Fit,
+  ItemRef,
+  LockedPlacement,
+  Look,
+  OwnedItem,
+  OwnedNotice,
+  Plan,
+  Slot,
+} from "./types";
+
+interface LookCardProps {
+  catalog: Catalog;
+  look: Look;
+  plan: Plan;
+  ownedItems: OwnedItem[];
+  ownedNotices: OwnedNotice[];
+  fit: Fit | undefined;
+  locks: LockedPlacement[];
+  lockDisabled: boolean;
+  replaceDisabled: boolean;
+  onToggleLock: (lookId: string, slot: Slot, item: ItemRef) => void;
+  onReplaceItem: (lookId: string, slot: Slot, item: ItemRef) => void;
+}
+
+export function LookCard({
+  catalog,
+  look,
+  plan,
+  ownedItems,
+  ownedNotices,
+  fit,
+  locks,
+  lockDisabled,
+  replaceDisabled,
+  onToggleLock,
+  onReplaceItem,
+}: LookCardProps) {
+  const items = SLOTS.flatMap((slot) => {
+    const item = look.items[slot];
+    return item ? [{ slot, item }] : [];
+  });
+
+  return (
+    <article className="look-card" aria-labelledby={`${look.id}-title`}>
+      <header className="look-card-header">
+        <h2 id={`${look.id}-title`}>{look.id.replaceAll("_", " ")}</h2>
+        <p className="look-total">{formatMoney(lookCost(look, plan, catalog))}</p>
+      </header>
+      <ul className="look-items">
+        {items.map(({ slot, item }) => {
+          const isLocked = locks.some(
+            (lock) =>
+              lock.look_id === look.id &&
+              lock.slot === slot &&
+              lock.item.id === item.id &&
+              lock.item.kind === item.kind,
+          );
+          return (
+            <ProductLine
+              key={`${look.id}-${slot}`}
+              catalog={catalog}
+              fit={fit}
+              isLocked={isLocked}
+              item={item}
+              lockDisabled={lockDisabled}
+              replaceDisabled={replaceDisabled}
+              look={look}
+              onToggleLock={onToggleLock}
+              onReplaceItem={onReplaceItem}
+              ownedItems={ownedItems}
+              ownedNotices={ownedNotices}
+              plan={plan}
+              slot={slot}
+            />
+          );
+        })}
+      </ul>
+    </article>
+  );
+}
