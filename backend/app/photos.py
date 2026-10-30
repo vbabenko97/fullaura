@@ -1,11 +1,13 @@
-"""Request-scoped photo processing for previews that remain gated on T-02."""
+"""Request-scoped photo processing for the beta's experimental try-on previews.
+
+The server writes the prompt from the checked look; the browser sends only two photos."""
 
 from __future__ import annotations
 
 import asyncio
 import time
 import traceback
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass
 from typing import Protocol
 
@@ -16,12 +18,14 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import Receive, Scope, Send
 
+from backend.app.catalog import Catalog, Category, CompositionStatus
 from backend.app.meta_images import (
     ImageResult,
     InputImage,
     image_mime_type,
     strip_jpeg_metadata,
 )
+from backend.app.state import ItemKind, Look, Slot, State
 
 MAX_PHOTO_BYTES = 10 * 1024 * 1024
 MAX_PREVIEW_BYTES = 16 * 1024 * 1024
@@ -29,7 +33,7 @@ MAX_PREVIEW_PROMPT_BYTES = 3000
 MAX_PREVIEW_REQUEST_BYTES = MAX_PHOTO_BYTES * 2 + 64 * 1024
 PREVIEW_DEADLINE_S = 120.0
 PHOTO_MIME_TYPE = "image/jpeg"
-PREVIEW_FIELDS = {b"portrait", b"full_body", b"prompt"}
+PREVIEW_FIELDS = {b"portrait", b"full_body"}
 
 
 class AsyncImageEditor(Protocol):
@@ -58,6 +62,7 @@ class PhotoProcessingError(RuntimeError):
 class PreviewImage:
     data: bytearray
     mime_type: str
+    attempts: int  # provider HTTP attempts, each of which may have been billed
 
     def discard(self) -> None:
         self.data.clear()
@@ -88,8 +93,11 @@ async def create_preview_async(
     editor: AsyncImageEditor,
     *,
     deadline: float,
+    before_call: Callable[[], Awaitable[None]] | None = None,
 ) -> PreviewImage:
-    """Edit two upright JPEGs and discard their buffers on return or cancellation."""
+    """Edit two upright JPEGs and discard their buffers on return or cancellation. before_call
+    runs once both photos are valid and before the paid provider call; an error it raises ends
+    the request without one."""
     prepared: list[InputImage] = []
     cleaned: bytes | None = None
     result: ImageResult | None = None
@@ -110,6 +118,8 @@ async def create_preview_async(
                 raise PhotoInputError(str(error)) from None
             prepared.append(InputImage(cleaned, PHOTO_MIME_TYPE))
 
+        if before_call is not None:
+            await before_call()
         result = await editor.edit_async(prompt, prepared, deadline=deadline)
         actual_mime_type = image_mime_type(result.image)
         if (
@@ -118,7 +128,7 @@ async def create_preview_async(
             or actual_mime_type != result.mime_type
         ):
             raise PhotoProcessingError("The provider returned an invalid preview image")
-        return PreviewImage(bytearray(result.image), result.mime_type)
+        return PreviewImage(bytearray(result.image), result.mime_type, result.attempts)
     except BaseException as error:
         _clear_exception_frames(error)
         raise
@@ -131,7 +141,7 @@ async def create_preview_async(
         actual_mime_type = None
 
 
-async def read_preview_uploads(request: Request) -> tuple[str, bytearray, bytearray]:
+async def read_preview_uploads(request: Request) -> tuple[bytearray, bytearray]:
     """Parse bounded multipart data into memory without creating upload files."""
     content_length = request.headers.get("content-length")
     if content_length:
@@ -147,22 +157,20 @@ async def read_preview_uploads(request: Request) -> tuple[str, bytearray, bytear
     content_type, options = parse_options_header(request.headers.get("content-type", "").encode())
     boundary = options.get(b"boundary")
     if content_type != b"multipart/form-data" or not boundary:
-        raise PhotoInputError("Send portrait, full_body and prompt as multipart form data")
+        raise PhotoInputError("Send portrait and full_body as multipart form data")
 
     headers: dict[bytes, bytes] = {}
     header_field = bytearray()
     header_value = bytearray()
-    values: dict[bytes, bytearray | str] = {}
+    values: dict[bytes, bytearray] = {}
     current_name: bytes | None = None
     current_part: bytearray | None = None
-    current_is_file = False
 
     def part_begin() -> None:
-        nonlocal current_name, current_part, current_is_file
+        nonlocal current_name, current_part
         headers.clear()
         current_name = None
         current_part = None
-        current_is_file = False
 
     def header_field_data(data: bytes, start: int, end: int) -> None:
         header_field.extend(data[start:end])
@@ -179,43 +187,29 @@ async def read_preview_uploads(request: Request) -> tuple[str, bytearray, bytear
         header_value.clear()
 
     def headers_finished() -> None:
-        nonlocal current_name, current_part, current_is_file
+        nonlocal current_name, current_part
         disposition, options = parse_options_header(headers.get(b"content-disposition", b""))
         name = options.get(b"name")
         if disposition != b"form-data" or name not in PREVIEW_FIELDS or name in values:
-            raise PhotoInputError(
-                "The preview request must contain portrait, full_body and prompt once"
-            )
+            raise PhotoInputError("The preview request must contain portrait and full_body once")
         current_name = name
-        current_is_file = name in {b"portrait", b"full_body"}
         content_type = headers.get(b"content-type", b"").split(b";", 1)[0].strip().lower()
-        if current_is_file and content_type != PHOTO_MIME_TYPE.encode():
+        if content_type != PHOTO_MIME_TYPE.encode():
             raise PhotoInputError("Photos must be JPEG images")
-        if not current_is_file and content_type not in {b"", b"text/plain"}:
-            raise PhotoInputError("The preview prompt must be plain text")
         current_part = bytearray()
 
     def part_data(data: bytes, start: int, end: int) -> None:
         if current_name is None or current_part is None:
             raise PhotoInputError("Invalid multipart form data")
         current_part.extend(data[start:end])
-        maximum = MAX_PHOTO_BYTES if current_is_file else MAX_PREVIEW_PROMPT_BYTES
-        if len(current_part) > maximum:
-            if current_is_file:
-                raise PhotoTooLargeError("Each photo must be no larger than 10 MiB")
-            raise PhotoInputError("The preview prompt must be no longer than 3000 bytes")
+        if len(current_part) > MAX_PHOTO_BYTES:
+            raise PhotoTooLargeError("Each photo must be no larger than 10 MiB")
 
     def part_end() -> None:
         nonlocal current_name, current_part
         if current_name is None or current_part is None:
             raise PhotoInputError("Invalid multipart form data")
-        if current_is_file:
-            values[current_name] = current_part
-        else:
-            try:
-                values[current_name] = current_part.decode("utf-8")
-            except UnicodeDecodeError:
-                raise PhotoInputError("The preview prompt must be UTF-8 text") from None
+        values[current_name] = current_part
         current_name = None
         current_part = None
 
@@ -246,25 +240,17 @@ async def read_preview_uploads(request: Request) -> tuple[str, bytearray, bytear
         except MultipartParseError:
             raise PhotoInputError("Invalid multipart form data") from None
         if set(values) != PREVIEW_FIELDS:
-            raise PhotoInputError("The preview request must contain portrait, full_body and prompt")
-        prompt = values[b"prompt"]
+            raise PhotoInputError("The preview request must contain portrait and full_body")
         portrait = values[b"portrait"]
         full_body = values[b"full_body"]
-        if (
-            not isinstance(prompt, str)
-            or not isinstance(portrait, bytearray)
-            or not isinstance(full_body, bytearray)
-        ):
-            raise PhotoInputError("Invalid preview request fields")
         values.clear()
-        return prompt, portrait, full_body
+        return portrait, full_body
     except BaseException as error:
         _clear_exception_frames(error)
         raise
     finally:
         for value in values.values():
-            if isinstance(value, bytearray):
-                value.clear()
+            value.clear()
         values.clear()
         headers.clear()
         header_field.clear()
@@ -281,6 +267,7 @@ async def wait_for_preview_or_disconnect(
     editor: AsyncImageEditor,
     *,
     deadline: float,
+    before_call: Callable[[], Awaitable[None]] | None = None,
 ) -> PreviewImage | None:
     """Cancel provider work when the caller disconnects or the shared deadline expires."""
 
@@ -291,7 +278,9 @@ async def wait_for_preview_or_disconnect(
                 return
 
     preview_task = asyncio.create_task(
-        create_preview_async(prompt, portrait, full_body, editor, deadline=deadline)
+        create_preview_async(
+            prompt, portrait, full_body, editor, deadline=deadline, before_call=before_call
+        )
     )
     disconnect_task = asyncio.create_task(wait_for_disconnect())
     tasks = (preview_task, disconnect_task)
@@ -334,3 +323,56 @@ class PreviewResponse(Response):
             await send({"type": "http.response.body", "body": bytes(self.preview.data)})
         finally:
             self.preview.discard()
+
+
+_GARMENT = {
+    Category.TOP: "top",
+    Category.BOTTOM: "bottom",
+    Category.ONE_PIECE: "one-piece",
+    Category.KNITWEAR: "knitted top",
+    Category.OUTERWEAR: "outer layer",
+    Category.FOOTWEAR: "shoes",
+    Category.ACCESSORY: "accessory",
+}
+
+
+def preview_prompt(look: Look, state: State, catalog: Catalog) -> str:
+    """The try-on prompt for a checked look, written from catalog facts and the person's own
+    descriptions of owned items. It describes colors, garment kinds and materials so that the
+    model draws an approximation; no product image or brand mark is sent."""
+    owned = {item.id: item for item in state.owned_items}
+    lines = []
+    for slot in Slot:
+        item = look.items.get(slot)
+        if item is None:
+            continue
+        if item.kind is ItemKind.OWNED:
+            entry = owned.get(item.id)
+            if entry is not None:
+                lines.append(f"- {slot.value}: {entry.color} {entry.description} (their own)")
+            continue
+        variant, product = catalog.variant(item.id), catalog.product_of(item.id)
+        if variant is None or product is None:
+            continue
+        kind = (product.garment_type or _GARMENT[product.category]).replace("_", " ")
+        if product.footwear_closure:
+            kind = f"{product.footwear_closure} {kind}"
+        materials = sorted({c.material for c in variant.composition.components})
+        made_of = (
+            f", {' and '.join(materials)}"
+            if materials and variant.composition.status is CompositionStatus.COMPLETE
+            else ""
+        )
+        color = f"{variant.color} " if variant.color else ""
+        lines.append(f"- {slot.value}: {color}{kind}, like the {product.title.lower()}{made_of}")
+    prompt = (
+        "Create an approximate try-on preview of the person shown in the two photos, a "
+        "portrait and a full-body photo. Show them full body, standing, wearing this outfit:\n"
+        + "\n".join(lines)
+        + "\nKeep their face, hair, skin tone and body proportions exactly as in the photos. "
+        "Draw plain garments in the stated colors and kinds, with no logos, text or brand "
+        "marks. Plain light background."
+    )
+    if len(prompt.encode()) > MAX_PREVIEW_PROMPT_BYTES:
+        raise PhotoInputError("This look is too long to describe in one preview")
+    return prompt

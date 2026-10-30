@@ -5,6 +5,7 @@ import { SLOTS } from "./types";
 import type {
   Catalog,
   Fit,
+  FootwearChoice,
   ItemRef,
   LockedPlacement,
   Look,
@@ -21,11 +22,13 @@ interface LookCardProps {
   ownedItems: OwnedItem[];
   ownedNotices: OwnedNotice[];
   fit: Fit | undefined;
+  footwear: FootwearChoice;
   locks: LockedPlacement[];
   lockDisabled: boolean;
   replaceDisabled: boolean;
   onToggleLock: (lookId: string, slot: Slot, item: ItemRef) => void;
   onReplaceItem: (lookId: string, slot: Slot, item: ItemRef) => void;
+  onTryOn: ((lookId: string) => void) | null;
 }
 
 export function LookCard({
@@ -35,11 +38,13 @@ export function LookCard({
   ownedItems,
   ownedNotices,
   fit,
+  footwear,
   locks,
   lockDisabled,
   replaceDisabled,
   onToggleLock,
   onReplaceItem,
+  onTryOn,
 }: LookCardProps) {
   const items = SLOTS.flatMap((slot) => {
     const item = look.items[slot];
@@ -52,6 +57,11 @@ export function LookCard({
         <h2 id={`${look.id}-title`}>{look.id.replaceAll("_", " ")}</h2>
         <p className="look-total">{formatMoney(lookCost(look, plan, catalog))}</p>
       </header>
+      {onTryOn && (
+        <button className="text-button no-print" onClick={() => onTryOn(look.id)} type="button">
+          Try this look on
+        </button>
+      )}
       <ul className="look-items">
         {items.map(({ slot, item }) => {
           const isLocked = locks.some(
@@ -66,6 +76,7 @@ export function LookCard({
               key={`${look.id}-${slot}`}
               catalog={catalog}
               fit={fit}
+              footwear={footwear}
               isLocked={isLocked}
               item={item}
               lockDisabled={lockDisabled}

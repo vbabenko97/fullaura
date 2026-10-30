@@ -1,9 +1,9 @@
 """Catalog records: a product has variants, and a variant is sold through one or more offers.
 
 A record states only what its source reports. A value the source does not give is null in the
-data and None here, never a guess (docs/DATA.md). Every field except a product's line and
-garment type and a variant's normalized size is required, so a catalog file must write an
-unknown value as an explicit null.
+data and None here, never a guess (docs/DATA.md). Every field except a product's line, garment
+type and footwear closure and a variant's normalized size is required, so a catalog file must
+write an unknown value as an explicit null.
 """
 
 from __future__ import annotations
@@ -101,6 +101,14 @@ class GarmentType(StrEnum):
     SKIRT = "skirt"
     LEGGINGS = "leggings"
     DRESS = "dress"
+
+
+class FootwearClosure(StrEnum):
+    """Whether a shoe covers the foot, from the retailer's own product type: a sneaker, shoe or
+    boot is closed; a slide, sandal or clog with an open heel is open."""
+
+    CLOSED = "closed"
+    OPEN = "open"
 
 
 class SizeSystem(StrEnum):
@@ -238,12 +246,15 @@ class Product(Record):
     category: Category
     line: Line | None = None  # None when the source gives no line
     garment_type: GarmentType | None = None  # for a bottom or one-piece; None when not given
+    footwear_closure: FootwearClosure | None = None  # for footwear; None when not given
     variants: tuple[Variant, ...] = Field(min_length=1)
 
     @model_validator(mode="after")
     def _only_bottoms_and_one_pieces_have_a_garment_type(self) -> Self:
         if self.garment_type and self.category not in (Category.BOTTOM, Category.ONE_PIECE):
             raise ValueError(f"A {self.category} product cannot have a garment type")
+        if self.footwear_closure and self.category is not Category.FOOTWEAR:
+            raise ValueError(f"A {self.category} product cannot have a footwear closure")
         return self
 
 

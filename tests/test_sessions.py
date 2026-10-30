@@ -1,6 +1,12 @@
-"""Anonymous demo session age and request limits."""
+"""Signed invite sessions and the in-memory record of each browser session's checked plan."""
 
-from backend.app.sessions import DemoSessionStore
+from backend.app.planner import Brief
+from backend.app.sessions import PlanMemory, Session, read_session, sign_session
+from backend.app.state import Budget, State
+
+SECRET = b"x" * 32
+BRIEF = Brief(style_goal="office")
+STATE = State(budget=Budget(amount_cents=10000))
 
 
 class FakeClock:
@@ -10,47 +16,39 @@ class FakeClock:
     def __call__(self) -> float:
         return self.seconds
 
-    def advance(self, seconds: float) -> None:
-        self.seconds += seconds
+
+def test_a_session_cookie_is_valid_only_with_the_secret_that_signed_it() -> None:
+    cookie = sign_session(SECRET, "invite1")
+    session = read_session(SECRET, cookie)
+    assert session is not None and session.invite_id == "invite1"
+    assert read_session(b"y" * 32, cookie) is None
+    other_invite = "invite2" + cookie.removeprefix("invite1")
+    assert read_session(SECRET, other_invite) is None
+    assert read_session(SECRET, None) is None and read_session(SECRET, "a.b") is None
+    assert sign_session(SECRET, "invite1") != cookie  # each browser gets its own key
 
 
-def test_planning_requires_age_confirmation_and_enforces_a_session_limit() -> None:
+def test_each_new_plan_gets_a_new_token_and_the_old_one_stops_working() -> None:
+    memory = PlanMemory()
+    session, other = Session("invite1", "key1"), Session("invite1", "key2")
+    first = memory.store(session, BRIEF, STATE, "catalog", "op-1")
+    assert memory.current(session, first.token) == first
+    assert memory.current(other, first.token) is None  # another browser of the same invite
+    second = memory.store(session, BRIEF, STATE, "catalog", "op-2")
+    assert second.version == 2
+    assert memory.current(session, first.token) is None
+    assert memory.current(session, None) is None
+    assert memory.current(session, second.token) == second
+
+
+def test_an_idle_plan_expires() -> None:
     clock = FakeClock()
-    sessions = DemoSessionStore(plan_request_limit=2, clock=clock)
-    session_id, initial = sessions.get_or_create(None)
-
-    assert initial.age_confirmed is False
-    assert sessions.check_plan_access(session_id)[0] == "age_required"
-    assert sessions.reserve_plan_request(session_id)[0] == "age_required"
-    confirmed = sessions.confirm_age(session_id)
-    assert confirmed is not None and confirmed.age_confirmed is True
-
-    first, first_view = sessions.reserve_plan_request(session_id)
-    second, second_view = sessions.reserve_plan_request(session_id)
-    third, third_view = sessions.reserve_plan_request(session_id)
-    assert (first, second, third) == ("ok", "ok", "limit")
-    assert first_view is not None and first_view.plan_requests_remaining == 1
-    assert second_view is not None and second_view.plan_requests_remaining == 0
-    assert third_view is not None and third_view.plan_requests_used == 2
-
-    another_id, another_session = sessions.get_or_create(None)
-    assert another_id != session_id
-    assert another_session.age_confirmed is False
-    assert another_session.plan_requests_remaining == 2
-
-
-def test_inactive_session_expires_and_restarts_with_a_fresh_quota() -> None:
-    clock = FakeClock()
-    sessions = DemoSessionStore(ttl_seconds=10, plan_request_limit=2, clock=clock)
-    session_id, _ = sessions.get_or_create(None)
-    assert sessions.confirm_age(session_id) is not None
-    assert sessions.reserve_plan_request(session_id)[0] == "ok"
-
-    clock.advance(10)
-    assert sessions.check_plan_access(session_id) == ("missing", None)
-
-    new_id, new_session = sessions.get_or_create(session_id)
-    assert new_id != session_id
-    assert new_session.age_confirmed is False
-    assert new_session.plan_requests_used == 0
-    assert new_session.plan_requests_remaining == 2
+    memory = PlanMemory(ttl_s=10, clock=clock)
+    session = Session("invite1", "key1")
+    memory.store(session, BRIEF, STATE, "catalog", None)
+    clock.seconds = 9
+    assert memory.get(session) is not None
+    clock.seconds = 18  # the read at 9 s extended it
+    assert memory.get(session) is not None
+    clock.seconds = 30
+    assert memory.get(session) is None

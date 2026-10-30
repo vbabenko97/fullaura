@@ -32,12 +32,13 @@ from backend.app.constraints import (
     lock_conflicts,
 )
 from backend.app.meta_images import RETRY_STATUS, error_detail, post_json_async
-from backend.app.state import ItemKind, ItemRef, Look, Plan, Slot, State
+from backend.app.state import FootwearChoice, ItemKind, ItemRef, Look, Plan, Slot, State
 
 BASETEN_URL = "https://inference.baseten.co/v1"  # Baseten Model APIs docs, checked 2026-10-27
 SPARK_MODEL = "meta-models/muse-spark-open-1026"
 DEADLINE_S = 150.0  # for the whole request, across every call
 GENERATION_ATTEMPTS = 2  # the first plan and one repair
+HTTP_ATTEMPTS_PER_CALL = 2
 # Keep reasoning bounded so the model can finish its JSON plan within the token cap.
 MAX_TOKENS = 6000
 REASONING_EFFORT = "medium"
@@ -55,13 +56,31 @@ class Outcome(StrEnum):
     PROVIDER_ERROR = "provider_error"
 
 
+class Occasion(StrEnum):
+    OFFICE = "office"
+    CASUAL = "casual"
+    EVENING = "evening"
+    TRAVEL = "travel"
+    SPECIAL_EVENT = "special_event"
+
+
+class Season(StrEnum):
+    SPRING = "spring"
+    SUMMER = "summer"
+    AUTUMN = "autumn"
+    WINTER = "winter"
+
+
 class Brief(Record):
-    """What the person wants from the looks, in their own words."""
+    """What the person wants from the looks, in their own words. Occasion and season are wishes
+    for the model; code checks neither."""
 
     style_goal: Annotated[str, Field(min_length=1, max_length=300)]
     preferred_colors: tuple[Annotated[str, Field(min_length=1, max_length=30)], ...] = Field(
         default=(), max_length=5
     )
+    occasion: Occasion | None = None
+    season: Season | None = None
 
 
 class Replacement(Record):
@@ -171,7 +190,7 @@ class SparkClient:
     base_url: str = BASETEN_URL
     # Each request is cancelled after this much total wall time or the plan's remaining budget.
     timeout_s: float = 60.0
-    max_attempts: int = 2
+    max_attempts: int = HTTP_ATTEMPTS_PER_CALL
     post: Callable[[Request, float], dict[str, Any]] = _post_json
     sleep: Callable[[float], None] = time.sleep
 
@@ -277,10 +296,12 @@ SYSTEM_PROMPT = f"""You are FullAura's stylist. Propose exactly three different 
 
 Use only item IDs from "candidates" and "owned_items". Each look maps slots to item IDs; the
 slots are {", ".join(slot.value for slot in Slot)}. A look has a top and a bottom, or a
-one_piece, and usually footwear. An item fills at most one slot in a look, and it may appear
-in several looks. Keep every entry of "locks" in its look and slot. Owned items cost nothing.
+one_piece, and usually footwear; when "footwear_required" is true, every look needs footwear.
+An item fills at most one slot in a look, and it may appear in several looks. Keep every
+entry of "locks" in its look and slot. Owned items cost nothing.
 Stay within the budget: with mode "per_look" each look's distinct catalog items, and with mode
 "whole_plan" all distinct catalog items across the looks, must cost at most amount_eur.
+Suit the brief's occasion and season when they are given.
 
 When "replacement" is present, replace its item with a different item in the stated look and
 slot. Keep every other slot exactly as it appears in "current_plan", including slots that are
@@ -301,9 +322,8 @@ def plan_looks(
 ) -> PlanResult:
     """Three checked looks for the brief, or the reason there are none."""
     usage = Usage()
-    conflicts = lock_conflicts(state, catalog)
     offers = cheapest_usable_offers(catalog, state)
-    conflicts += _base_outfit_conflicts(state, catalog, offers)
+    conflicts = infeasibility(state, catalog, offers)
     if conflicts:
         return _logged(PlanResult(Outcome.INFEASIBLE, usage, conflicts=tuple(conflicts)), client, 0)
 
@@ -351,12 +371,10 @@ def plan_looks(
             problems = str(error)
         else:
             plan = _preserve_replacement_positions(plan, state, replacement, catalog, offers)
-            checked_state = State.model_validate({**dict(state), "plan": plan})
-            check = check_plan(checked_state, catalog)
-            structural = _look_violations(plan, state, catalog)
-            structural.extend(_replacement_violations(plan, state, replacement))
-            if structural:
-                check = Check(tuple(structural) + check.violations, check.notices)
+            check = check_complete_plan(plan, state, catalog)
+            replaced = _replacement_violations(plan, state, replacement)
+            if replaced:
+                check = Check(tuple(replaced) + check.violations, check.notices)
             if check.passed:
                 result = PlanResult(Outcome.SUCCESS, usage, plan=plan, check=check)
             else:
@@ -391,6 +409,40 @@ def plan_looks(
         ),
     )
     return _logged(result, client, clock() - started)
+
+
+def infeasibility(
+    state: State, catalog: Catalog, offers: dict[str, Offer] | None = None
+) -> list[Violation]:
+    """Violations that every plan for this state would have, so no plan can pass; empty when a
+    plan may exist. Needs no model call."""
+    if offers is None:
+        offers = cheapest_usable_offers(catalog, state)
+    return lock_conflicts(state, catalog) + _base_outfit_conflicts(state, catalog, offers)
+
+
+def check_complete_plan(plan: Plan, state: State, catalog: Catalog) -> Check:
+    """Everything a plan must pass before it is shown: the look structure and the hard
+    constraints of docs/SPEC.md, against the state's budget, exclusions, fit and locks."""
+    check = check_plan(State.model_validate({**dict(state), "plan": plan}), catalog)
+    structural = _look_violations(plan, state, catalog)
+    return Check(tuple(structural) + check.violations, check.notices) if structural else check
+
+
+def with_cheapest_offers(plan: Plan, state: State, catalog: Catalog) -> Plan:
+    """The same looks, each catalog variant bought through its cheapest offer that passes the
+    checks now, as the planner chooses offers."""
+    offers = cheapest_usable_offers(catalog, state)
+    used = {
+        item.id
+        for look in plan.looks
+        for item in look.items.values()
+        if item.kind is ItemKind.CATALOG
+    }
+    return Plan(
+        looks=plan.looks,
+        selected_offers={variant_id: _offer_id(variant_id, catalog, offers) for variant_id in used},
+    )
 
 
 def _preserve_replacement_positions(
@@ -462,6 +514,14 @@ def _look_violations(plan: Plan, state: State, catalog: Catalog) -> list[Violati
     owned = {item.id: item for item in state.owned_items}
     violations = []
     for look in plan.looks:
+        if state.footwear is not FootwearChoice.ANY and Slot.FOOTWEAR not in look.items:
+            violations.append(
+                Violation(
+                    Rule.LOOK_COMPOSITION,
+                    f"{look.id} needs {state.footwear} footwear",
+                    look_id=look.id,
+                )
+            )
         has_top = Slot.TOP in look.items
         has_bottom = Slot.BOTTOM in look.items
         has_one_piece = Slot.ONE_PIECE in look.items
@@ -542,25 +602,35 @@ def _replacement_violations(
 def _base_outfit_conflicts(
     state: State, catalog: Catalog, offers: dict[str, Offer]
 ) -> list[Violation]:
-    """A violation when no usable catalog variant or owned item completes a top and bottom or a
-    one-piece, so no plan can pass. Budget and locks are left to the other checks."""
+    """Violations when no usable catalog variant or owned item completes a top and bottom or a
+    one-piece, or provides the footwear every look needs, so no plan can pass. Budget and locks
+    are left to the other checks."""
     categories = {item.category for item in state.owned_items} | {
         product.category
         for product in catalog.products
         for variant in product.variants
         if variant.id in offers
     }
-    if Category.ONE_PIECE in categories or (
+    conflicts = []
+    if Category.ONE_PIECE not in categories and not (
         categories & _SLOT_CATEGORIES[Slot.TOP] and Category.BOTTOM in categories
     ):
-        return []
-    return [
-        Violation(
-            Rule.LOOK_COMPOSITION,
-            "No catalog variant that passes the checks, and no owned item, completes a top "
-            "and bottom or a one_piece",
+        conflicts.append(
+            Violation(
+                Rule.LOOK_COMPOSITION,
+                "No catalog variant that passes the checks, and no owned item, completes a top "
+                "and bottom or a one_piece",
+            )
         )
-    ]
+    if state.footwear is not FootwearChoice.ANY and Category.FOOTWEAR not in categories:
+        conflicts.append(
+            Violation(
+                Rule.FOOTWEAR,
+                f"No {state.footwear} catalog footwear passes the checks, and no owned item is "
+                "footwear",
+            )
+        )
+    return conflicts
 
 
 def _request(
@@ -578,6 +648,7 @@ def _request(
             "category": product.category.value,
             "color": variant.color,
             "price_eur": (offers[variant.id].price_cents or 0) / 100,
+            **({"closure": product.footwear_closure.value} if product.footwear_closure else {}),
         }
         for product in catalog.products
         for variant in product.variants
@@ -589,6 +660,7 @@ def _request(
             "amount_eur": state.budget.amount_cents / 100,
             "mode": state.budget.mode.value,
         },
+        "footwear_required": state.footwear is not FootwearChoice.ANY,
         "owned_items": [item.model_dump(mode="json") for item in state.owned_items],
         "replacement": (replacement.model_dump(mode="json") if replacement is not None else None),
         "current_plan": (

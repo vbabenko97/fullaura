@@ -20,6 +20,7 @@ from backend.app.catalog import (
     Catalog,
     Category,
     CompositionStatus,
+    FootwearClosure,
     Line,
     Offer,
     Product,
@@ -29,7 +30,16 @@ from backend.app.catalog import (
     Variant,
     generic_material,
 )
-from backend.app.state import Budget, BudgetMode, Fit, ItemKind, ItemRef, LockedPlacement, State
+from backend.app.state import (
+    Budget,
+    BudgetMode,
+    Fit,
+    FootwearChoice,
+    ItemKind,
+    ItemRef,
+    LockedPlacement,
+    State,
+)
 
 DELIVERY_COUNTRY = "AT"
 _WORD = re.compile(r"[a-z]+(?:'[a-z]+)*")
@@ -56,6 +66,7 @@ class Rule(StrEnum):
     MATERIAL = "material"  # the composition lists an excluded material
     COMPOSITION_UNCHECKED = "composition_unchecked"  # not complete, so an exclusion cannot pass
     FIT = "fit"  # outside the lines, garment types or sizes the person stated
+    FOOTWEAR = "footwear"  # not the closed or open shoes the person chose, or closure unknown
     DELIVERY = "delivery"  # delivery to Austria is not confirmed
     STOCK = "stock"  # the selected offer reports the variant out of stock
     LOCK = "lock"
@@ -207,6 +218,21 @@ def _fit_violations(product: Product, variant: Variant, fit: Fit) -> list[Violat
     return [Violation(Rule.FIT, f"{variant.id} {reason}", item) for reason in reasons]
 
 
+def footwear_violations(
+    product: Product, variant: Variant, choice: FootwearChoice
+) -> list[Violation]:
+    """Why this variant is not the closed or open footwear the person chose; empty if it is, or
+    if it is not footwear. A shoe whose closure the source does not give fails either choice."""
+    if choice is FootwearChoice.ANY or product.category is not Category.FOOTWEAR:
+        return []
+    closure = product.footwear_closure
+    if closure is FootwearClosure(choice.value):
+        return []
+    reason = f"is {closure} footwear" if closure else "has no recorded closure"
+    item = ItemRef(kind=ItemKind.CATALOG, id=variant.id)
+    return [Violation(Rule.FOOTWEAR, f"{variant.id} {reason}, not {choice}", item)]
+
+
 def _size_matches(size: Size, given: Size) -> bool:
     """Whether a variant's size is the size the person gave in the same system. Each size has
     one stored form, so equal values are equal sizes; a waist given without a length matches
@@ -223,7 +249,9 @@ def cheapest_usable_offers(catalog: Catalog, state: State) -> dict[str, Offer]:
     usable = {}
     for product in catalog.products:
         for variant in product.variants:
-            if fit_violations(product, variant, state.fit):
+            if fit_violations(product, variant, state.fit) or footwear_violations(
+                product, variant, state.footwear
+            ):
                 continue
             offers = [o for o in variant.offers if not item_violations(variant, o, exclusions)]
             if offers:
@@ -288,6 +316,7 @@ def check_plan(state: State, catalog: Catalog) -> Check:
             violations.append(Violation(Rule.UNKNOWN_ITEM, f"No catalog record {item.id}", item))
             continue
         violations.extend(_fit_violations(product, variant, state.fit))
+        violations.extend(footwear_violations(product, variant, state.footwear))
         offer_id = plan.selected_offers.get(item.id, "")
         offer = variant.offer(offer_id)
         if offer is None:
@@ -339,6 +368,7 @@ def lock_conflicts(state: State, catalog: Catalog) -> list[Violation]:
             violations.append(Violation(Rule.UNKNOWN_ITEM, f"No catalog record {item.id}", item))
             continue
         misfits = _fit_violations(product, variant, state.fit)
+        misfits += footwear_violations(product, variant, state.footwear)
         if misfits:
             violations.extend(misfits)
             continue

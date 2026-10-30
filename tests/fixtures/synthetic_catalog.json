@@ -291,6 +291,7 @@
       "title": "White trainers",
       "brand": null,
       "category": "footwear",
+      "footwear_closure": "closed",
       "variants": [
         {
           "id": "P07",
@@ -331,6 +332,7 @@
       "title": "Black derby shoes",
       "brand": null,
       "category": "footwear",
+      "footwear_closure": "closed",
       "variants": [
         {
           "id": "P08",
@@ -792,6 +794,7 @@
       "brand": null,
       "category": "footwear",
       "line": "unisex",
+      "footwear_closure": "closed",
       "variants": [
         {
           "id": "P18",

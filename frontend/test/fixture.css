@@ -1,9 +1,0 @@
-.fixture-banner {
-  max-width: var(--container);
-  margin: 0 auto;
-  padding: var(--space-sm) var(--space-md);
-  background: var(--color-ink);
-  color: var(--color-accent-ink);
-  font-size: var(--text-sm);
-  text-align: center;
-}

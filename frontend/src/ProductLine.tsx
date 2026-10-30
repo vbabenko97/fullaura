@@ -1,6 +1,6 @@
 import { formatCheckedDate, formatMoney, labelCategory, labelSlot } from "./format";
 import { catalogItem, hasReplacementAlternative, selectedOffer } from "./plan";
-import type { Catalog, Fit, ItemRef, Look, OwnedItem, OwnedNotice, Plan, Slot } from "./types";
+import type { Catalog, Fit, FootwearChoice, ItemRef, Look, OwnedItem, OwnedNotice, Plan, Slot } from "./types";
 
 interface ProductLineProps {
   catalog: Catalog;
@@ -11,6 +11,7 @@ interface ProductLineProps {
   ownedItems: OwnedItem[];
   ownedNotices: OwnedNotice[];
   fit: Fit | undefined;
+  footwear: FootwearChoice;
   isLocked: boolean;
   lockDisabled: boolean;
   replaceDisabled: boolean;
@@ -27,13 +28,14 @@ export function ProductLine({
   ownedItems,
   ownedNotices,
   fit,
+  footwear,
   isLocked,
   lockDisabled,
   replaceDisabled,
   onToggleLock,
   onReplaceItem,
 }: ProductLineProps) {
-  const hasAlternative = hasReplacementAlternative(catalog, ownedItems, item, slot, fit);
+  const hasAlternative = hasReplacementAlternative(catalog, ownedItems, item, slot, fit, footwear);
   if (item.kind === "owned") {
     const owned = ownedItems.find((candidate) => candidate.id === item.id);
     const notices = ownedNotices.filter((notice) => notice.item.id === item.id);
@@ -139,7 +141,7 @@ export function ProductLine({
       <h3>{entry.product.title}</h3>
       {facts && <p className="item-facts">{facts}</p>}
       <p className="item-facts">{composition}</p>
-      {offer?.stock === null && <p className="item-facts">Stock unknown</p>}
+      {offer?.stock === null && <p className="item-facts">Stock not reported</p>}
       <div className="item-source">
         <span className="item-price">{formatMoney(offer?.price_cents ?? null)}</span>
         {offerLink ? (
