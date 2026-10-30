@@ -268,7 +268,7 @@ Each decision has a number that is never reused and a status: accepted, proposed
 ## D-35: Compare planning with the cheapest admissible outfit baseline
 
 - **Date:** 2026-10-29
-- **Status:** accepted
+- **Status:** superseded by [D-42](#d-42-t-06-compares-with-the-cheapest-outfit-baseline-and-judges-only-the-fit-case)
 - **Decision:** T-06 compares the full planner and a deterministic baseline on the same fixed, non-personal cases. The baseline chooses the three cheapest distinct complete outfits from variants that pass the existing item checks, then validates each complete plan with `check_plan`. Hard-constraint outcomes and provider usage are recorded by code; style relevance, color coherence, visual variety and wearability remain separate human scores. [EVALUATION.md](EVALUATION.md) defines the cases and measurements.
 - **Reason:** A reproducible price-only baseline gives the live planner a concrete comparison while retaining the existing hard constraints. A human judges style and color instead of pretending the baseline or code can score taste.
 - **Consequences:** The three-case live comparison is recorded in [EVALUATION.md](EVALUATION.md). The baseline does not establish general quality, fit, stock availability or broad preference. T-06 remains open until human scoring, the demo and submission are complete.
@@ -284,7 +284,7 @@ Each decision has a number that is never reused and a status: accepted, proposed
 ## D-37: The demo is accepted on its wearer's scores, set before the run
 
 - **Date:** 2026-10-30
-- **Status:** accepted
+- **Status:** superseded by [D-41](#d-41-the-demo-is-accepted-on-its-wearers-yes-or-no-answers-set-before-the-run)
 - **Decision:** The project author is the demo wearer. The author states a fit, gets a plan, and scores each of the three looks on the T-06 scale; the demo flow is accepted when every look scores at least 4 for style relevance and for wearability. This acceptance is recorded apart from the T-06 comparison, which scores whole plans on fixed, non-personal cases.
 - **Reason:** The threshold is fixed before the run so that the result cannot be adjusted to it. One named wearer makes "three looks that suit a person" testable within the hackathon.
 - **Consequences:** The acceptance shows the flow works for one person; it is not evidence of general preference or fit.
@@ -312,3 +312,19 @@ Each decision has a number that is never reused and a status: accepted, proposed
 - **Decision:** The T-06 runner adds a fourth fixed case, `mens-fit-per-look`, that states an example fit: men's line, trousers or jeans, size L, waist and length 32/32, and EU shoe size 42 or 43, with €250 per look and no material exclusion. The three earlier cases keep no fit and serve as the regression set. A live run keeps the cap of 12 HTTP attempts, now shared by all the cases in the run. A case starts only while at least four attempts, its full allowance, remain; otherwise it gets no model call and is recorded as not run. [EVALUATION.md](EVALUATION.md) has the cases.
 - **Reason:** The three earlier cases state no fit, so rerunning them checks for regressions but not the fit constraint ([D-36](#d-36-the-person-states-whom-the-looks-are-for)). The example fit is the one the tests use and is not a real person's, so the cases stay non-personal; the demo wearer's own fit is checked in the acceptance ([D-37](#d-37-the-demo-is-accepted-on-its-wearers-scores-set-before-the-run)).
 - **Consequences:** The new case has no result from the 2026-10-29 run to compare with. A full live run costs no more than before, at most 12 HTTP attempts, but it no longer guarantees every case a model call: each case can use up to four attempts, and the fit case runs last. If the first three cases leave fewer than four attempts, the fit case is run on its own. A case is never cut short by the cap, so a provider error in the results comes from the provider.
+
+## D-41: The demo is accepted on its wearer's yes-or-no answers, set before the run
+
+- **Date:** 2026-10-30
+- **Status:** accepted
+- **Decision:** The project author is the demo wearer. The author states a fit on the deployed site, gets a plan and answers two questions for each of the three looks of the first plan, before any edit: "Is this what I asked for?" and "Would I go and try this on?" The demo flow is accepted when all six answers are yes. This acceptance is recorded apart from the T-06 comparison. It replaces the threshold of 4 for style relevance and wearability in [D-37](#d-37-the-demo-is-accepted-on-its-wearers-scores-set-before-the-run).
+- **Reason:** The author cannot reliably score style relevance or color coherence, so a threshold on those scales would not show whether the looks suit the wearer. Both questions need no styling expertise, and whether to try an item on is the decision FullAura supports. The rule is fixed before the run so that the result cannot be adjusted to it.
+- **Consequences:** The acceptance shows the flow works for one person; it is not evidence of general preference or fit. The interface has no previews or product images, so the wearer judges each look from item names, catalog colors and the retailer pages.
+
+## D-42: T-06 compares with the cheapest outfit baseline and judges only the fit case
+
+- **Date:** 2026-10-30
+- **Status:** accepted
+- **Decision:** T-06 compares the full planner and a deterministic baseline on the same fixed, non-personal cases. The baseline chooses the three cheapest distinct complete outfits from variants that pass the existing item checks, then validates each complete plan with `check_plan`. Code records hard-constraint outcomes and provider usage for every case. A person judges only `mens-fit-per-look` ([D-40](#d-40-the-t-06-comparison-adds-a-case-with-an-example-fit)): for each look of both plans, they answer the two questions of [D-41](#d-41-the-demo-is-accepted-on-its-wearers-yes-or-no-answers-set-before-the-run) as the person who made the request. The cases without a fit check hard constraints only. This replaces the four 1–5 scores of [D-35](#d-35-compare-planning-with-the-cheapest-admissible-outfit-baseline). [EVALUATION.md](EVALUATION.md) defines the cases and measurements.
+- **Reason:** In the cases without a fit, plans mix men's and women's lines and sizes, so no single person can say whether they would try the looks on. The four scales asked for styling judgments that the available rater cannot make reliably. A reproducible price-only baseline still gives the planner a concrete comparison.
+- **Consequences:** The human comparison rests on one case with three looks per approach, which supports a pilot observation only. The 2026-10-29 run has no fit case and gets no human answers; its machine-checked results stay recorded. The baseline does not establish general quality, fit, stock availability or broad preference. T-06 remains open until the human answers, the demo and submission are complete.
