@@ -12,6 +12,7 @@ export default defineConfig({
   use: {
     ...devices["Desktop Chrome"],
     baseURL: process.env.FULLAURA_LIVE_URL ?? "http://127.0.0.1:8000",
+    permissions: ["clipboard-read", "clipboard-write"],
     trace: "off",
     screenshot: "off",
   },
