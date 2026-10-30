@@ -74,7 +74,7 @@ An offline run is the default and creates the baseline plans and a blank human-s
 uv run --frozen python -m scripts.evaluate_planner
 ```
 
-A live run calls Baseten's exact hackathon model. The four-case run is capped at 16 HTTP attempts: up to two model generations per case, with up to two HTTP attempts per generation. At 6,000 output tokens per attempt, 96,000 output tokens would cost about $0.408 at the listed output rate, plus input tokens. This is an estimate for the configured token limits, not a complete cost ceiling.
+A live run calls Baseten's exact hackathon model. All the cases in a run share a cap of 12 HTTP attempts. A case can use up to four: two model generations, each with up to two HTTP attempts. The cases run in the order of the table above. Once the cap is spent, each remaining case is recorded in `run.json` as not run, with no model call; a case that the cap stops part-way ends as `provider_error`. In the 2026-10-29 run each case used one attempt. If the first three cases use all 12 attempts, `mens-fit-per-look` can be run on its own with `--case-id`. At 6,000 output tokens per attempt, 72,000 output tokens would cost about $0.306 at the listed output rate, plus input tokens. This is an estimate for the configured token limits, not a complete cost ceiling.
 
 ```bash
 uv run --frozen --env-file .env python -m scripts.evaluate_planner \

@@ -41,7 +41,7 @@ from backend.app.state import Budget, BudgetMode, Fit, ItemKind, ItemRef, Look, 
 
 ROOT = Path(__file__).resolve().parents[1]
 CATALOG_FILE = ROOT / "backend" / "data" / "catalog.json"
-MAX_LIVE_HTTP_ATTEMPTS = 16
+MAX_LIVE_HTTP_ATTEMPTS = 12  # shared by all cases in a run
 MAX_HTTP_ATTEMPTS_PER_GENERATION = 2
 INPUT_USD_PER_MILLION_TOKENS = 1.25
 OUTPUT_USD_PER_MILLION_TOKENS = 4.25
@@ -438,13 +438,13 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def main() -> None:
+def main(output_root: Path = ROOT / "runs" / "t06") -> None:
     args = parse_args()
     cases = [case for case in CASES if not args.case_id or case.id in args.case_id]
     catalog_bytes = CATALOG_FILE.read_bytes()
     catalog = Catalog.model_validate_json(catalog_bytes)
     now = datetime.now(UTC)
-    output_dir = ROOT / "runs" / "t06" / now.strftime("%Y%m%dT%H%M%S%fZ")
+    output_dir = output_root / now.strftime("%Y%m%dT%H%M%S%fZ")
     git_sha = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=ROOT,
@@ -484,16 +484,13 @@ def main() -> None:
         raise SystemExit(f"The T-06 runner requires model {SPARK_MODEL}")
     if settings and settings.baseten_base_url not in ("", BASETEN_URL):
         raise SystemExit(f"The T-06 runner requires endpoint {BASETEN_URL}")
-    max_http_attempts = len(cases) * GENERATION_ATTEMPTS * MAX_HTTP_ATTEMPTS_PER_GENERATION
-    if max_http_attempts > MAX_LIVE_HTTP_ATTEMPTS:
-        raise SystemExit("Selected cases exceed the T-06 HTTP attempt limit")
     run["model"] = SPARK_MODEL if args.live else None
     run["base_url"] = BASETEN_URL if args.live else None
     run["attempt_limits"] = {
         "cases": len(cases),
         "generations_per_case": GENERATION_ATTEMPTS,
         "http_attempts_per_generation": MAX_HTTP_ATTEMPTS_PER_GENERATION,
-        "total_http_attempts": max_http_attempts,
+        "total_http_attempts": MAX_LIVE_HTTP_ATTEMPTS,
     }
     run["provider_response_file"] = "provider_responses.jsonl" if args.live else None
     output_dir.mkdir(parents=True, exist_ok=False)
@@ -538,7 +535,14 @@ def main() -> None:
         }
         score_rows.append(score_row(case.id, "cheapest_baseline", baseline_metrics))
 
-        if settings and response_recorder:
+        if (
+            response_recorder
+            and response_recorder.http_attempts >= response_recorder.max_http_attempts
+        ):
+            # The run's shared attempts are spent, so this case gets no model call.
+            response_recorder.limit_reached = True
+            case_result["muse_spark_not_run"] = "T-06 HTTP attempt limit reached"
+        elif settings and response_recorder:
             client = SparkClient(
                 api_key=settings.baseten_api_key,
                 base_url=BASETEN_URL,
@@ -571,6 +575,8 @@ def main() -> None:
                 f"tokens={model['prompt_tokens']}+{model['completion_tokens']}; "
                 f"rejected_constraints={model['rejected_violation_count']}"
             )
+        elif "muse_spark_not_run" in metrics:
+            print(f"  Muse Spark: not run; {metrics['muse_spark_not_run']}")
 
 
 if __name__ == "__main__":

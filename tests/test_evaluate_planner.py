@@ -2,7 +2,9 @@
 
 import io
 import json
+import sys
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request
@@ -13,6 +15,7 @@ from backend.app.catalog import Catalog, Size
 from backend.app.constraints import check_plan
 from backend.app.planner import GENERATION_ATTEMPTS, ProviderError, SparkClient
 from backend.app.state import Fit, Slot
+from scripts import evaluate_planner
 from scripts.evaluate_planner import (
     CASES,
     MAX_HTTP_ATTEMPTS_PER_GENERATION,
@@ -62,9 +65,36 @@ def test_cheapest_baseline_is_reproducible() -> None:
         assert cheapest_baseline(case, CATALOG) == cheapest_baseline(case, CATALOG)
 
 
-def test_four_case_live_run_is_capped_at_sixteen_http_attempts() -> None:
-    assert len(CASES) * GENERATION_ATTEMPTS * MAX_HTTP_ATTEMPTS_PER_GENERATION == 16
-    assert MAX_LIVE_HTTP_ATTEMPTS == 16
+def test_a_live_run_of_every_case_shares_twelve_http_attempts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Each generation gets a 500 and then an unusable reply, so a case spends all four attempts.
+    sent = 0
+
+    def post(request: Request, timeout_s: float) -> dict:
+        nonlocal sent
+        sent += 1
+        if sent % 2:
+            raise HTTPError(request.full_url, 500, "Server Error", {}, io.BytesIO(b"{}"))
+        return {"choices": [{"message": {"content": "not a plan"}, "finish_reason": "stop"}]}
+
+    client = partial(SparkClient, post=post, sleep=lambda _: None)
+    monkeypatch.setattr(evaluate_planner, "SparkClient", client)
+    monkeypatch.setenv("BASETEN_API_KEY", "test-secret")
+    monkeypatch.delenv("BASETEN_MODEL", raising=False)
+    monkeypatch.delenv("BASETEN_BASE_URL", raising=False)
+    case_args = [arg for case in CASES for arg in ("--case-id", case.id)]
+    monkeypatch.setattr(sys, "argv", ["evaluate_planner", "--live", *case_args])
+
+    evaluate_planner.main(output_root=tmp_path)
+
+    run = json.loads(next(tmp_path.glob("*/run.json")).read_text(encoding="utf-8"))
+    per_case = GENERATION_ATTEMPTS * MAX_HTTP_ATTEMPTS_PER_GENERATION
+    assert sent == run["http_attempts_used"] == MAX_LIVE_HTTP_ATTEMPTS == 3 * per_case
+    assert run["attempt_limit_reached"]
+    *spent, last = (run["cases"][case.id] for case in CASES)
+    assert [case["muse_spark"]["http_attempts"] for case in spent] == [per_case] * 3
+    assert "muse_spark" not in last and last["muse_spark_not_run"]
 
 
 def test_response_recorder_stores_payloads_and_blocks_attempts_over_the_cap(
