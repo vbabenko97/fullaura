@@ -21,7 +21,7 @@
 | Baseten API key | Container Apps secret `baseten-api-key`, referenced by `BASETEN_API_KEY` |
 | Image | `ghcr.io/vbabenko97/fullaura@sha256:9fececb06a258c5074aa3340e054a7d3d723c0153f69381b5ca9301526169fb5` (tag `e918d07-linux-amd64`, `linux/amd64`) |
 | Application source | `main` at `e918d07` |
-| Rollback image | `ghcr.io/vbabenko97/fullaura@sha256:3e33cff2c0249e0cc08fd40e93bcee8ad83328df969a83506c13ea6bfdd4805f`, built from `18ed8df`, served by revision `fullaura-demo--0000001` |
+| Rollback image | `ghcr.io/vbabenko97/fullaura@sha256:3e33cff2c0249e0cc08fd40e93bcee8ad83328df969a83506c13ea6bfdd4805f`, built from `18ed8df`, previously served by revision `fullaura-demo--0000001` |
 | Successful ARM deployment | `fullaura-francecentral-amd64-20261029`; the image was updated on 2026-10-30 with `az containerapp update` |
 
 The image is public and an anonymous pull of the pinned digest succeeded. The Baseten key is stored as an encrypted Container Apps secret; it is not in the image or Bicep template. The resource group and the existing subscription-level budget remain in place.
@@ -32,7 +32,7 @@ On 2026-10-29, Baseten's pinned answer in the hackathon `#baseten` channel confi
 
 Revision `fullaura-demo--0000002` writes one `backend.app.planner` line to the container log for each planning request the planner completes, whatever its outcome. The line gives the outcome, model, model calls, HTTP attempts, token counts, completed proposals, format failures, constraint failures, constraint violations and latency. It holds nothing the person entered: no brief, colors, budget, material exclusions, sizes or owned items. The Container Apps environment sends the container log to the Log Analytics workspace, where the line appears in `ContainerAppConsoleLogs_CL`. Revision `fullaura-demo--0000001` did not record planning usage: its logging setup discarded the line.
 
-The Uvicorn access log records the method, path, status and client address of each request, but not request bodies or cookies. On 2026-10-30 the client address it recorded was `100.100.0.67`, an internal address of the Container Apps ingress, not the visitor's IP. Uvicorn trusts forwarded client addresses only from 127.0.0.1, and `FORWARDED_ALLOW_IPS` is not set.
+The Uvicorn access log records the method, path, status and client address of each request, but not request bodies or cookies. On 2026-10-30 the client address it recorded was `100.100.0.67`, an internal address of the Container Apps ingress, not the visitor's IP. Uvicorn trusts forwarded client addresses only from 127.0.0.1 and ::1, and `FORWARDED_ALLOW_IPS` is not set.
 
 ## Smoke check
 
