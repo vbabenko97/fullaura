@@ -484,13 +484,14 @@ def main(output_root: Path = ROOT / "runs" / "t06") -> None:
         raise SystemExit(f"The T-06 runner requires model {SPARK_MODEL}")
     if settings and settings.baseten_base_url not in ("", BASETEN_URL):
         raise SystemExit(f"The T-06 runner requires endpoint {BASETEN_URL}")
+    attempts_per_case = GENERATION_ATTEMPTS * MAX_HTTP_ATTEMPTS_PER_GENERATION
     run["model"] = SPARK_MODEL if args.live else None
     run["base_url"] = BASETEN_URL if args.live else None
     run["attempt_limits"] = {
         "cases": len(cases),
         "generations_per_case": GENERATION_ATTEMPTS,
         "http_attempts_per_generation": MAX_HTTP_ATTEMPTS_PER_GENERATION,
-        "total_http_attempts": MAX_LIVE_HTTP_ATTEMPTS,
+        "total_http_attempts": min(len(cases) * attempts_per_case, MAX_LIVE_HTTP_ATTEMPTS),
     }
     run["provider_response_file"] = "provider_responses.jsonl" if args.live else None
     output_dir.mkdir(parents=True, exist_ok=False)
@@ -537,11 +538,16 @@ def main(output_root: Path = ROOT / "runs" / "t06") -> None:
 
         if (
             response_recorder
-            and response_recorder.http_attempts >= response_recorder.max_http_attempts
+            and response_recorder.max_http_attempts - response_recorder.http_attempts
+            < attempts_per_case
         ):
-            # The run's shared attempts are spent, so this case gets no model call.
+            # A case cut short by the shared cap would look like a provider failure, so a case
+            # runs only with its full allowance left.
             response_recorder.limit_reached = True
-            case_result["muse_spark_not_run"] = "T-06 HTTP attempt limit reached"
+            case_result["muse_spark_not_run"] = (
+                f"fewer than {attempts_per_case} of the run's "
+                f"{response_recorder.max_http_attempts} HTTP attempts remained"
+            )
         elif settings and response_recorder:
             client = SparkClient(
                 api_key=settings.baseten_api_key,

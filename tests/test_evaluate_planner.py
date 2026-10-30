@@ -13,12 +13,11 @@ import pytest
 
 from backend.app.catalog import Catalog, Size
 from backend.app.constraints import check_plan
-from backend.app.planner import GENERATION_ATTEMPTS, ProviderError, SparkClient
+from backend.app.planner import ProviderError, SparkClient
 from backend.app.state import Fit, Slot
 from scripts import evaluate_planner
 from scripts.evaluate_planner import (
     CASES,
-    MAX_HTTP_ATTEMPTS_PER_GENERATION,
     MAX_LIVE_HTTP_ATTEMPTS,
     ProviderResponseRecorder,
     cheapest_baseline,
@@ -65,16 +64,27 @@ def test_cheapest_baseline_is_reproducible() -> None:
         assert cheapest_baseline(case, CATALOG) == cheapest_baseline(case, CATALOG)
 
 
-def test_a_live_run_of_every_case_shares_twelve_http_attempts(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+@pytest.mark.parametrize(
+    ("server_errors", "attempts_per_case"),
+    [
+        # A generation that gets a 500 retries, and every reply is unusable, so each
+        # generation is followed by a repair.
+        pytest.param({1, 3, 5, 7, 9, 11}, [4, 4, 4], id="cap-spent"),
+        pytest.param({1, 3, 5, 7, 9}, [4, 4, 3], id="one-attempt-left"),
+    ],
+)
+def test_a_live_run_starts_a_case_only_with_its_full_share_of_twelve_attempts_left(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    server_errors: set[int],
+    attempts_per_case: list[int],
 ) -> None:
-    # Each generation gets a 500 and then an unusable reply, so a case spends all four attempts.
     sent = 0
 
     def post(request: Request, timeout_s: float) -> dict:
         nonlocal sent
         sent += 1
-        if sent % 2:
+        if sent in server_errors:
             raise HTTPError(request.full_url, 500, "Server Error", {}, io.BytesIO(b"{}"))
         return {"choices": [{"message": {"content": "not a plan"}, "finish_reason": "stop"}]}
 
@@ -89,11 +99,11 @@ def test_a_live_run_of_every_case_shares_twelve_http_attempts(
     evaluate_planner.main(output_root=tmp_path)
 
     run = json.loads(next(tmp_path.glob("*/run.json")).read_text(encoding="utf-8"))
-    per_case = GENERATION_ATTEMPTS * MAX_HTTP_ATTEMPTS_PER_GENERATION
-    assert sent == run["http_attempts_used"] == MAX_LIVE_HTTP_ATTEMPTS == 3 * per_case
+    assert run["attempt_limits"]["total_http_attempts"] == MAX_LIVE_HTTP_ATTEMPTS == 12
+    assert sent == run["http_attempts_used"] == sum(attempts_per_case)
     assert run["attempt_limit_reached"]
     *spent, last = (run["cases"][case.id] for case in CASES)
-    assert [case["muse_spark"]["http_attempts"] for case in spent] == [per_case] * 3
+    assert [case["muse_spark"]["http_attempts"] for case in spent] == attempts_per_case
     assert "muse_spark" not in last and last["muse_spark_not_run"]
 
 
