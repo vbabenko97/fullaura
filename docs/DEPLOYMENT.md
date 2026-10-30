@@ -1,6 +1,6 @@
 # Azure demo deployment
 
-**Status:** The demo is deployed to Azure Container Apps in France Central. The app is publicly reachable over HTTPS, while public planning and photo previews remain disabled. The Baseten DevRain workspace was not changed.
+**Status:** The demo is deployed to Azure Container Apps in France Central. Public planning is enabled; photo previews remain disabled. The Baseten DevRain workspace was not changed.
 
 ## Deployed configuration
 
@@ -12,18 +12,22 @@
 | Log Analytics workspace | `law-fullaura-demo-frc`, 30-day retention |
 | Container Apps environment | `cae-fullaura-demo-frc`, Consumption workload profile |
 | Container App | `fullaura-demo` |
-| Revision | `fullaura-demo--oqzvs62`, healthy at the smoke check |
+| Revision | `fullaura-demo--0000001`, ready after the live planning check |
 | Compute and scaling | 0.5 vCPU / 1 GiB; minimum 0 and maximum 1 replica |
 | Ingress | External HTTPS, target port 8000, insecure HTTP disabled |
-| Public planning | `FULLAURA_PUBLIC_DEMO_ENABLED=false` |
+| Public planning | `FULLAURA_PUBLIC_DEMO_ENABLED=true` |
 | Photo previews | `FULLAURA_T02_PREVIEWS_PASSED=false` |
+| Planning model | `meta-models/muse-spark-open-1026` at `https://inference.baseten.co/v1` |
+| Baseten API key | Container Apps secret `baseten-api-key`, referenced by `BASETEN_API_KEY` |
 | Image | `ghcr.io/vbabenko97/fullaura@sha256:3e33cff2c0249e0cc08fd40e93bcee8ad83328df969a83506c13ea6bfdd4805f` (`linux/amd64`) |
 | Application source | Docker inputs in deployment commit `767d57e` match application commit `18ed8df` |
 | Successful ARM deployment | `fullaura-francecentral-amd64-20261029` |
 
-The image is public and an anonymous pull of the pinned digest succeeded. The deployment contains no provider API keys. The resource group and the existing subscription-level budget remain in place.
+The image is public and an anonymous pull of the pinned digest succeeded. The Baseten key is stored as an encrypted Container Apps secret; it is not in the image or Bicep template. The resource group and the existing subscription-level budget remain in place.
 
-The existing `fullaura-monthly` budget is $20 per month from 2026-10-01 through 2027-10-01, with actual-spend notifications at 50%, 80%, and 100%. Budgets notify; they do not stop resources or cap usage. The Free Trial spending limit remains on. The latest billing record available during the pre-deployment check showed a $200 closed balance expiring 2026-11-22 18:56 UTC; this was not a live estimated balance.
+The existing `fullaura-monthly` budget is $20 per month from 2026-10-01 through 2027-10-01, with actual-spend notifications at 50%, 80%, and 100%. Budgets notify; they do not stop resources or cap usage. The Free Trial spending limit remains on. The last billing record available during the pre-deployment check showed a $200 closed balance expiring 2026-11-22 18:56 UTC; this was not a live estimated balance.
+
+On 2026-10-29, Baseten's pinned answer in the hackathon `#baseten` channel confirmed that the $100 grant is attached to the hackathon API key, not a personal workspace; personal workspace budgets do not apply. Baseten said no payment method is needed and the key cannot be charged beyond $100. The remaining credit cannot be viewed. The planning API returns prompt and completion token counts, which provide an activity record but not a live dollar balance.
 
 ## Smoke check
 
@@ -34,7 +38,11 @@ The HTTPS smoke check passed on 2026-10-29. After the revision scaled to zero, a
 | `GET /` | `200`, compiled frontend returned |
 | `GET /api/health` | `200`, `{"status":"ok","service":"fullaura"}` |
 | `GET /api/ready` | `200`, `{"status":"ready"}` |
+| `GET /api/catalog` | `200`, catalog returned |
+| `GET /api/session` | `200`, planning enabled, age confirmation required |
 | `GET /api/does-not-exist` | `404`, JSON `{"detail":"Not Found"}` |
+
+After enabling planning, one live request passed on 2026-10-29. It used a generic smart-casual brief for an autumn week in Vienna, a €250 per-look budget, navy and olive color preferences, and a wool exclusion; it contained no personal data. The API returned three looks and no constraint violations. The request took 12.24 seconds and used one model completion and one HTTP attempt: 1,170 prompt tokens and 3,022 completion tokens. This single request is a smoke check, not the T-06 evaluation.
 
 Demo URL: <https://fullaura-demo.blackbay-aaeee2c5.francecentral.azurecontainerapps.io>.
 
@@ -42,7 +50,7 @@ This is the first successful deployment, so there is no previous working image d
 
 ## Configuration and cost
 
-The Bicep template in `infra/azure/main.bicep` creates a 30-day Log Analytics workspace, a Consumption environment, and one externally reachable Container App. It configures one active revision, 0.5 vCPU / 1 GiB, scale from zero to one replica, HTTPS ingress, and explicit liveness and readiness probes. Public planning and photo previews remain disabled until their separate account and evaluation gates are met.
+The Bicep template in `infra/azure/main.bicep` creates a 30-day Log Analytics workspace, a Consumption environment, and one externally reachable Container App. It configures one active revision, 0.5 vCPU / 1 GiB, scale from zero to one replica, HTTPS ingress, and explicit liveness and readiness probes. The template defaults public planning and photo previews to disabled. The live app enables planning after checking the Azure spending limit and Baseten hackathon credit; previews remain disabled pending T-02.
 
 The Azure Retail Prices API listed these France Central Consumption rates on 2026-10-29:
 
@@ -56,9 +64,9 @@ At 0.5 vCPU and 1 GiB running continuously for 30 days, compute and memory total
 
 The $20 budget alert is below the continuous-running estimate and is not a spending cap. The Free Trial spending limit protects against paid overage by disabling resources when its credit is exhausted, which would make the demo unavailable. Keep the app at zero minimum replicas and review Azure cost usage after pilot sessions.
 
-Provider usage is not included in the Azure estimate. The deployed app makes no model calls while public planning is disabled. Recalculate provider cost from the verified account and model billing terms before enabling planning.
+Provider usage is not included in the Azure estimate. Public planning now uses the hackathon API key and its $100 hard credit cap. Baseten does not expose the remaining balance for this key. Review the token counts returned by each planning request; they do not establish the exact credit balance or dollars spent.
 
-Baseten's hackathon credit and key association with the DevRain workspace remain unverified. No Baseten settings or keys were changed, and public planning must stay disabled until the model credit and account-level spending controls are confirmed.
+The Baseten hackathon key is not linked to the DevRain workspace, and its remaining credit cannot be checked in that workspace. Baseten's pinned answer says the $100 key credit cannot be exceeded; the app records per-request token counts, not a provider balance. No Baseten account or workspace settings were changed.
 
 The app stores anonymous 18+ confirmations and three-request session quotas in process memory. Keep one Uvicorn worker and one active replica. A process restart resets those counts, and browser users can create another session. The session limit does not cap aggregate Azure or provider spend.
 
@@ -69,9 +77,9 @@ Container-local files are ephemeral. The scaffold stores no photographs. If the 
 1. Build and smoke-test the image as described in `README.md`.
 2. Inspect the subscription, region quota, effective permissions, credit balance, and spending-limit behavior. Choose a monthly budget alert; Azure budgets notify but do not stop spending.
 3. Publish a publicly pullable image and record its immutable digest and source commit.
-4. Deploy `infra/azure/main.bicep` to the dedicated resource group, passing the image digest as `containerImage`. Keep public planning and photo previews disabled.
+4. Deploy `infra/azure/main.bicep` to the dedicated resource group, passing the image digest as `containerImage`. Keep both feature flags disabled during initial deployment.
 5. Verify the HTTPS root page, `/api/health`, `/api/ready`, and a JSON 404 for an unknown `/api` route.
-6. Add model secrets only when the provider adapter is ready. Keep public planning disabled until Azure and provider account-level controls are verified. Photo previews remain disabled pending T-02.
+6. Add model secrets only after provider access and spending controls are verified. Enable public planning only after the anonymous-session limit and provider credit cap are understood. Photo previews remain disabled pending T-02.
 7. Record the URL, source commit, resource names, deployed digest, and a previous working rollback digest when one exists. Review usage after pilot sessions and after the demo.
 
 ## Official references
@@ -83,6 +91,7 @@ Reviewed 29 October 2026:
 - [Container Apps billing and free grant](https://learn.microsoft.com/en-us/azure/container-apps/billing)
 - [Azure Retail Prices API](https://learn.microsoft.com/en-us/rest/api/cost-management/retail-prices/azure-retail-prices)
 - [Container Apps quotas](https://learn.microsoft.com/en-us/azure/container-apps/quotas)
+- [Container Apps secrets](https://learn.microsoft.com/en-us/azure/container-apps/manage-secrets)
 - [Azure spending limits](https://learn.microsoft.com/en-us/azure/cost-management-billing/manage/spending-limit)
 - [Azure budgets](https://learn.microsoft.com/en-us/azure/cost-management-billing/costs/tutorial-acm-create-budgets)
 - [Baseten billing and budgets](https://docs.baseten.co/organization/billing)
