@@ -6,7 +6,7 @@ holds reservations at list prices (docs/BETA.md#costs), not the providers' invoi
 
     uv run --frozen python -m scripts.pilot_report \\
         --store-url https://<account>.blob.core.windows.net/pilot \\
-        --invites data/private/beta/invite-hashes.txt
+        --invites data/private/beta/invite-hashes.txt --subscription <subscription ID>
 """
 
 from __future__ import annotations
@@ -14,6 +14,7 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 import httpx2
@@ -22,22 +23,25 @@ from backend.app.pilot import Budget
 from backend.app.store import STORAGE_RESOURCE, AzureBlobStore, DirectoryStore, Store
 
 
-def cli_token(_: httpx2.Client) -> tuple[str, float]:
-    result = subprocess.run(
-        ["az", "account", "get-access-token", "--resource", STORAGE_RESOURCE, "--output", "json"],
-        capture_output=True,
-        check=True,
-        text=True,
-    )
-    payload = json.loads(result.stdout)
-    return payload["accessToken"], float(payload["expires_on"])
+def cli_token(subscription: str | None) -> Callable[[httpx2.Client], tuple[str, float]]:
+    """A storage token from the Azure CLI, in the tenant of the given subscription."""
+
+    def token(_: httpx2.Client) -> tuple[str, float]:
+        command = ["az", "account", "get-access-token", "--resource", STORAGE_RESOURCE]
+        command += ["--subscription", subscription] if subscription else []
+        command += ["--output", "json"]
+        result = subprocess.run(command, capture_output=True, check=True, text=True)
+        payload = json.loads(result.stdout)
+        return payload["accessToken"], float(payload["expires_on"])
+
+    return token
 
 
-def open_store(url: str) -> Store:
+def open_store(url: str, subscription: str | None = None) -> Store:
     if url.startswith("file://"):
         return DirectoryStore(Path(url.removeprefix("file://")))
     account_url, container = url.rstrip("/").rsplit("/", 1)
-    return AzureBlobStore(account_url, container, token=cli_token)
+    return AzureBlobStore(account_url, container, token=cli_token(subscription))
 
 
 def report(store: Store, invite_hashes: list[str]) -> dict[str, object]:
@@ -70,11 +74,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--store-url", required=True)
     parser.add_argument("--invites", type=Path, help="the invite-hashes.txt file")
+    parser.add_argument("--subscription", help="the Azure subscription that holds the store")
     args = parser.parse_args()
     hashes = []
     if args.invites:
         hashes = [h for h in args.invites.read_text(encoding="utf-8").strip().split(",") if h]
-    print(json.dumps(report(open_store(args.store_url), hashes), indent=2))
+    store = open_store(args.store_url, args.subscription)
+    print(json.dumps(report(store, hashes), indent=2))
 
 
 if __name__ == "__main__":

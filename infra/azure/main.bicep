@@ -24,6 +24,12 @@ param betaEnabled bool = false
 @description('When the pilot closes model calls, as an ISO date-time with a time zone; empty for none.')
 param pilotEndsAt string = ''
 
+@description('US dollars the beta may spend on planning calls, after spending outside the ledger.')
+param planningBudgetUsd string = '8'
+
+@description('US dollars the beta may spend on try-on images, after spending outside the ledger.')
+param imageBudgetUsd string = '3'
+
 @description('Days after its last change before a pilot record is deleted.')
 param pilotDataRetentionDays int = 30
 
@@ -112,6 +118,12 @@ resource storage 'Microsoft.Storage/storageAccounts@2024-01-01' = {
 resource blobService 'Microsoft.Storage/storageAccounts/blobServices@2024-01-01' = {
   parent: storage
   name: 'default'
+  properties: {
+    deleteRetentionPolicy: {
+      enabled: false
+      allowPermanentDelete: false
+    }
+  }
 }
 
 resource container 'Microsoft.Storage/storageAccounts/blobServices/containers@2024-01-01' = {
@@ -119,6 +131,8 @@ resource container 'Microsoft.Storage/storageAccounts/blobServices/containers@20
   name: pilotContainer
   properties: {
     publicAccess: 'None'
+    defaultEncryptionScope: '$account-encryption-key'
+    denyEncryptionScopeOverride: false
   }
 }
 
@@ -212,6 +226,14 @@ resource app 'Microsoft.App/containerApps@2025-07-01' = {
               {
                 name: 'FULLAURA_PILOT_ENDS_AT'
                 value: pilotEndsAt
+              }
+              {
+                name: 'FULLAURA_PLANNING_BUDGET_USD'
+                value: planningBudgetUsd
+              }
+              {
+                name: 'FULLAURA_IMAGE_BUDGET_USD'
+                value: imageBudgetUsd
               }
               {
                 name: 'BASETEN_API_KEY'
