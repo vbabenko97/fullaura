@@ -5,6 +5,7 @@ The server writes the prompt from the checked look; the browser sends only two p
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 import traceback
 from collections.abc import Awaitable, Callable, Sequence
@@ -336,10 +337,22 @@ _GARMENT = {
 }
 
 
+OWNED_TEXT_CHARS = 80
+_PLAIN_TEXT = re.compile(r"[^A-Za-z0-9À-ɏ ,.'/-]+")
+
+
+def _quoted(text: str, limit: int) -> str:
+    """A person's own words as a short quoted description: letters, digits, spaces and light
+    punctuation only, so they read as an item's description rather than an instruction."""
+    plain = " ".join(_PLAIN_TEXT.sub(" ", text).split())[:limit].strip()
+    return f'"{plain}"' if plain else "(no description)"
+
+
 def preview_prompt(look: Look, state: State, catalog: Catalog) -> str:
     """The try-on prompt for a checked look, written from catalog facts and the person's own
-    descriptions of owned items. It describes colors, garment kinds and materials so that the
-    model draws an approximation; no product image or brand mark is sent."""
+    descriptions of owned items, quoted and limited to plain words. It describes colors, garment
+    kinds and materials so that the model draws an approximation; no product image or brand mark
+    is sent."""
     owned = {item.id: item for item in state.owned_items}
     lines = []
     for slot in Slot:
@@ -349,7 +362,9 @@ def preview_prompt(look: Look, state: State, catalog: Catalog) -> str:
         if item.kind is ItemKind.OWNED:
             entry = owned.get(item.id)
             if entry is not None:
-                lines.append(f"- {slot.value}: {entry.color} {entry.description} (their own)")
+                described = _quoted(f"{entry.color} {entry.description}", OWNED_TEXT_CHARS)
+                kind = _GARMENT[entry.category]
+                lines.append(f"- {slot.value}: their own {kind}, described as {described}")
             continue
         variant, product = catalog.variant(item.id), catalog.product_of(item.id)
         if variant is None or product is None:

@@ -40,6 +40,7 @@ from backend.app.photos import (
 from backend.app.pilot import (
     IMAGE_MICRO_USD,
     Budget,
+    Operation,
     OperationKind,
     Pilot,
     PilotLimits,
@@ -184,6 +185,10 @@ def create_app(
             raise RuntimeError("The beta needs a persistent FULLAURA_STORE_URL")
         if not settings.invite_hashes:
             raise RuntimeError("The beta needs FULLAURA_INVITE_HASHES")
+        if settings.pilot_ends_at is None:
+            # Pilot records expire 30 days after their last change; an end date keeps a quiet
+            # month from reopening the budgets.
+            raise RuntimeError("The beta needs FULLAURA_PILOT_ENDS_AT")
 
     app = FastAPI(
         title="FullAura API",
@@ -442,10 +447,11 @@ def create_app(
                 plan_request.brief, state, catalog, client, replacement=plan_request.replacement
             )
             usage = result.usage
+            # A call that reported no usage counts at its maximum, like an attempt that failed.
             cost = planning_cost_micro_usd(
                 usage.prompt_tokens,
                 usage.completion_tokens,
-                usage.calls,
+                usage.calls - usage.unmetered_calls,
                 usage.http_attempts,
                 MAX_TOKENS,
             )
@@ -536,13 +542,23 @@ def create_app(
         except Refused as refused:
             return _refusal(refused)
 
-        operation = None
+        operation: Operation | None = None
+        reservation: asyncio.Future[Operation] | None = None
 
         async def reserve() -> None:
-            nonlocal operation
-            operation = await asyncio.to_thread(
-                pilot.begin, session.invite_id, OperationKind.PREVIEW, operation_id, preview_reserve
+            nonlocal operation, reservation
+            # The reserving thread finishes even when this request is cancelled meanwhile; the
+            # shield keeps its result, so the cleanup below settles a call that never started.
+            reservation = asyncio.ensure_future(
+                asyncio.to_thread(
+                    pilot.begin,
+                    session.invite_id,
+                    OperationKind.PREVIEW,
+                    operation_id,
+                    preview_reserve,
+                )
             )
+            operation = await asyncio.shield(reservation)
 
         started = time.monotonic()
         deadline = started + PREVIEW_DEADLINE_S
@@ -592,6 +608,13 @@ def create_app(
                 portrait.clear()
             if full_body is not None:
                 full_body.clear()
+            if operation is None and reservation is not None:
+                try:
+                    operation = await reservation
+                except Refused:
+                    pass  # nothing was reserved
+                else:
+                    cost, outcome = 0, "cancelled_before_call"
             if operation is not None:
                 await asyncio.to_thread(pilot.finish, operation, cost, outcome)
             logger.info(

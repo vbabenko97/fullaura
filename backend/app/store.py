@@ -212,7 +212,7 @@ class AzureBlobStore:
 
     def read(self, name: str) -> Document | None:
         response = self._send("GET", name)
-        if response.status_code == 404:
+        if response.status_code == 404 and _error_code(response) == "BlobNotFound":
             return None
         if response.status_code != 200:
             raise StoreUnavailable(f"Blob GET returned HTTP {response.status_code}")
@@ -230,9 +230,10 @@ class AzureBlobStore:
     def _put(self, name: str, data: dict[str, Any], condition: dict[str, str]) -> str:
         headers = {"x-ms-blob-type": "BlockBlob", "Content-Type": "application/json", **condition}
         response = self._send("PUT", name, content=_encode(data), headers=headers)
-        # 409 BlobAlreadyExists answers If-None-Match: *, 412 a changed ETag, and 404 a
-        # replace of a blob that was deleted.
-        if response.status_code in (404, 409, 412):
+        # A blob that exists answers If-None-Match: *, a changed ETag answers If-Match, and a
+        # deleted blob answers a replace; any other error, such as a missing container, means
+        # the store is not usable.
+        if _error_code(response) in {"BlobAlreadyExists", "ConditionNotMet", "BlobNotFound"}:
             raise VersionConflict(name)
         if response.status_code != 201:
             raise StoreUnavailable(f"Blob PUT returned HTTP {response.status_code}")
@@ -240,5 +241,10 @@ class AzureBlobStore:
 
     def delete(self, name: str) -> None:
         response = self._send("DELETE", name)
-        if response.status_code not in (202, 404):
+        gone = response.status_code == 404 and _error_code(response) == "BlobNotFound"
+        if response.status_code != 202 and not gone:
             raise StoreUnavailable(f"Blob DELETE returned HTTP {response.status_code}")
+
+
+def _error_code(response: httpx2.Response) -> str | None:
+    return response.headers.get("x-ms-error-code")

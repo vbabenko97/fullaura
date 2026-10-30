@@ -5,8 +5,10 @@ Model replies and preview images are scripted, so no test calls a provider."""
 import asyncio
 import json
 import logging
+import time
 import uuid
 from collections.abc import Iterator, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -16,8 +18,8 @@ from fastapi.testclient import TestClient
 from backend.app.config import Settings
 from backend.app.main import create_app
 from backend.app.meta_images import ImageResult, InputImage
-from backend.app.pilot import invite_hash
-from backend.app.planner import SparkClient
+from backend.app.pilot import invite_hash, planning_reserve_micro_usd
+from backend.app.planner import MAX_TOKENS, SparkClient
 from backend.app.store import Document, MemoryStore, StoreUnavailable
 from tests.test_planner import FIXTURE, LOOK_1, LOOK_2, LOOK_3, VALID, completion, reply
 
@@ -468,13 +470,15 @@ def test_the_production_beta_needs_a_secret_a_store_and_invites(tmp_path: Path) 
         create_app(Settings(**base, session_secret=SECRET))
     with pytest.raises(RuntimeError, match="INVITE_HASHES"):
         create_app(Settings(**base, session_secret=SECRET, store_url=f"file://{tmp_path}/s"))
-    beta = Settings(
+    complete = {
         **base,
-        session_secret=SECRET,
-        store_url=f"file://{tmp_path}/s",
-        invite_hashes=frozenset({invite_hash(CODE)}),
-        planning_budget_usd=1,
-    )
+        "session_secret": SECRET,
+        "store_url": f"file://{tmp_path}/s",
+        "invite_hashes": frozenset({invite_hash(CODE)}),
+    }
+    with pytest.raises(RuntimeError, match="PILOT_ENDS_AT"):
+        create_app(Settings(**complete))
+    beta = Settings(**complete, pilot_ends_at=datetime(2026, 11, 9, 23, 59, tzinfo=UTC))
     with TestClient(create_app(beta), base_url="https://testserver") as http:
         joined = http.post("/api/session/invite", json={"code": CODE})
         assert "secure" in joined.headers["set-cookie"].lower()
@@ -488,3 +492,52 @@ def test_the_image_budget_setting_closes_try_ons(tmp_path: Path, store: MemorySt
         join(http, photos=True)
         session = http.get("/api/session").json()
     assert session["previews_open"] is False  # one try-on reserves $0.03
+
+
+class SlowLedgerStore(MemoryStore):
+    """Writes the ledger slowly, so a request's deadline can pass while it reserves."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.slow = False
+
+    def create(self, name: str, data: dict[str, Any]) -> str:
+        if self.slow and name.startswith("operations/"):
+            time.sleep(0.3)
+        return super().create(name, data)
+
+
+def test_a_try_on_cut_off_while_reserving_costs_nothing_and_blocks_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = SlowLedgerStore()
+    editor = FakeEditor()
+    spark = ScriptedSpark(VALID)
+    app = create_app(settings(tmp_path), spark=spark, image_editor=editor, store=store)
+    with TestClient(app) as http:
+        join(http, photos=True)
+        token = plan(http).json()["plan_token"]
+        store.slow = True
+        monkeypatch.setattr("backend.app.main.PREVIEW_DEADLINE_S", 0.1)
+        assert try_on(http, token).status_code == 504
+        ledger = store.read("ledger.json")
+        assert ledger is not None and ledger.data["running"] == {}
+        assert ledger.data["spent"]["images"] == 0 and editor.prompts == []
+        store.slow = False
+        monkeypatch.setattr("backend.app.main.PREVIEW_DEADLINE_S", 120.0)
+        assert try_on(http, token).status_code == 200
+
+
+def test_a_planning_call_that_reports_no_usage_counts_at_its_maximum(
+    tmp_path: Path, store: MemoryStore
+) -> None:
+    def post(request: Any, timeout_s: float) -> dict[str, Any]:
+        return {"choices": [{"message": {"content": VALID}, "finish_reason": "stop"}]}
+
+    spark = SparkClient("key", post=post, sleep=lambda seconds: None)
+    with TestClient(create_app(settings(tmp_path), spark=spark, store=store)) as http:
+        join(http)
+        assert plan(http).json()["outcome"] == "success"
+    ledger = store.read("ledger.json")
+    assert ledger is not None
+    assert ledger.data["spent"]["planning"] == planning_reserve_micro_usd(1, MAX_TOKENS)

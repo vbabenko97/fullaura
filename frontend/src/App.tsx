@@ -75,6 +75,12 @@ const INITIAL_PREFERENCES: Preferences = {
   ownedItems: [],
 };
 
+class PlanLostError extends Error {
+  constructor() {
+    super("Your plan expired on the server and no longer passes today's checks, so it was cleared. Generate a new plan; your saved plans are below.");
+  }
+}
+
 function inviteFromLocation(): string | null {
   const match = /(?:^#|&)invite=([^&]+)/.exec(window.location.hash);
   return match ? decodeURIComponent(match[1]) : null;
@@ -186,6 +192,12 @@ export function App() {
       state: { ...current.state, plan: current.plan },
       catalog_id: current.catalogId,
     });
+    if (!result.plan && result.response) {
+      // The plan no longer passes today's checks, so it cannot be named again; start afresh.
+      setCurrent(null);
+      setLocks([]);
+      keepCurrentPlan(null);
+    }
     return result.plan?.token ?? null;
   }
 
@@ -332,7 +344,7 @@ export function App() {
     } catch (error) {
       if (reasonOf(error) !== "plan_expired") throw error;
       const token = await restoreCurrent();
-      if (!token) throw error;
+      if (!token) throw new PlanLostError();
       return parsePlanResponse(await send(token));
     }
   }
@@ -383,7 +395,7 @@ export function App() {
       }
     } catch (error) {
       setRequestState("error");
-      setRequestMessage(errorMessage(error));
+      setRequestMessage(error instanceof PlanLostError ? error.message : errorMessage(error));
     } finally {
       void refreshSession();
     }

@@ -62,10 +62,10 @@ def test_blob_writes_are_conditional_and_authenticated() -> None:
         if request.method == "GET":
             return httpx2.Response(200, content=b'{"spent": 1}', headers={"ETag": '"0x1"'})
         if request.headers.get("If-None-Match") == "*":
-            return httpx2.Response(409)
+            return httpx2.Response(409, headers={"x-ms-error-code": "BlobAlreadyExists"})
         if request.headers.get("If-Match") == '"0x1"':
             return httpx2.Response(201, headers={"ETag": '"0x2"'})
-        return httpx2.Response(412)
+        return httpx2.Response(412, headers={"x-ms-error-code": "ConditionNotMet"})
 
     store = blob_store(httpx2.MockTransport(handle))
     document = store.read("invites/a b.json")
@@ -120,3 +120,16 @@ def test_managed_identity_token_uses_the_container_apps_endpoint(
     monkeypatch.delenv("IDENTITY_ENDPOINT")
     with pytest.raises(StoreUnavailable, match="managed identity"):
         managed_identity_token(httpx2.Client(transport=httpx2.MockTransport(handle)))
+
+
+def test_a_missing_blob_reads_as_none_but_a_missing_container_is_an_outage() -> None:
+    def handle(request: httpx2.Request) -> httpx2.Response:
+        code = "BlobNotFound" if "ledger" in request.url.path else "ContainerNotFound"
+        return httpx2.Response(404, headers={"x-ms-error-code": code})
+
+    store = blob_store(httpx2.MockTransport(handle))
+    assert store.read("ledger.json") is None
+    with pytest.raises(StoreUnavailable):
+        store.read("invites/a.json")
+    with pytest.raises(StoreUnavailable):
+        store.create("invites/a.json", {})
