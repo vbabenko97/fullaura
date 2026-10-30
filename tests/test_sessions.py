@@ -52,3 +52,27 @@ def test_an_idle_plan_expires() -> None:
     assert memory.get(session) is not None
     clock.seconds = 30
     assert memory.get(session) is None
+
+
+def test_a_token_or_cookie_with_other_characters_is_refused_without_an_error() -> None:
+    memory = PlanMemory()
+    session = Session("invite1", "key1")
+    memory.store(session, BRIEF, STATE, "catalog", None)
+    assert memory.current(session, "tökén") is None
+    assert read_session(SECRET, "invite1.key1.mäc") is None
+
+
+def test_plan_memory_keeps_a_bounded_number_of_plans_per_invite_and_in_total() -> None:
+    clock = FakeClock()
+    memory = PlanMemory(per_invite=2, limit=3, clock=clock)
+    sessions = [Session("invite1", f"key{n}") for n in range(3)]
+    for session in sessions:
+        clock.seconds += 1
+        memory.store(session, BRIEF, STATE, "catalog", None)
+    assert memory.get(sessions[0]) is None  # the invite's oldest browser session went first
+    assert memory.get(sessions[1]) and memory.get(sessions[2])
+    for number in range(2):
+        clock.seconds += 1
+        memory.store(Session(f"other{number}", f"other-key{number}"), BRIEF, STATE, "catalog", None)
+    kept = [memory.get(session) is not None for session in sessions[1:]]
+    assert kept.count(True) == 1  # three plans at most in total

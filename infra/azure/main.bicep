@@ -265,8 +265,8 @@ resource app 'Microsoft.App/containerApps@2025-07-01' = {
 }
 
 resource pilotAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
-  name: guid(storage.id, app.id, storageBlobDataContributor)
-  scope: storage
+  name: guid(container.id, app.id, storageBlobDataContributor)
+  scope: container
   properties: {
     principalId: app.identity.principalId
     principalType: 'ServicePrincipal'

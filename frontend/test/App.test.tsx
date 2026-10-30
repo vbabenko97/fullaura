@@ -46,6 +46,7 @@ interface Server {
   token: number;
   expireToken: () => void;
   previewOutcome: "image" | "budget";
+  restoreFails: boolean;
 }
 
 function installServer(options: { invited?: boolean; aged?: boolean; plans?: unknown[]; accounting?: boolean } = {}): Server {
@@ -74,6 +75,7 @@ function installServer(options: { invited?: boolean; aged?: boolean; plans?: unk
       server.token += 100;
     },
     previewOutcome: "image",
+    restoreFails: false,
   };
   const currentToken = () => `token-${server.token}`;
   const success = (plan: unknown) => ({
@@ -126,6 +128,18 @@ function installServer(options: { invited?: boolean; aged?: boolean; plans?: unk
       // Like the server, refuse any field beyond the saved brief, state and catalog ID.
       if (Object.keys(object(body)).sort().join() !== "brief,catalog_id,state") {
         return json({ detail: "extra fields", reason: "invalid" }, 422);
+      }
+      if (server.restoreFails) {
+        return json({
+          outcome: "restore_failed",
+          plan: null,
+          violations: [{ rule: "budget", detail: "over budget" }],
+          conflicts: [],
+          notices: [],
+          error: null,
+          catalog_id: object(catalog).id,
+          catalog_changed: true,
+        });
       }
       server.token += 1;
       return json({ ...success(object(object(body).state).plan), catalog_changed: false });
@@ -265,6 +279,21 @@ describe(`${FIXTURE_LABEL}: planning`, () => {
     expect(await screen.findAllByText("REHMAA LEGGINGS")).not.toHaveLength(0);
     const urls = server.requests.map((entry) => entry.url).filter((url) => url.startsWith("/api/plans"));
     expect(urls).toEqual(["/api/plans", "/api/plans", "/api/plans/restore", "/api/plans"]);
+  });
+
+  it("clears a plan the server can no longer restore, so the next request starts afresh", async () => {
+    const server = installServer({ plans: [firstPlan, reducedBudgetPlan] });
+    render(<App />);
+    await generate();
+    server.expireToken();
+    server.restoreFails = true;
+    fireEvent.click(screen.getByRole("button", { name: "Update three looks" }));
+    expect(await screen.findByText(/Your plan expired on the server/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+    await screen.findByText(/The three looks passed the catalog checks/);
+    const last = planRequests(server).at(-1);
+    expect(last?.plan_token).toBeNull();
+    expect(object(last?.state).locks).toEqual([]);
   });
 
   it("pauses planning when spending cannot be recorded", async () => {

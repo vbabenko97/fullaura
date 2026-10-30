@@ -23,6 +23,8 @@ from backend.app.state import State
 SESSION_COOKIE = "fullaura_session"
 SESSION_COOKIE_MAX_AGE_S = 30 * 24 * 60 * 60
 PLAN_TTL_S = 24 * 60 * 60
+PLANS_PER_INVITE = 10  # browser sessions whose plans one invite keeps at a time
+MAX_PLANS = 500
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,7 +42,7 @@ def read_session(secret: bytes, cookie: str | None) -> Session | None:
     if not cookie or cookie.count(".") != 2:
         return None
     invite_id, key, mac = cookie.split(".")
-    if not hmac.compare_digest(mac, _mac(secret, invite_id, key)):
+    if not hmac.compare_digest(mac.encode(), _mac(secret, invite_id, key).encode()):
         return None
     return Session(invite_id, key)
 
@@ -65,12 +67,20 @@ class PlanMemory:
     """The last checked plan of each browser session, in process memory only."""
 
     def __init__(
-        self, *, ttl_s: float = PLAN_TTL_S, clock: Callable[[], float] = time.monotonic
+        self,
+        *,
+        ttl_s: float = PLAN_TTL_S,
+        per_invite: int = PLANS_PER_INVITE,
+        limit: int = MAX_PLANS,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self._ttl_s = ttl_s
+        self._per_invite = per_invite
+        self._limit = limit
         self._clock = clock
         self._lock = threading.Lock()
-        self._plans: dict[str, tuple[PlanRecord, float]] = {}
+        # Keyed by browser session; the invite ID lets one invite's sessions be bounded.
+        self._plans: dict[str, tuple[PlanRecord, float, str]] = {}
 
     def get(self, session: Session) -> PlanRecord | None:
         now = self._clock()
@@ -79,13 +89,15 @@ class PlanMemory:
             entry = self._plans.get(session.key)
             if entry is None:
                 return None
-            self._plans[session.key] = (entry[0], now + self._ttl_s)
+            self._plans[session.key] = (entry[0], now + self._ttl_s, entry[2])
             return entry[0]
 
     def current(self, session: Session, token: str | None) -> PlanRecord | None:
         """The session's plan when the token names it; None for a stale or foreign token."""
         record = self.get(session)
-        if record is None or token is None or not hmac.compare_digest(record.token, token):
+        if record is None or token is None:
+            return None
+        if not hmac.compare_digest(record.token.encode(), token.encode()):
             return None
         return record
 
@@ -110,7 +122,8 @@ class PlanMemory:
                 catalog_id=catalog_id,
                 operation_id=operation_id,
             )
-            self._plans[session.key] = (record, now + self._ttl_s)
+            self._plans[session.key] = (record, now + self._ttl_s, session.invite_id)
+            self._bound(session.invite_id)
             return record
 
     def forget(self, session: Session) -> None:
@@ -118,5 +131,16 @@ class PlanMemory:
             self._plans.pop(session.key, None)
 
     def _expire(self, now: float) -> None:
-        for key in [key for key, (_, expires) in self._plans.items() if expires <= now]:
+        for key in [key for key, (_, expires, _) in self._plans.items() if expires <= now]:
+            del self._plans[key]
+
+    def _bound(self, invite_id: str) -> None:
+        """Drop the plans idle longest once an invite, or the process, holds too many."""
+        mine = sorted(
+            (expires, key) for key, (_, expires, owner) in self._plans.items() if owner == invite_id
+        )
+        for _, key in mine[: max(0, len(mine) - self._per_invite)]:
+            del self._plans[key]
+        everyone = sorted((expires, key) for key, (_, expires, _) in self._plans.items())
+        for _, key in everyone[: max(0, len(everyone) - self._limit)]:
             del self._plans[key]

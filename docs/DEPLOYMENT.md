@@ -81,15 +81,32 @@ Container-local files are ephemeral. The scaffold stores no photographs. If the 
 
 ## Deployment procedure
 
-1. Build and smoke-test the image as described in `README.md`.
-2. Inspect the subscription, region quota, effective permissions, credit balance, and spending-limit behavior. Choose a monthly budget alert; Azure budgets notify but do not stop spending.
-3. Publish a publicly pullable image and record its immutable digest and source commit.
-4. Deploy `infra/azure/main.bicep` to the dedicated resource group, passing the image digest as `containerImage`. Keep both feature flags disabled during initial deployment.
-5. Verify the HTTPS root page, `/api/health`, `/api/ready`, and a JSON 404 for an unknown `/api` route.
-6. Add model secrets only after provider access and spending controls are verified. Enable public planning only after the anonymous-session limit and provider credit cap are understood. Photo previews remain disabled pending T-02.
-7. Record the URL, source commit, resource names, deployed digest, and a previous working rollback digest when one exists. Review usage after pilot sessions and after the demo.
+The template `infra/azure/main.bicep` describes every resource in `rg-fullaura-demo`: the Log Analytics workspace, the Container Apps environment, the app with its system-assigned managed identity, the private storage account for pilot records with its 30-day deletion rule, and the role assignment that lets the app's identity read and write that account's blobs. Deploy it to the existing resource group so that it updates these resources and creates no second stack. The Azure CLI's default subscription is another one, so every command names the FullAura subscription.
 
-To deploy a new image to the running app, repeat steps 1 and 3, then run `az containerapp update --name fullaura-demo --resource-group rg-fullaura-demo --subscription <subscription ID> --image ghcr.io/vbabenko97/fullaura@<digest>`. In single-revision mode this creates a new revision, moves all traffic to it, and keeps the environment variables and secrets. Repeat step 5 and record the new digest and the rollback digest as in step 7.
+1. Build and smoke-test the image as described in `README.md`, then build it for `linux/amd64`, push it to `ghcr.io/vbabenko97/fullaura` and note its digest and source commit.
+2. Check the subscription, its spending limit and credit, and the provider prices and terms named in [BETA.md](BETA.md#costs). Azure budgets notify; they do not stop spending.
+3. Preview the change. The secure parameters come from the operator's environment and ignored files, never from the repository:
+
+   ```bash
+   az deployment group what-if --subscription <subscription ID> --resource-group rg-fullaura-demo \
+     --template-file infra/azure/main.bicep --parameters containerImage=ghcr.io/vbabenko97/fullaura@<digest> \
+     betaEnabled=true pilotEndsAt=<ISO date-time with zone> basetenApiKey=<key> modelApiKey=<key> \
+     sessionSecret=<secret> inviteHashes=<comma-separated digests>
+   ```
+
+   `pilotEndsAt` is required while the beta is enabled; the app refuses to start without it. Expect changes only to the app, the new storage resources and the role assignment. Stop if the preview deletes or recreates the environment or the workspace.
+4. Run the same command with `az deployment group create`. A deployment keeps the session secret only if the same value is passed again; a new secret signs out every participant.
+5. Wait for the role assignment to take effect, which can take a few minutes, then check `/`, `/api/health`, `/api/ready`, `/api/session` and a JSON 404 for an unknown `/api` route with `scripts/smoke_http.py <URL>`, and open the operator's invite to check planning and a try-on.
+6. Record the URL, source commit, resource names, deployed digest and the previous working digest below.
+
+To deploy only a new image, run step 1 and then `az containerapp update --name fullaura-demo --resource-group rg-fullaura-demo --subscription <subscription ID> --image ghcr.io/vbabenko97/fullaura@<digest>`. In single-revision mode this creates a new revision, moves all traffic to it, and keeps the environment variables and secrets. To roll back, run the same command with the previous working digest.
+
+## Stopping the beta
+
+- Close model calls and the beta's routes at once: `az containerapp update --name fullaura-demo --resource-group rg-fullaura-demo --subscription <subscription ID> --set-env-vars FULLAURA_BETA_ENABLED=false`. Plans saved on participants' devices stay readable in their browsers.
+- Stop serving altogether: `az containerapp ingress disable --name fullaura-demo --resource-group rg-fullaura-demo --subscription <subscription ID>`.
+- Delete every pilot record now rather than after 30 days: `az storage blob delete-batch --account-name <storage account> --source pilot --auth-mode login --subscription <subscription ID>`. The operator needs the Storage Blob Data Contributor role on the account.
+- Remove all FullAura resources: `az group delete --name rg-fullaura-demo --subscription <subscription ID>`. This also deletes the logs and cannot be undone.
 
 ## Official references
 

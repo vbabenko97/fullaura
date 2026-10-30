@@ -122,6 +122,7 @@ class Usage:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     http_attempts: int = 0
+    unmetered_calls: int = 0  # completed calls whose reply reported no token usage
 
     def add(
         self,
@@ -135,6 +136,8 @@ class Usage:
             prompt_tokens=self.prompt_tokens + int(usage.get("prompt_tokens") or 0),
             completion_tokens=self.completion_tokens + int(usage.get("completion_tokens") or 0),
             http_attempts=self.http_attempts + http_attempts,
+            unmetered_calls=self.unmetered_calls
+            + int(call_completed and not usage.get("completion_tokens")),
         )
 
 
