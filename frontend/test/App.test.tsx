@@ -1008,6 +1008,18 @@ describe(`${FIXTURE_LABEL}: Design my look`, () => {
     expect(screen.getByRole("article", { name: "Black and white basics" })).toBeTruthy();
   });
 
+  it.each([
+    { name: "complete with an alternative and no match", shoppable: { complete: true, passes_hard_checks: true } },
+    { name: "checked with an item that has no product", shoppable: { passes_hard_checks: true } },
+  ])("shows no look whose summary disagrees with its items: $name", async ({ shoppable }) => {
+    installServer({ design: true, concepts: [conceptResponse(shoppable)] });
+    render(<App />);
+    await requestConcept();
+    expect(await screen.findByText("The request could not be completed. Check your connection and try again.")).toBeTruthy();
+    expect(screen.queryByRole("article", { name: "Black and white basics" })).toBeNull();
+    expect(screen.queryByText(/pass the budget, size, shoe/)).toBeNull();
+  });
+
   async function prepareConceptTryOn(server: Server) {
     render(<App />);
     await requestConcept();

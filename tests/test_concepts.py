@@ -524,14 +524,32 @@ BRIEF_JSON = {"style_goal": "Calm office looks", "preferred_colors": ["black"]}
 NO_MATCHES = matching(proposal(0, None), proposal(1, None), proposal(2, None))
 
 
+@pytest.mark.parametrize(
+    ("value", "on"), [(None, False), ("false", False), ("1", False), ("TRUE", True)]
+)
+def test_only_design_mode_true_switches_the_mode_on(
+    value: str | None, on: bool, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    if value is None:
+        monkeypatch.delenv("FULLAURA_DESIGN_MODE", raising=False)
+    else:
+        monkeypatch.setenv("FULLAURA_DESIGN_MODE", value)
+    assert Settings.from_env().design_mode is on
+
+
 def test_design_mode_is_closed_unless_it_is_switched_on(tmp_path: Path) -> None:
-    app, spark = design_app(tmp_path, MemoryStore(), design_mode=False)
+    spark, editor = ScriptedSpark(concept(SHIRT, TROUSERS, SNEAKERS), NO_MATCHES), FakeEditor()
+    app = create_app(settings(tmp_path), spark=spark, image_editor=editor, store=MemoryStore())
     with TestClient(app) as http:
         join(http, photos=True)
-        assert http.get("/api/session").json()["design_open"] is False
+        before = http.get("/api/session").json()
+        assert before["design_open"] is False
         assert design(http).status_code == 404
-        assert concept_try_on(http, "any-token").status_code == 404
-    assert spark.sent == []
+        assert design(http, owned_items=[]).status_code == 422  # body checks only, no call
+        # A concept token cannot reach the try-on
+        assert concept_try_on(http, "any-token").json()["reason"] == "closed"
+        assert http.get("/api/session").json() == before  # no quota or budget used
+    assert spark.sent == [] and editor.prompts == []
 
 
 def test_a_concept_is_one_planning_request_that_pays_for_every_call(tmp_path: Path) -> None:
