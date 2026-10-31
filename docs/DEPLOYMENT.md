@@ -1,6 +1,6 @@
 # Azure deployment
 
-**Status:** The closed beta runs on Azure Container Apps in France Central since 2026-10-30, with the fixes of 2026-10-31. Invited sessions can plan and try looks on; everyone else sees the invite step. The pilot closes model calls at 2026-11-06 23:59 Vienna time. The purge job is scheduled to delete the pilot records at 2026-11-09 10:00 Vienna time, when the beta closes; it has not run on the real records yet.
+**Status:** The closed beta runs on Azure Container Apps in France Central since 2026-10-30, with the fixes of 2026-10-31 and, since that evening, the pilot measurement and participant fixes of T-10. Invited sessions can plan and try looks on; everyone else sees the invite step. The pilot closes model calls at 2026-11-06 23:59 Vienna time. The purge job is scheduled to delete the pilot records at 2026-11-09 10:00 Vienna time, when the beta closes; it has not run on the real records yet.
 
 ## Deployed configuration
 
@@ -12,7 +12,7 @@
 | Log Analytics workspace | `law-fullaura-demo-frc`, 30-day retention |
 | Container Apps environment | `cae-fullaura-demo-frc`, Consumption workload profile |
 | Container App | `fullaura-demo`, with a system-assigned managed identity |
-| Revision | `fullaura-demo--0000008`, serving all traffic since 2026-10-31 |
+| Revision | `fullaura-demo--0000009`, serving all traffic since 2026-10-31 |
 | Compute and scaling | 0.5 vCPU / 1 GiB; minimum 0 and maximum 1 replica; scales to zero after 300 seconds without traffic |
 | Ingress | External HTTPS, target port 8000, insecure HTTP disabled |
 | Beta | `FULLAURA_BETA_ENABLED=true`; 11 invite digests in the secret `invite-hashes` (10 for participants, 1 for the operator); cookies signed with the secret `session-secret` |
@@ -22,10 +22,10 @@
 | Purge job | `fullaura-demo-purge`, a scheduled Container Apps job in the same environment with a system-assigned identity: cron `0 9 9-15 11 *` in UTC, 0.25 vCPU / 0.5 GiB, 600-second replica timeout, 3 retries, its own image, the purge job image below ([Deleting the pilot records](#deleting-the-pilot-records)) |
 | Planning model | `meta-models/muse-spark-open-1026` at `https://inference.baseten.co/v1`, key in the secret `baseten-api-key` |
 | Try-on model | `muse-image-1.0` in Standard mode, key in the secret `model-api-key` |
-| App image | `ghcr.io/vbabenko97/fullaura@sha256:5366c7af7995102dd036c450a59415c81fd919630d68a3ac178bc8b327207e68` (tag `62bd84f-linux-amd64`; its `linux/amd64` manifest is `sha256:f61b8767673ccd9d4e5b6f7ec92c0472bce3f101cd6a64952ad946c1d3d5772a`) |
-| Purge job image | `ghcr.io/vbabenko97/fullaura@sha256:5366c7af7995102dd036c450a59415c81fd919630d68a3ac178bc8b327207e68`, the same build as the app image; its purge writes the closure marker |
-| Application source | `main` at `62bd84f` |
-| App rollback image | `ghcr.io/vbabenko97/fullaura@sha256:4a46e357f6ac485c5655436b0d41dadde4185a54cbcaf908ed08ee5ebbd0ad97`, built from `a7eba24`, which served until 2026-10-31; only with `FULLAURA_BETA_ENABLED=false`, because it writes without checking the closure marker ([Rolling back](#rolling-back)) |
+| App image | `ghcr.io/vbabenko97/fullaura@sha256:0b8d5252e36b901257668ca05a96d9c10ccc4ff69285072887d9fdfaf34513f9` (tag `7e1d48d-linux-amd64`; its `linux/amd64` manifest is `sha256:68214a48419c0dde05b8b816d9f6137138fa318edfcd00c721101e0585204b8f`) |
+| Purge job image | `ghcr.io/vbabenko97/fullaura@sha256:5366c7af7995102dd036c450a59415c81fd919630d68a3ac178bc8b327207e68`, the build of `62bd84f` (its `linux/amd64` manifest is `sha256:f61b8767673ccd9d4e5b6f7ec92c0472bce3f101cd6a64952ad946c1d3d5772a`); its purge writes the closure marker. The deployment of `7e1d48d` changed nothing the job runs, so the job kept this image |
+| Application source | `main` at `7e1d48d` |
+| App rollback image | `ghcr.io/vbabenko97/fullaura@sha256:5366c7af7995102dd036c450a59415c81fd919630d68a3ac178bc8b327207e68`, the build of `62bd84f`, which served until the evening of 2026-10-31. It checks the closure marker, so the beta can stay on ([Rolling back](#rolling-back)). Older images, such as `ghcr.io/vbabenko97/fullaura@sha256:4a46e357f6ac485c5655436b0d41dadde4185a54cbcaf908ed08ee5ebbd0ad97` of `a7eba24`, only with `FULLAURA_BETA_ENABLED=false` |
 | Purge job rollback image | none: no earlier image can run the purge job |
 | ARM deployments | `fullaura-beta-20261030`, `fullaura-beta-budgets-20261030`, `fullaura-beta-fixes-20261031` and `fullaura-purge-fence-20261031`, from `infra/azure/main.bicep` |
 
@@ -64,6 +64,15 @@ Later on 2026-10-31, after the deployment of `62bd84f`, which added the closure 
 - On `pilot-purge-check`, a container made for the test with four synthetic records and roles for the job and the operator on it only: a run with the real purge time deleted nothing and wrote no marker. A run with a purge time in the past wrote the marker; a write from the app's code, made with a clock before the purge time one second after the marker appeared, was refused while the four records still existed. The run then deleted all four, kept the marker, and a later write was refused too. A repeat run found nothing and succeeded. Each due run took about two and a half minutes.
 - The job as configured, run against the real `pilot` container, logged eight records found, its access checked and none deleted; the container still held eight and no marker. No log line of the job named a record. The test container and its two role assignments were then removed.
 - No model was called for these checks.
+
+Later on 2026-10-31, after the deployment of `7e1d48d`, which added the pilot measurement and participant fixes of T-10, with `az containerapp update` of the app image only:
+
+- The amd64 image passed `scripts/smoke_http.py` locally before the update. Revision `fullaura-demo--0000009` serves all traffic with the app image above; the purge job kept its image and its schedule `0 9 9-15 11 *`.
+- `scripts/smoke_http.py` passed over HTTPS with an open beta session. Without an invite, the catalog, try-on, feedback and age routes answered 401, and an unknown invite code 403.
+- The operator invite, with the synthetic persona p1, checked the new behavior on the deployed site: the data notice links Baseten's documentation; a request for open shoes in EU 44 was answered as infeasible without a model call or quota; the line above the button explained the per-look budget; a plan passed, focus moved to the results, and the results total matched the shopping list's; a try-on succeeded; the try-on issue boxes stayed disabled until a try-on score was chosen; a feedback answer with an issue was saved and deleted; the page had no horizontal scroll.
+- `scripts/pilot_report.py` against the real store showed the new call records with their `outcome`, the earlier withdrawn try-on as `not_recorded`, one infeasible request under the footwear rule, no feedback left, and a breakdown by cost certainty that adds up to the ledger. For the ten participant invites it ran without error and showed that none had been opened yet.
+- The check cost $0.0096 for planning and $0.01 for the try-on in the ledger.
+- The previous image, run locally as the production beta against records in the new format, served the session and its feedback, deleted a new answer and kept the new fields when it wrote. It refuses a feedback answer that carries `try_on_issues`, so after a rollback a participant whose page was opened before it must reload before sending feedback.
 
 URL: <https://fullaura-demo.blackbay-aaeee2c5.francecentral.azurecontainerapps.io>.
 
@@ -148,16 +157,16 @@ To deploy only a new app image, run step 1 and then `az containerapp update --na
 
 The app and the purge job roll back separately, each to the digest recorded for it in the table above ([D-51](DECISIONS.md#d-51-the-app-and-the-purge-job-have-their-own-images-and-roll-back-apart)).
 
-- **App.** Roll back only to the recorded app rollback image, and switch the beta off in the same command, because earlier app images write without checking the closure marker:
+- **App.** The recorded app rollback image, of `62bd84f`, checks the closure marker and can serve the beta: run `az containerapp update` with its digest alone, then check it with `scripts/smoke_http.py <URL>`, which must report an open beta. It records no call outcome and no infeasible request, and refuses feedback from a page opened before the rollback until the page is reloaded. An image older than `62bd84f` writes without checking the marker, so switch the beta off in the same command:
 
   ```bash
   az containerapp update --name fullaura-demo --resource-group rg-fullaura-demo --subscription <subscription ID> \
-    --image ghcr.io/vbabenko97/fullaura@<app rollback digest> --set-env-vars FULLAURA_BETA_ENABLED=false
+    --image ghcr.io/vbabenko97/fullaura@<image digest> --set-env-vars FULLAURA_BETA_ENABLED=false
   ```
 
   One command makes one revision with both changes, so no revision of the earlier image serves the beta. It keeps the other settings, the secrets with the invites, the budgets and the pilot's times. Invited people see that the beta is closed; plans saved in their browsers stay there. Check it with `scripts/smoke_http.py <URL>`, which must report a closed beta. To return, run the same command with the current app digest and `FULLAURA_BETA_ENABLED=true`.
 - **Purge job.** Leave it alone: rolling back the app does not change the job's image, schedule or settings. No earlier image can run the job. The image of `00c7e2f` has no `backend.app.purge`, so every run would fail, and the image of `a7eba24` deletes without the closure marker.
-- **Template.** A deployment of the template always names both images. For a rollback, pass the app rollback digest as `containerImage`, `betaEnabled=false`, and the current job image as `purgeJobImage`. Pass every other parameter with its current value, as in step 3 of the deployment procedure: the pilot times, the schedule, the budgets, both provider keys, the same `sessionSecret` and the same `inviteHashes`. The template drops a secret that is passed empty, and a new session secret signs every participant out.
+- **Template.** A deployment of the template always names both images. For a rollback, pass the app rollback digest as `containerImage`, `betaEnabled=false` only for an image older than `62bd84f`, and the current job image as `purgeJobImage`. Pass every other parameter with its current value, as in step 3 of the deployment procedure: the pilot times, the schedule, the budgets, both provider keys, the same `sessionSecret` and the same `inviteHashes`. The template drops a secret that is passed empty, and a new session secret signs every participant out.
 
 On 2026-10-31 the earlier app images, of `a7eba24` and of `00c7e2f`, were run locally as production with the deployed pilot times and budgets, synthetic invite digests and the beta off. Both passed `scripts/smoke_http.py` as a closed beta, answered 404 to the invite, age, consent, feedback and catalog routes, and wrote no file to their store folder. Neither image could import the purge job with its closure marker.
 
