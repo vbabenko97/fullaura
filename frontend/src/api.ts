@@ -371,6 +371,14 @@ export function parseConceptResponse(value: unknown): ConceptResponse {
   if (outcome === "success" && (concept === null || token === null || shoppable === null)) {
     throw new Error("A successful design response needs a concept, its token and its summary");
   }
+  // The summary must agree with the items, so an incomplete look can never read as checked.
+  const statuses = concept?.items.map((item) => item.match.status) ?? [];
+  if (shoppable?.complete && statuses.some((status) => status !== "close")) {
+    throw new Error("A design response called a look complete that has an alternative or no match");
+  }
+  if (shoppable?.passes_hard_checks && (statuses.length === 0 || statuses.includes("none"))) {
+    throw new Error("A design response checked a look that has an item without a product");
+  }
   return {
     outcome,
     error: readNullableString(value.error, "design error"),
