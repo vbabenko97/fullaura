@@ -53,6 +53,8 @@ interface Server {
   expireToken: () => void;
   previewOutcome: "image" | "budget";
   restoreFails: boolean;
+  /** A restore never reaches the server, as when the connection drops. */
+  restoreOffline: boolean;
   catalogFailures: number;
   consentFails: boolean;
   /** When set, a try-on answers only once this settles, as a slow provider would. */
@@ -113,6 +115,7 @@ function installServer(
     },
     previewOutcome: "image",
     restoreFails: false,
+    restoreOffline: false,
     catalogFailures: 0,
     consentFails: false,
     previewGate: null,
@@ -173,15 +176,31 @@ function installServer(
       return json(success(next));
     }
     if (url === "/api/plans/restore") {
+      if (server.restoreOffline) throw new TypeError("Failed to fetch");
       // Like the server, refuse any field beyond the saved brief, state and catalog ID.
       if (Object.keys(object(body)).sort().join() !== "brief,catalog_id,state") {
         return json({ detail: "extra fields", reason: "invalid" }, 422);
       }
-      if (server.restoreFails) {
+      const state = object(object(body).state);
+      const looks = object(state.plan).looks as Body[];
+      // Like constraints.py, a lock whose item is not at its position in the plan is a violation.
+      const brokenLocks = (state.locks as Body[]).filter((lock) => {
+        const look = looks.find((candidate) => candidate.id === lock.look_id);
+        const placed = look ? (object(look.items)[String(lock.slot)] as Body | undefined) : undefined;
+        return placed?.kind !== object(lock.item).kind || placed?.id !== object(lock.item).id;
+      });
+      const violations = [
+        ...(server.restoreFails ? [{ rule: "budget", detail: "over budget" }] : []),
+        ...brokenLocks.map((lock) => ({
+          rule: "lock",
+          detail: `${String(object(lock.item).id)} is locked in ${String(lock.look_id)} as ${String(lock.slot)}`,
+        })),
+      ];
+      if (violations.length) {
         return json({
           outcome: "restore_failed",
           plan: null,
-          violations: [{ rule: "budget", detail: "over budget" }],
+          violations,
           conflicts: [],
           notices: [],
           error: null,
@@ -190,7 +209,7 @@ function installServer(
         });
       }
       server.token += 1;
-      return json({ ...success(object(object(body).state).plan), catalog_changed: false });
+      return json({ ...success(state.plan), catalog_changed: false });
     }
     if (url === "/api/concepts") {
       const request = object(body);
@@ -248,6 +267,30 @@ async function generate(styleGoal = "Relaxed office outfits", budget = "250") {
   fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: budget } });
   fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
   await screen.findByText(/The three looks passed the catalog checks/);
+}
+
+const CURRENT_PLAN_KEY = "fullaura.current-plan.v1";
+
+/** The working plan this tab kept before a reload, as the page stores it; returns the stored text. */
+function storeWorkingPlan(plan: unknown, locks: Body[] = []): string {
+  const text = JSON.stringify({
+    id: "token-0-working",
+    saved_at: "2026-10-30T12:00:00.000Z",
+    name: "Relaxed office outfits",
+    brief: { style_goal: "Relaxed office outfits", preferred_colors: [], occasion: null, season: null },
+    state: {
+      budget: { amount_cents: 25000, mode: "per_look" },
+      material_exclusions: [],
+      footwear: "closed",
+      owned_items: [],
+      locks,
+      plan,
+    },
+    catalog_id: object(catalog).id,
+    shopping_list: [],
+  });
+  sessionStorage.setItem(CURRENT_PLAN_KEY, text);
+  return text;
 }
 
 beforeEach(() => {
@@ -417,6 +460,66 @@ describe(`${FIXTURE_LABEL}: planning`, () => {
     const last = planRequests(server).at(-1);
     expect(last?.plan_token).toBeNull();
     expect(object(last?.state).locks).toEqual([]);
+  });
+
+  it("keeps no items of a working plan the server refused on reload, so the next update sends none", async () => {
+    storeWorkingPlan(reducedBudgetPlan, [
+      { look_id: "look_1", slot: "top", item: { kind: "catalog", id: "ae-maarkos-moonshadow-m" } },
+      { look_id: "look_1", slot: "bottom", item: { kind: "catalog", id: "ae-rehmaa-velvet-red-m" } },
+    ]);
+    // The update's plan has neither item at the position it was kept in.
+    const server = installServer({ plans: [firstPlan, replacementPlan] });
+    server.restoreFails = true;
+    render(<App />);
+    expect(await screen.findByText(/Your last plan no longer passes today's checks/)).toBeTruthy();
+    expect(sessionStorage.getItem(CURRENT_PLAN_KEY)).toBeNull();
+
+    server.restoreFails = false;
+    await generate();
+    // The new plan has the T-shirt in look 1 again, but nobody kept it in this plan.
+    expect(screen.queryAllByRole("button", { pressed: true })).toEqual([]);
+    fireEvent.click(screen.getByRole("button", { name: "Update three looks" }));
+    const tShirts = () => screen.getAllByRole("heading", { name: "MAARKOS HEAVY WEIGHT T-SHIRT" });
+    await waitFor(() => expect(tShirts()).toHaveLength(1)); // only look 3 has it now
+    expect(object(planRequests(server)[1].state).locks).toEqual([]);
+
+    // The server checks the kept items of the tab's plan against the plan, so it restores only
+    // when none was left over from the refused plan.
+    cleanup();
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "look 3" })).toBeTruthy();
+    expect(tShirts()).toHaveLength(1);
+    expect(screen.queryByText(/no longer passes today's checks/)).toBeNull();
+  });
+
+  it("keeps the working plan when a reload's restore loses the connection, so the next reload restores it", async () => {
+    const stored = storeWorkingPlan(firstPlan);
+    const server = installServer();
+    server.restoreOffline = true;
+    render(<App />);
+    expect(await screen.findByText("The request could not be completed. Check your connection and try again.")).toBeTruthy();
+    expect(sessionStorage.getItem(CURRENT_PLAN_KEY)).toBe(stored);
+
+    server.restoreOffline = false;
+    cleanup();
+    render(<App />);
+    expect(await screen.findByRole("heading", { name: "look 3" })).toBeTruthy();
+  });
+
+  it("keeps an expired plan whose restore lost the connection, and says so instead of calling it cleared", async () => {
+    const server = installServer({ plans: [firstPlan, reducedBudgetPlan] });
+    render(<App />);
+    await generate();
+    server.expireToken();
+    server.restoreOffline = true;
+    fireEvent.click(screen.getByRole("button", { name: "Update three looks" }));
+    expect(await screen.findByText(/^The request could not be completed\. Check your connection and try again\./)).toBeTruthy();
+    expect(screen.getByText(/The looks below are from the last successful request/)).toBeTruthy();
+    expect(screen.queryByText(/Your plan expired on the server/)).toBeNull();
+
+    server.restoreOffline = false;
+    fireEvent.click(screen.getByRole("button", { name: "Update three looks" }));
+    expect(await screen.findAllByText("REHMAA LEGGINGS")).not.toHaveLength(0);
   });
 
   it("says next to the button what the budget limits, and totals the plan as the shopping list does", async () => {
@@ -649,6 +752,44 @@ describe(`${FIXTURE_LABEL}: try-on`, () => {
     await waitFor(() => expect((tryOn as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(tryOn);
     expect(await screen.findByRole("img", { name: "Experimental try-on of look 1" })).toBeTruthy();
+  });
+
+  it("keeps Try on disabled until both new photos are prepared, then sends a single try-on", async () => {
+    const server = await prepareTryOn(installServer({ plans: [firstPlan] }));
+    const tryOn = await screen.findByRole("button", { name: "Try on look 1" });
+    await waitFor(() => expect((tryOn as HTMLButtonElement).disabled).toBe(false));
+    const portrait = deferred<Blob>();
+    const fullBody = deferred<Blob>();
+    vi.mocked(normalizePhoto)
+      .mockImplementationOnce(() => portrait.promise)
+      .mockImplementationOnce(() => fullBody.promise);
+    fireEvent.change(screen.getByLabelText("Portrait photo"), {
+      target: { files: [new File(["p2"], "portrait-2.png", { type: "image/png" })] },
+    });
+    fireEvent.change(screen.getByLabelText("Full-body photo"), {
+      target: { files: [new File(["f2"], "full-2.webp", { type: "image/webp" })] },
+    });
+    await act(async () => {
+      portrait.resolve(new Blob(["portrait 2"], { type: "image/jpeg" }));
+      await portrait.promise;
+    });
+    // The full-body photo is still being prepared, so no try-on can start yet.
+    const waiting = screen.getByRole("button", { name: "Preparing photo…" });
+    expect((waiting as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(waiting);
+
+    const provider = deferred();
+    server.previewGate = provider.promise;
+    await act(async () => {
+      fullBody.resolve(new Blob(["full body 2"], { type: "image/jpeg" }));
+      await fullBody.promise;
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Try on look 1" }));
+    await screen.findByRole("button", { name: "Cancel try-on" });
+    expect(screen.queryByRole("button", { name: "Try on look 1" })).toBeNull();
+    await act(async () => provider.resolve());
+    expect(await screen.findByRole("img", { name: "Experimental try-on of look 1" })).toBeTruthy();
+    expect(server.requests.filter((entry) => entry.url === "/api/previews")).toHaveLength(1);
   });
 
   it("says so when a withdrawal could not be saved, and still clears the photos", async () => {
