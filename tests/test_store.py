@@ -1,6 +1,7 @@
 """Conditional writes in every store, and the Blob REST calls without a network."""
 
 import json
+import time
 from pathlib import Path
 
 import httpx2
@@ -8,6 +9,7 @@ import pytest
 
 from backend.app.store import (
     BLOB_API_VERSION,
+    SEND_BY,
     AzureBlobStore,
     DirectoryStore,
     MemoryStore,
@@ -83,6 +85,29 @@ def test_blob_writes_are_conditional_and_authenticated() -> None:
     put = seen[2]
     assert put.headers["x-ms-blob-type"] == "BlockBlob"
     assert json.loads(put.content) == {"spent": 2}
+
+
+def test_a_write_that_missed_its_closure_window_is_never_sent() -> None:
+    seen: list[httpx2.Request] = []
+
+    def handle(request: httpx2.Request) -> httpx2.Response:
+        seen.append(request)
+        return httpx2.Response(201, headers={"ETag": '"0x1"'})
+
+    store = blob_store(httpx2.MockTransport(handle))
+    late = SEND_BY.set(time.monotonic() - 1)  # a token refresh outlasted the window
+    try:
+        with pytest.raises(StoreUnavailable, match="not sent in time"):
+            store.create("invites/a.json", {})
+    finally:
+        SEND_BY.reset(late)
+    assert seen == []
+    in_time = SEND_BY.set(time.monotonic() + 5)
+    try:
+        assert store.create("invites/a.json", {}) == '"0x1"'
+    finally:
+        SEND_BY.reset(in_time)
+    assert len(seen) == 1
 
 
 @pytest.mark.parametrize("failure", [httpx2.Response(500), httpx2.Response(403)])

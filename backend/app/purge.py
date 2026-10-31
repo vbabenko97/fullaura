@@ -41,9 +41,10 @@ from backend.app.store import (
 
 ATTEMPTS = 4  # per store call, after waits of 1, 2 and 4 seconds
 EARLY_START_S = 300.0  # a run this close to the purge time waits for it; within replicaTimeout
-# A write that found no marker starts within WRITE_WINDOW_S; its connect, write, read and pool
-# phases each end within STORE_TIMEOUT_S, and the Blob service gives up after its own timeout.
-# The rest is room for network delay.
+# A write that found no marker leaves the app within WRITE_WINDOW_S of its check, which
+# AzureBlobStore enforces after any token refresh; its pool, connect, write and read phases each
+# end within STORE_TIMEOUT_S, and the Blob service abandons it after its own timeout. The rest is
+# room for DNS and network delay, which the client cannot bound.
 PURGE_GRACE_S = 120.0
 assert PURGE_GRACE_S > WRITE_WINDOW_S + 4 * STORE_TIMEOUT_S + BLOB_SERVER_TIMEOUT_S + 30
 
