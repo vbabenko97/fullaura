@@ -3,7 +3,8 @@
 The planner's model is replaced by a deterministic stand-in that picks the cheapest catalog
 outfits the request allows, and the image model by one that returns a plain generated PNG. No
 provider is called, and every check, quota and token rule of the real server still applies.
-Nothing this server returns is model output.
+Nothing this server returns is model output. Design My Look is on unless `--design-mode off`,
+which serves the page the closed beta shows.
 
     uv run --frozen python -m scripts.e2e_server --port 8765
 """
@@ -165,6 +166,9 @@ def main() -> None:
     parser.add_argument(
         "--store", type=Path, help="a folder that keeps counts across restarts; memory if unset"
     )
+    parser.add_argument(
+        "--design-mode", choices=("on", "off"), default="on", help="FULLAURA_DESIGN_MODE"
+    )
     args = parser.parse_args()
     settings = Settings(
         session_secret="e2e-session-secret-not-for-production-use",
@@ -172,7 +176,7 @@ def main() -> None:
         store_url=f"file://{args.store.resolve()}" if args.store else "memory://",
         # Every browser test and viewport shares the one invite; the quota rule still applies.
         plan_requests_per_invite=24,
-        design_mode=True,
+        design_mode=args.design_mode == "on",
     )
     app = create_app(settings, spark=ScriptedSpark(), image_editor=ScriptedEditor())
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")

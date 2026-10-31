@@ -82,6 +82,11 @@ test("an invited person plans, tries on, edits, saves, restores, exports and giv
     await page.getByRole("button", { name: "Continue" }).click();
   }
   await expect(preferences).toBeVisible();
+  if (project.endsWith("-design-off")) {
+    // The closed beta's page: no mode switch and no Design my look control.
+    await expect(page.getByRole("radio", { name: "Design my look (experimental)" })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Design my look" })).toHaveCount(0);
+  }
 
   await page.getByLabel("Occasion").selectOption("office");
   await page.getByLabel("Season").selectOption("autumn");
