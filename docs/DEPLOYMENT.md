@@ -12,7 +12,7 @@
 | Log Analytics workspace | `law-fullaura-demo-frc`, 30-day retention |
 | Container Apps environment | `cae-fullaura-demo-frc`, Consumption workload profile |
 | Container App | `fullaura-demo`, with a system-assigned managed identity |
-| Revision | `fullaura-demo--0000007`, serving all traffic since 2026-10-31 |
+| Revision | `fullaura-demo--0000008`, serving all traffic since 2026-10-31 |
 | Compute and scaling | 0.5 vCPU / 1 GiB; minimum 0 and maximum 1 replica; scales to zero after 300 seconds without traffic |
 | Ingress | External HTTPS, target port 8000, insecure HTTP disabled |
 | Beta | `FULLAURA_BETA_ENABLED=true`; 11 invite digests in the secret `invite-hashes` (10 for participants, 1 for the operator); cookies signed with the secret `session-secret` |
@@ -22,12 +22,12 @@
 | Purge job | `fullaura-demo-purge`, a scheduled Container Apps job in the same environment with a system-assigned identity: cron `0 9 9-15 11 *` in UTC, 0.25 vCPU / 0.5 GiB, 600-second replica timeout, 3 retries, its own image, the purge job image below ([Deleting the pilot records](#deleting-the-pilot-records)) |
 | Planning model | `meta-models/muse-spark-open-1026` at `https://inference.baseten.co/v1`, key in the secret `baseten-api-key` |
 | Try-on model | `muse-image-1.0` in Standard mode, key in the secret `model-api-key` |
-| App image | `ghcr.io/vbabenko97/fullaura@sha256:4a46e357f6ac485c5655436b0d41dadde4185a54cbcaf908ed08ee5ebbd0ad97` (tag `a7eba24-linux-amd64`; its `linux/amd64` manifest is `sha256:0bdb6def207673530d564ec311b63e4fa17b7fa44076c14a30a619cb72c2769b`) |
-| Purge job image | the same digest as the app image |
-| Application source | `main` at `a7eba24` |
-| App rollback image | `ghcr.io/vbabenko97/fullaura@sha256:aa797cca7be943806f64299fb8d502ca2096f7bda9a2e4a7dec9780985cc95ed`, the beta built from `00c7e2f`, only with `FULLAURA_BETA_ENABLED=false` ([Rolling back](#rolling-back)) |
+| App image | `ghcr.io/vbabenko97/fullaura@sha256:5366c7af7995102dd036c450a59415c81fd919630d68a3ac178bc8b327207e68` (tag `62bd84f-linux-amd64`; its `linux/amd64` manifest is `sha256:f61b8767673ccd9d4e5b6f7ec92c0472bce3f101cd6a64952ad946c1d3d5772a`) |
+| Purge job image | `ghcr.io/vbabenko97/fullaura@sha256:5366c7af7995102dd036c450a59415c81fd919630d68a3ac178bc8b327207e68`, the same build as the app image; its purge writes the closure marker |
+| Application source | `main` at `62bd84f` |
+| App rollback image | `ghcr.io/vbabenko97/fullaura@sha256:4a46e357f6ac485c5655436b0d41dadde4185a54cbcaf908ed08ee5ebbd0ad97`, built from `a7eba24`, which served until 2026-10-31; only with `FULLAURA_BETA_ENABLED=false`, because it writes without checking the closure marker ([Rolling back](#rolling-back)) |
 | Purge job rollback image | none: no earlier image can run the purge job |
-| ARM deployments | `fullaura-beta-20261030`, `fullaura-beta-budgets-20261030` and `fullaura-beta-fixes-20261031`, from `infra/azure/main.bicep` |
+| ARM deployments | `fullaura-beta-20261030`, `fullaura-beta-budgets-20261030`, `fullaura-beta-fixes-20261031` and `fullaura-purge-fence-20261031`, from `infra/azure/main.bicep` |
 
 The image is public, and GHCR issues an anonymous pull token for it. The keys, the session secret and the invite digests are encrypted Container Apps secrets, passed to the template as secure parameters; none is in the image or the repository. The resource group and the existing subscription-level budget remain in place.
 
@@ -56,6 +56,14 @@ On 2026-10-31, after the deployment of `a7eba24`:
 - `scripts/smoke_http.py` passed over HTTPS, with an open beta session. Without an invite, `/api/catalog`, `/api/previews`, `/api/feedback` and `/api/session/confirm-age` answered 401, and an unknown invite code 403.
 - The operator invite planned once for a synthetic adult persona, and a try-on on that persona's photos was withdrawn five seconds after it started: the browser aborted the request, the page showed no result and empty photo fields, the server recorded the withdrawn consent and logged `preview outcome=disconnected`, and the ledger kept the try-on's whole $0.03 reservation, with nothing left running. The plan cost $0.009.
 - The purge job was checked against `pilot-purge-check`, a container made for the test with four synthetic records written through the pilot code, with roles for the job and the operator on that container only. A run with the real purge time deleted nothing; a run with a purge time in the past deleted all four and found none left; a repeat found nothing and succeeded. A run of the job as configured, against the real `pilot` container, logged six records found, its access checked and none deleted, and the container still held six. The four log lines held counts only. The test container and its two role assignments were then removed.
+
+Later on 2026-10-31, after the deployment of `62bd84f`, which added the closure marker and the separate job image:
+
+- The secrets matched the operator's copies before and after. Revision `fullaura-demo--0000008` served all traffic; the app and the job ran the image above with the same pilot end, purge time, budgets and schedule, and the job kept its identity and its single role on the `pilot` container. The what-if beforehand changed only the two images.
+- `scripts/smoke_http.py` passed over HTTPS with an open beta session. Without an invite, the catalog, try-on, feedback and age routes answered 401, and an unknown invite code 403.
+- On `pilot-purge-check`, a container made for the test with four synthetic records and roles for the job and the operator on it only: a run with the real purge time deleted nothing and wrote no marker. A run with a purge time in the past wrote the marker; a write from the app's code, made with a clock before the purge time one second after the marker appeared, was refused while the four records still existed. The run then deleted all four, kept the marker, and a later write was refused too. A repeat run found nothing and succeeded. Each due run took about two and a half minutes.
+- The job as configured, run against the real `pilot` container, logged eight records found, its access checked and none deleted; the container still held eight and no marker. No log line of the job named a record. The test container and its two role assignments were then removed.
+- No model was called for these checks.
 
 URL: <https://fullaura-demo.blackbay-aaeee2c5.francecentral.azurecontainerapps.io>.
 
