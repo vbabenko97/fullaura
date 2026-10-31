@@ -10,6 +10,12 @@ call can last, whichever process started it, because during a deployment the old
 running for a while. An operation that outlived that limit is interrupted: it is never retried,
 and its reservation counts as spent.
 
+Every write goes through ClosingStore, which coordinates with the purge job (backend/app/purge.py)
+across processes. Right before each create, replace or delete it refuses once the purge time has
+passed or the job's PURGE_MARKER exists, and it trusts a marker check for WRITE_WINDOW_S only.
+The job writes the marker, waits longer than any write that passed the check can take, and only
+then deletes the records, so a write either is refused or lands before the deletion.
+
 Nothing here holds a photo, preview, full plan, provider response or anything a person typed
 into the plan form; feedback holds only the answers to the feedback form.
 """
@@ -22,6 +28,7 @@ import logging
 import math
 import secrets
 import threading
+import time
 import uuid
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
@@ -29,10 +36,14 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
-from backend.app.store import Store, StoreUnavailable, VersionConflict
+from backend.app.store import Document, Store, StoreUnavailable, VersionConflict
 
 LEDGER = "ledger.json"
 MAX_WRITE_ATTEMPTS = 8
+# Written by the purge job before it deletes anything, and never deleted by it; it holds only
+# when the deletion began and the configured purge time.
+PURGE_MARKER = "purge-marker.json"
+WRITE_WINDOW_S = 5.0  # how long a check that found no marker allows a write to start
 
 # List prices, checked 2026-10-30 (docs/BETA.md#costs). Costs are in micro-dollars.
 PLANNING_INPUT_MICRO_USD_PER_TOKEN = 1.25  # Baseten, Muse Spark Open: $1.25 per million
@@ -141,6 +152,58 @@ def new_invite_code() -> str:
     return secrets.token_urlsafe(18)
 
 
+class RecordsClosed(StoreUnavailable):
+    """The pilot records are deleted or about to be, so nothing may be written. A subclass of
+    StoreUnavailable, so every caller already refuses safely."""
+
+
+class ClosingStore:
+    """The pilot's store, with every write refused once the records are closed for deletion.
+
+    Reads and listings pass through. A write first checks the purge time and the purge job's
+    marker, then starts only if that check took less than WRITE_WINDOW_S; the job waits longer
+    than that window plus the store's timeouts before it deletes (backend/app/purge.py)."""
+
+    def __init__(
+        self,
+        store: Store,
+        purge_at: datetime | None,
+        now: Callable[[], datetime],
+        monotonic: Callable[[], float] = time.monotonic,
+    ) -> None:
+        self._store = store
+        self._purge_at = purge_at
+        self._now = now
+        self._monotonic = monotonic
+
+    def read(self, name: str) -> Document | None:
+        return self._store.read(name)
+
+    def names(self) -> list[str]:
+        return self._store.names()
+
+    def create(self, name: str, data: dict[str, Any]) -> str:
+        self._check_open()
+        return self._store.create(name, data)
+
+    def replace(self, name: str, data: dict[str, Any], etag: str) -> str:
+        self._check_open()
+        return self._store.replace(name, data, etag)
+
+    def delete(self, name: str) -> None:
+        self._check_open()
+        self._store.delete(name)
+
+    def _check_open(self) -> None:
+        started = self._monotonic()
+        if self._purge_at is not None and self._now() >= self._purge_at:
+            raise RecordsClosed("The pilot records are closed for deletion")
+        if self._store.read(PURGE_MARKER) is not None:
+            raise RecordsClosed("The pilot records are closed for deletion")
+        if self._monotonic() - started > WRITE_WINDOW_S:
+            raise StoreUnavailable("The check for a running deletion took too long to trust")
+
+
 def _empty_ledger() -> dict[str, Any]:
     return {
         "spent": {budget.value: 0 for budget in Budget},
@@ -169,7 +232,8 @@ class Pilot:
         instance_id: str | None = None,
         now: Callable[[], datetime] = lambda: datetime.now(UTC),
     ) -> None:
-        self._store = store
+        # Every write below, including ETag retries and late finishes, passes this check.
+        self._store = ClosingStore(store, limits.records_purge_at, now)
         self.limits = limits
         self._invites = {digest.lower(): digest.lower()[:16] for digest in invite_hashes}
         self.instance_id = instance_id or uuid.uuid4().hex

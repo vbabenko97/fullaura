@@ -1,7 +1,10 @@
 targetScope = 'resourceGroup'
 
-@description('Public registry image reference pinned to a sha256 digest from the reviewed commit.')
+@description('Public registry image reference for the app, pinned to a sha256 digest from the reviewed commit.')
 param containerImage string
+
+@description('Image for the purge job, pinned to a digest whose backend.app.purge writes the closure marker. Set on its own, so that rolling the app back never rolls the job back.')
+param purgeJobImage string
 
 @description('Azure region for every resource.')
 param location string = 'francecentral'
@@ -336,7 +339,7 @@ resource purgeJob 'Microsoft.App/jobs@2025-07-01' = if (!empty(recordsPurgeAt)) 
       containers: [
         {
           name: 'purge'
-          image: containerImage
+          image: purgeJobImage
           command: ['python', '-m', 'backend.app.purge']
           resources: {
             cpu: json('0.25')

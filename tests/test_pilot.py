@@ -8,10 +8,13 @@ import pytest
 
 from backend.app.pilot import (
     LEDGER,
+    WRITE_WINDOW_S,
     Budget,
+    ClosingStore,
     OperationKind,
     Pilot,
     PilotLimits,
+    RecordsClosed,
     Refusal,
     Refused,
     invite_hash,
@@ -296,6 +299,27 @@ def test_the_pilot_window_closes_model_calls() -> None:
     with pytest.raises(Refused) as refused:
         p.begin(invite, PLAN, op(), 1000)
     assert refused.value.reason is Refusal.PILOT_ENDED
+
+
+def test_a_closure_check_that_took_too_long_or_failed_allows_no_write() -> None:
+    clock = Clock()
+    ticks = iter([0.0, WRITE_WINDOW_S + 1])  # the marker read stalled past the window
+    slow = ClosingStore(MemoryStore(), None, clock, monotonic=lambda: next(ticks))
+    with pytest.raises(StoreUnavailable, match="too long"):
+        slow.create("invites/a.json", {})
+    broken = ClosingStore(BrokenStore(), None, clock)
+    for write in (
+        lambda: broken.create("invites/a.json", {}),
+        lambda: broken.replace("invites/a.json", {}, "etag"),
+        lambda: broken.delete("invites/a.json"),
+    ):
+        with pytest.raises(StoreUnavailable):
+            write()
+    store = MemoryStore()
+    closed = ClosingStore(store, clock.now, clock)  # the purge time has come, marker or not
+    with pytest.raises(RecordsClosed):
+        closed.create("invites/a.json", {})
+    assert store.names() == []
 
 
 def test_feedback_can_be_deleted_only_by_its_invite() -> None:

@@ -24,7 +24,10 @@ import httpx2
 
 BLOB_API_VERSION = "2023-11-03"
 STORAGE_RESOURCE = "https://storage.azure.com/"
-STORE_TIMEOUT_S = 10.0
+STORE_TIMEOUT_S = 10.0  # per phase of a request: connect, write, read, pool
+# The Blob service abandons an operation it has not finished in this many seconds
+# (https://learn.microsoft.com/en-us/rest/api/storageservices/setting-timeouts-for-blob-service-operations).
+BLOB_SERVER_TIMEOUT_S = 10
 
 
 class StoreUnavailable(RuntimeError):
@@ -218,8 +221,11 @@ class AzureBlobStore:
 
     def _send(self, method: str, name: str, **kwargs: Any) -> httpx2.Response:
         headers = self._headers(kwargs.pop("headers", None))
+        params = {"timeout": str(BLOB_SERVER_TIMEOUT_S), **kwargs.pop("params", {})}
         try:
-            return self.client.request(method, self._url(name), headers=headers, **kwargs)
+            return self.client.request(
+                method, self._url(name), headers=headers, params=params, **kwargs
+            )
         except httpx2.HTTPError as error:
             raise StoreUnavailable(f"Blob {method} failed: {type(error).__name__}") from None
 

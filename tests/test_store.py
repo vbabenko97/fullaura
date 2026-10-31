@@ -76,7 +76,8 @@ def test_blob_writes_are_conditional_and_authenticated() -> None:
     with pytest.raises(VersionConflict):
         store.replace("ledger.json", {"spent": 3}, '"0x0"')
 
-    assert str(seen[0].url) == "https://stfullaura.blob.core.windows.net/pilot/invites/a%20b.json"
+    blob = "https://stfullaura.blob.core.windows.net/pilot/invites/a%20b.json"
+    assert str(seen[0].url) == f"{blob}?timeout=10"  # the service gives up after 10 seconds
     assert all(request.headers["Authorization"] == "Bearer token-1" for request in seen)
     assert all(request.headers["x-ms-version"] == BLOB_API_VERSION for request in seen)
     put = seen[2]
