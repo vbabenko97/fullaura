@@ -1,6 +1,6 @@
 # Azure deployment
 
-**Status:** The closed beta runs on Azure Container Apps in France Central since 2026-10-30. Invited sessions can plan and try looks on; everyone else sees the invite step. The pilot closes model calls at 2026-11-06 23:59 Vienna time.
+**Status:** The closed beta runs on Azure Container Apps in France Central since 2026-10-30, with the fixes of 2026-10-31. Invited sessions can plan and try looks on; everyone else sees the invite step. The pilot closes model calls at 2026-11-06 23:59 Vienna time. The purge job is scheduled to delete the pilot records at 2026-11-09 10:00 Vienna time, when the beta closes; it has not run on the real records yet.
 
 ## Deployed configuration
 
@@ -12,19 +12,20 @@
 | Log Analytics workspace | `law-fullaura-demo-frc`, 30-day retention |
 | Container Apps environment | `cae-fullaura-demo-frc`, Consumption workload profile |
 | Container App | `fullaura-demo`, with a system-assigned managed identity |
-| Revision | `fullaura-demo--0000006`, serving all traffic since 2026-10-30 |
+| Revision | `fullaura-demo--0000007`, serving all traffic since 2026-10-31 |
 | Compute and scaling | 0.5 vCPU / 1 GiB; minimum 0 and maximum 1 replica; scales to zero after 300 seconds without traffic |
 | Ingress | External HTTPS, target port 8000, insecure HTTP disabled |
 | Beta | `FULLAURA_BETA_ENABLED=true`; 11 invite digests in the secret `invite-hashes` (10 for participants, 1 for the operator); cookies signed with the secret `session-secret` |
-| Pilot window | `FULLAURA_PILOT_ENDS_AT=2026-11-06T23:59:00+01:00` |
+| Pilot window | `FULLAURA_PILOT_ENDS_AT=2026-11-06T23:59:00+01:00` and `FULLAURA_RECORDS_PURGE_AT=2026-11-09T10:00:00+01:00` |
 | Budgets in the app | Planning $7.97 and images $2.91: the beta's $8 and $3, less the $0.023 and $0.09 spent outside the ledger on the checks of 2026-10-30 |
-| Pilot store | Storage account `stfullauradurnz5gu4z`, container `pilot`; shared keys and public blob access off; a lifecycle rule deletes each record 30 days after its last change. The app's identity has Storage Blob Data Contributor on the container; the operator has Storage Blob Data Reader on the account. |
+| Pilot store | Storage account `stfullauradurnz5gu4z`, container `pilot`; shared keys and public blob access off; a lifecycle rule deletes each record 30 days after its last change. The app's and the purge job's identities each have Storage Blob Data Contributor on the container; the operator has Storage Blob Data Reader on the account. |
+| Purge job | `fullaura-demo-purge`, a scheduled Container Apps job in the same environment with a system-assigned identity: cron `0 9 9-15 11 *` in UTC, 0.25 vCPU / 0.5 GiB, 600-second replica timeout, 3 retries, the same image as the app ([Deleting the pilot records](#deleting-the-pilot-records)) |
 | Planning model | `meta-models/muse-spark-open-1026` at `https://inference.baseten.co/v1`, key in the secret `baseten-api-key` |
 | Try-on model | `muse-image-1.0` in Standard mode, key in the secret `model-api-key` |
-| Image | `ghcr.io/vbabenko97/fullaura@sha256:aa797cca7be943806f64299fb8d502ca2096f7bda9a2e4a7dec9780985cc95ed` (tag `00c7e2f-linux-amd64`; its `linux/amd64` manifest is `sha256:b8c12de2a840a05ffff8c048333bd0b9fe6c82332599c10c13dfa8f99604739d`) |
-| Application source | `main` at `00c7e2f` |
-| Rollback image | `ghcr.io/vbabenko97/fullaura@sha256:9fececb06a258c5074aa3340e054a7d3d723c0153f69381b5ca9301526169fb5`, built from `e918d07`, the anonymous planning demo; it ignores the beta settings and keeps planning closed |
-| ARM deployments | `fullaura-beta-20261030` and `fullaura-beta-budgets-20261030`, from `infra/azure/main.bicep` |
+| Image | `ghcr.io/vbabenko97/fullaura@sha256:4a46e357f6ac485c5655436b0d41dadde4185a54cbcaf908ed08ee5ebbd0ad97` (tag `a7eba24-linux-amd64`; its `linux/amd64` manifest is `sha256:0bdb6def207673530d564ec311b63e4fa17b7fa44076c14a30a619cb72c2769b`), for the app and the purge job |
+| Application source | `main` at `a7eba24` |
+| Rollback image | `ghcr.io/vbabenko97/fullaura@sha256:aa797cca7be943806f64299fb8d502ca2096f7bda9a2e4a7dec9780985cc95ed`, the beta built from `00c7e2f`, which served until 2026-10-31. It ignores `FULLAURA_RECORDS_PURGE_AT`, so it would not close the beta at the purge time, although the job still deletes the records then. The anonymous demo of 2026-10-30, `ghcr.io/vbabenko97/fullaura@sha256:9fececb06a258c5074aa3340e054a7d3d723c0153f69381b5ca9301526169fb5` from `e918d07`, keeps planning closed. |
+| ARM deployments | `fullaura-beta-20261030`, `fullaura-beta-budgets-20261030` and `fullaura-beta-fixes-20261031`, from `infra/azure/main.bicep` |
 
 The image is public, and GHCR issues an anonymous pull token for it. The keys, the session secret and the invite digests are encrypted Container Apps secrets, passed to the template as secure parameters; none is in the image or the repository. The resource group and the existing subscription-level budget remain in place.
 
@@ -47,9 +48,16 @@ On 2026-10-30, after the deployment of `00c7e2f`:
 - The app was rolled back to the previous image, which served health and readiness with planning closed, and rolled forward again to `00c7e2f`.
 - The budget limits were then lowered by redeploying the template; revision `fullaura-demo--0000006` passed the smoke check and the invite session check again.
 
+On 2026-10-31, after the deployment of `a7eba24`:
+
+- The deployment kept the four secrets: their values matched the operator's copies before and after. Revision `fullaura-demo--0000007` served all traffic with the image above, the same pilot end and budgets, and the new purge time.
+- `scripts/smoke_http.py` passed over HTTPS, with an open beta session. Without an invite, `/api/catalog`, `/api/previews`, `/api/feedback` and `/api/session/confirm-age` answered 401, and an unknown invite code 403.
+- The operator invite planned once for a synthetic adult persona, and a try-on on that persona's photos was withdrawn five seconds after it started: the browser aborted the request, the page showed no result and empty photo fields, the server recorded the withdrawn consent and logged `preview outcome=disconnected`, and the ledger kept the try-on's whole $0.03 reservation, with nothing left running. The plan cost $0.009.
+- The purge job was checked against `pilot-purge-check`, a container made for the test with four synthetic records written through the pilot code, with roles for the job and the operator on that container only. A run with the real purge time deleted nothing; a run with a purge time in the past deleted all four and found none left; a repeat found nothing and succeeded. A run of the job as configured, against the real `pilot` container, logged six records found, its access checked and none deleted, and the container still held six. The four log lines held counts only. The test container and its two role assignments were then removed.
+
 URL: <https://fullaura-demo.blackbay-aaeee2c5.francecentral.azurecontainerapps.io>.
 
-To roll back, point the app at the rollback image in the table above with `az containerapp update` (see the deployment procedure). That image serves the anonymous demo of 2026-10-30, so the beta is closed while it runs.
+To roll back, point the app and the purge job at the rollback image in the table above with `az containerapp update` and `az containerapp job update` (see the deployment procedure).
 
 ## Configuration and cost
 
