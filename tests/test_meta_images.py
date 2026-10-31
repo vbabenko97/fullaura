@@ -280,6 +280,30 @@ def test_async_edit_cancels_http_and_cleans_request_at_deadline() -> None:
     assert requests[0].headers == {}
 
 
+def test_every_request_turns_off_the_generators_web_and_image_search() -> None:
+    off = {"enable_image_search": False, "enable_web_search": False, "enable_shell": False}
+    images, sent, _ = client(OK, OK)
+    images.edit("Use the selected look", [InputImage(jpeg(), "image/jpeg")])
+    images.generate("A navy sweater")
+    assert [json.loads(body)["tool_enablement"] for body in sent] == [off, off]
+
+    bodies: list[bytes] = []
+
+    async def post(request: Request, timeout_s: float) -> dict[str, Any]:
+        bodies.append(request.data or b"")
+        return copy.deepcopy(OK)
+
+    try_on = MuseImageClient(KEY, "muse-image-1.0", async_post=post)
+    asyncio.run(
+        try_on.edit_async(
+            "Use the selected look",
+            [InputImage(jpeg(), "image/jpeg")],
+            deadline=time.monotonic() + 5,
+        )
+    )
+    assert json.loads(bodies[0])["tool_enablement"] == off
+
+
 @pytest.mark.parametrize(
     ("model", "message"),
     [("", "No image model"), ("muse-spark-1.3-contributor", "Standard-mode")],
