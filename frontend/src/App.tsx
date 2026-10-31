@@ -67,6 +67,13 @@ interface CurrentPlan {
   preferenceKey: string;
 }
 
+/** A restore's result: the plan it made current, the server's answer, or the error that stopped it. */
+interface Restored {
+  plan: CurrentPlan | null;
+  response: PlanResponse | null;
+  error: unknown;
+}
+
 /** The Design my look concept the server last made for this page; its token names it for a try-on. */
 interface CurrentConcept {
   concept: Concept;
@@ -177,7 +184,7 @@ export function App() {
   async function restore(
     saved: { brief: Brief; state: StateInput & { plan: Plan }; catalog_id: string },
     loadedCatalog: Catalog | null = catalog,
-  ): Promise<{ plan: CurrentPlan | null; response: PlanResponse | null; error: unknown }> {
+  ): Promise<Restored> {
     try {
       const body = { brief: saved.brief, state: saved.state, catalog_id: saved.catalog_id };
       const response = parsePlanResponse(await postJson("/api/plans/restore", body));
@@ -210,8 +217,8 @@ export function App() {
     }
   }
 
-  async function restoreCurrent(): Promise<string | null> {
-    if (!current) return null;
+  async function restoreCurrent(): Promise<Restored> {
+    if (!current) return { plan: null, response: null, error: null };
     const result = await restore({
       brief: current.brief,
       state: { ...current.state, plan: current.plan },
@@ -223,7 +230,7 @@ export function App() {
       setLocks([]);
       keepCurrentPlan(null);
     }
-    return result.plan?.token ?? null;
+    return result;
   }
 
   /** Load the catalog for an open invite, then bring back this tab's working plan. A failed load
@@ -243,10 +250,12 @@ export function App() {
     const working = loadCurrentPlan();
     if (!working) return;
     setPreferences(preferencesFrom(working));
-    setLocks(working.state.locks);
     const result = await restore(working, loaded);
+    // Kept items belong to the plan they were kept in, so a plan that was not restored keeps none.
+    setLocks(result.plan ? working.state.locks : []);
     if (!stopped() && !result.plan) {
-      keepCurrentPlan(null);
+      // Only the server's refusal ends the working plan; after a network error a reload tries again.
+      if (result.response) keepCurrentPlan(null);
       setRequestState("error");
       setRequestMessage(
         result.response
@@ -388,9 +397,10 @@ export function App() {
       return parsePlanResponse(await send(request.plan_token));
     } catch (error) {
       if (reasonOf(error) !== "plan_expired") throw error;
-      const token = await restoreCurrent();
-      if (!token) throw new PlanLostError();
-      return parsePlanResponse(await send(token));
+      const restored = await restoreCurrent();
+      // Only the server's refusal clears the plan; a failed connection leaves it for another try.
+      if (!restored.plan) throw restored.response || !restored.error ? new PlanLostError() : restored.error;
+      return parsePlanResponse(await send(restored.plan.token));
     }
   }
 
@@ -425,8 +435,9 @@ export function App() {
           setRequestMessage("The planner did not replace only this item.");
           return;
         }
-        // Keep the person's own locks; a replacement's temporary locks hold only for that request.
-        adopt(result, request.brief, { ...request.state, locks }, key);
+        // Keep the locks the request sent; a replacement's temporary locks hold only for that
+        // request, so it keeps the person's own.
+        adopt(result, request.brief, replacement ? { ...request.state, locks } : request.state, key);
         revealResults();
         setRequestState("success");
         setRequestMessage(
@@ -802,7 +813,7 @@ export function App() {
                             ? tryOnLook
                             : current.plan.looks[0].id,
                           lookIds: current.plan.looks.map((look) => look.id),
-                          onRestore: restoreCurrent,
+                          onRestore: async () => (await restoreCurrent()).plan?.token ?? null,
                           onSelectLook: setTryOnLook,
                         }}
                       />

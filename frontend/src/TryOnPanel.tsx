@@ -51,6 +51,8 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
   const controller = useRef<AbortController | null>(null);
   // Each withdrawal starts a new epoch; work begun in an earlier one may not change the panel.
   const epoch = useRef(0);
+  // Photos of this epoch still being prepared; the panel stays "preparing" until none is left.
+  const preparing = useRef(0);
 
   useEffect(() => () => controller.current?.abort(), []);
   useEffect(() => {
@@ -74,6 +76,7 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
       setter(null);
       return;
     }
+    preparing.current += 1;
     setState("preparing");
     let photo: Photo = null;
     let error: unknown = null;
@@ -83,14 +86,17 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
       error = caught;
     }
     if (epoch.current !== started) return;
+    preparing.current -= 1;
     setter(photo);
-    setState("idle");
+    // The other photo may still be preparing; only the last one to finish allows a try-on.
+    if (preparing.current === 0) setState((value) => (value === "preparing" ? "idle" : value));
     if (error) setPhotoError(error instanceof PhotoError ? error.message : "This photo could not be prepared.");
   }
 
   /** Stop the try-on at once and forget its photos and result, before the server hears of it. */
   function forgetPhotos() {
     epoch.current += 1;
+    preparing.current = 0;
     controller.current?.abort();
     controller.current = null;
     setPortrait(null);
