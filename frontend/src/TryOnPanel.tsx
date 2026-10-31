@@ -45,7 +45,11 @@ export function TryOnPanel({
   const [state, setState] = useState<"idle" | "preparing" | "loading" | "error">("idle");
   const [message, setMessage] = useState<string | null>(null);
   const [result, setResult] = useState<TryOnResult | null>(null);
+  // Remounts the file inputs, so a withdrawal also forgets the files they hold.
+  const [inputsKey, setInputsKey] = useState(0);
   const controller = useRef<AbortController | null>(null);
+  // Each withdrawal starts a new epoch; work begun in an earlier one may not change the panel.
+  const epoch = useRef(0);
 
   useEffect(() => () => controller.current?.abort(), []);
   useEffect(() => {
@@ -59,6 +63,7 @@ export function TryOnPanel({
   const remaining = Math.max(0, session.preview_requests_limit - session.preview_requests_used);
 
   async function choosePhoto(setter: (photo: Photo) => void, file: File | undefined) {
+    const started = epoch.current;
     setPhotoError(null);
     setResult(null);
     if (!file) {
@@ -66,17 +71,39 @@ export function TryOnPanel({
       return;
     }
     setState("preparing");
+    let photo: Photo = null;
+    let error: unknown = null;
     try {
-      setter({ blob: await normalizePhoto(file), name: file.name });
-      setState("idle");
-    } catch (error) {
-      setter(null);
-      setState("idle");
-      setPhotoError(error instanceof PhotoError ? error.message : "This photo could not be prepared.");
+      photo = { blob: await normalizePhoto(file), name: file.name };
+    } catch (caught) {
+      error = caught;
     }
+    if (epoch.current !== started) return;
+    setter(photo);
+    setState("idle");
+    if (error) setPhotoError(error instanceof PhotoError ? error.message : "This photo could not be prepared.");
+  }
+
+  /** Stop the try-on at once and forget its photos and result, before the server hears of it. */
+  function forgetPhotos() {
+    epoch.current += 1;
+    controller.current?.abort();
+    controller.current = null;
+    setPortrait(null);
+    setFullBody(null);
+    setResult(null); // the result effect revokes its object URL
+    setPhotoError(null);
+    setInputsKey((key) => key + 1);
+    setState("idle");
+    setMessage(
+      "Consent withdrawn. Any try-on in progress was stopped, and your photos and result were removed from this page. " +
+        "Photos already sent to Meta for a try-on cannot be called back.",
+    );
   }
 
   async function changeConsent(consent: boolean) {
+    if (!consent) forgetPhotos();
+    else setMessage(null);
     setConsentBusy(true);
     try {
       await onConsent(consent);
@@ -86,6 +113,7 @@ export function TryOnPanel({
   }
 
   async function send(token: string, operationId: string, signal: AbortSignal): Promise<Blob> {
+    signal.throwIfAborted();
     if (!portrait || !fullBody) throw new Error("Choose both photos first.");
     const form = new FormData();
     form.append("portrait", portrait.blob, "portrait.jpg");
@@ -98,6 +126,7 @@ export function TryOnPanel({
     });
     if (!response.ok) await readJson(response);
     const image = await response.blob();
+    signal.throwIfAborted();
     if (!["image/png", "image/jpeg", "image/webp"].includes(image.type) || image.size === 0) {
       throw new Error("The try-on response was not an image.");
     }
@@ -145,7 +174,7 @@ export function TryOnPanel({
     setMessage("Try-on cancelled. A cancelled try-on still counts against this invite.");
   }
 
-  const disabled = !session.photo_consent || !session.previews_open || state === "loading";
+  const disabled = !session.photo_consent || !session.previews_open || consentBusy || state === "loading";
 
   return (
     <section className="tryon-panel" aria-labelledby="tryon-title">
@@ -160,7 +189,8 @@ export function TryOnPanel({
           Muse Image model in Standard mode with a text description of the look. FullAura keeps them only in
           memory for that request and stores neither photos nor results. Standard mode keeps your content
           out of Meta's model training, but Meta may still retain it under its <a href={META_TERMS} rel="noreferrer" target="_blank">terms</a>.
-          Use photos of yourself only.
+          Use photos of yourself only. Withdrawing consent stops a try-on in progress and removes your photos and
+          result from this page.
         </p>
         {session.photo_consent ? (
           <p className="tryon-consent">
@@ -190,6 +220,7 @@ export function TryOnPanel({
             accept={ACCEPTED_PHOTO_TYPES.join(",")}
             disabled={disabled}
             id="tryon-portrait"
+            key={`portrait-${inputsKey}`}
             onChange={(event) => void choosePhoto(setPortrait, event.currentTarget.files?.[0])}
             type="file"
           />
@@ -200,6 +231,7 @@ export function TryOnPanel({
             accept={ACCEPTED_PHOTO_TYPES.join(",")}
             disabled={disabled}
             id="tryon-full-body"
+            key={`full-body-${inputsKey}`}
             onChange={(event) => void choosePhoto(setFullBody, event.currentTarget.files?.[0])}
             type="file"
           />

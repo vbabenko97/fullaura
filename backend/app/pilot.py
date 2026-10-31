@@ -5,8 +5,10 @@ checks the invite, reserves the call's conservative maximum cost, counts the cal
 invite's quota and marks it running; finish() replaces the reservation with the actual cost, or
 keeps the whole reservation when the outcome is unknown. Money and running operations share one
 ledger document, so a reservation, its release and the one-running-operation rule change in one
-conditional write. A running operation that an earlier process started, or that is older than
-any call can last, is interrupted: it is never retried, and its reservation counts as spent.
+conditional write. A running operation blocks its invite until it finishes or is older than any
+call can last, whichever process started it, because during a deployment the old revision keeps
+running for a while. An operation that outlived that limit is interrupted: it is never retried,
+and its reservation counts as spent.
 
 Nothing here holds a photo, preview, full plan, provider response or anything a person typed
 into the plan form; feedback holds only the answers to the feedback form.
@@ -107,6 +109,7 @@ class PilotLimits:
         (Budget.IMAGES, 3_000_000),
     )
     ends_at: datetime | None = None
+    records_purge_at: datetime | None = None  # after ends_at (backend/app/config.py)
     running_timeout_s: float = 300.0  # longer than the planning and preview deadlines
 
     def budget(self, budget: Budget) -> int:
@@ -183,6 +186,12 @@ class Pilot:
 
     def ended(self) -> bool:
         return self.limits.ends_at is not None and self._now() >= self.limits.ends_at
+
+    def purged(self) -> bool:
+        """The records are deleted, or about to be (backend/app/purge.py), so nothing new may
+        be written."""
+        purge_at = self.limits.records_purge_at
+        return purge_at is not None and self._now() >= purge_at
 
     # Invite records
 
@@ -383,12 +392,11 @@ class Pilot:
     def _stale_cutoff(self) -> datetime:
         return self._now() - timedelta(seconds=self.limits.running_timeout_s)
 
-    def _stale(self, entry: dict[str, Any], cutoff: datetime) -> bool:
-        """An earlier process started it, or it has outlived every deadline."""
-        return (
-            entry["instance"] != self.instance_id
-            or datetime.fromisoformat(entry["started_at"]) < cutoff
-        )
+    @staticmethod
+    def _stale(entry: dict[str, Any], cutoff: datetime) -> bool:
+        """It has outlived every deadline. Another instance ID alone proves nothing: that
+        process may still be running the call."""
+        return datetime.fromisoformat(entry["started_at"]) < cutoff
 
     def _interrupt_stale(self, ledger: dict[str, Any]) -> list[str]:
         cutoff = self._stale_cutoff()

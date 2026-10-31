@@ -209,6 +209,36 @@ export function App() {
     return result.plan?.token ?? null;
   }
 
+  /** Load the catalog for an open invite, then bring back this tab's working plan. A failed load
+   * keeps the session and shows a retry. */
+  async function openWorkspace(stopped: () => boolean = () => false) {
+    setCatalogState("loading");
+    let loaded: Catalog;
+    try {
+      loaded = parseCatalog(await readJson(await fetch("/api/catalog")));
+    } catch {
+      if (!stopped()) setCatalogState("error");
+      return;
+    }
+    if (stopped()) return;
+    setCatalog(loaded);
+    setCatalogState("ready");
+    const working = loadCurrentPlan();
+    if (!working) return;
+    setPreferences(preferencesFrom(working));
+    setLocks(working.state.locks);
+    const result = await restore(working, loaded);
+    if (!stopped() && !result.plan) {
+      keepCurrentPlan(null);
+      setRequestState("error");
+      setRequestMessage(
+        result.response
+          ? "Your last plan no longer passes today's checks. Generate a new plan, or open a saved one below."
+          : errorMessage(result.error),
+      );
+    }
+  }
+
   useEffect(() => {
     let cancelled = false;
     async function start() {
@@ -232,31 +262,7 @@ export function App() {
       setSession(next);
       setSessionState("ready");
       if (!next.beta || !next.invited) return;
-      let loaded: Catalog;
-      try {
-        loaded = parseCatalog(await readJson(await fetch("/api/catalog")));
-      } catch {
-        if (!cancelled) setCatalogState("error");
-        return;
-      }
-      if (cancelled) return;
-      setCatalog(loaded);
-      setCatalogState("ready");
-      const working = loadCurrentPlan();
-      if (working) {
-        setPreferences(preferencesFrom(working));
-        setLocks(working.state.locks);
-        const result = await restore(working, loaded);
-        if (!cancelled && !result.plan) {
-          keepCurrentPlan(null);
-          setRequestState("error");
-          setRequestMessage(
-            result.response
-              ? "Your last plan no longer passes today's checks. Generate a new plan, or open a saved one below."
-              : errorMessage(result.error),
-          );
-        }
-      }
+      await openWorkspace(() => cancelled);
     }
     void start();
     return () => {
@@ -267,17 +273,18 @@ export function App() {
   async function openInvite(code: string) {
     setGateBusy(true);
     setGateMessage(null);
+    let next: Session;
     try {
-      const next = parseSession(await postJson("/api/session/invite", { code }));
-      setSession(next);
-      const loaded = parseCatalog(await readJson(await fetch("/api/catalog")));
-      setCatalog(loaded);
-      setCatalogState("ready");
+      next = parseSession(await postJson("/api/session/invite", { code }));
     } catch (error) {
       setGateMessage(errorMessage(error));
+      return;
     } finally {
       setGateBusy(false);
     }
+    // The invite is open now; a catalog failure shows in the workspace, not as an invite error.
+    setSession(next);
+    await openWorkspace();
   }
 
   async function confirmAge() {
@@ -583,7 +590,10 @@ export function App() {
               ) : catalogState === "error" ? (
                 <div className="empty-state is-error" role="alert">
                   <h3>The catalog could not be loaded</h3>
-                  <p>Reload the page. Your saved plans below are still available.</p>
+                  <p>Your invite is open. Try again in a moment; your saved plans below are still available.</p>
+                  <button className="secondary-button" onClick={() => void openWorkspace()} type="button">
+                    Load the catalog again
+                  </button>
                 </div>
               ) : current && catalog ? (
                 <>
@@ -643,12 +653,16 @@ export function App() {
                 onSave={saveCurrent}
                 saved={saved}
               />
-              <FeedbackForm feedbackIds={session.feedback_ids} onChanged={() => void refreshSession()} />
+              <FeedbackForm
+                feedbackIds={session.feedback_ids}
+                onChanged={() => void refreshSession()}
+                recordsPurgeAt={session.records_purge_at}
+              />
             </section>
           </div>
         </div>
       )}
-      <PrivacyNotice />
+      <PrivacyNotice recordsPurgeAt={session?.records_purge_at ?? null} />
     </main>
   );
 }

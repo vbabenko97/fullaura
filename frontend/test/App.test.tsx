@@ -1,8 +1,9 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { App } from "../src/App";
+import { normalizePhoto } from "../src/photos";
 import firstPlanJson from "./fixtures/plan-success-initial.fixture.json?raw";
 import replacementPlanJson from "./fixtures/plan-success-replacement.fixture.json?raw";
 import reducedBudgetPlanJson from "./fixtures/plan-success-reduced-budget.fixture.json?raw";
@@ -41,12 +42,29 @@ function object(value: unknown): Body {
 
 interface Server {
   plans: unknown[];
-  requests: { url: string; body: Body | FormData | null; headers: Record<string, string> }[];
+  requests: {
+    url: string;
+    body: Body | FormData | null;
+    headers: Record<string, string>;
+    signal: AbortSignal | null;
+  }[];
   session: Body;
   token: number;
   expireToken: () => void;
   previewOutcome: "image" | "budget";
   restoreFails: boolean;
+  catalogFailures: number;
+  /** When set, a try-on answers only once this settles, as a slow provider would. */
+  previewGate: Promise<void> | null;
+}
+
+/** A promise the test settles by hand, for responses that arrive late. */
+function deferred<T = void>() {
+  let resolve: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((settle) => {
+    resolve = settle;
+  });
+  return { promise, resolve };
 }
 
 function installServer(options: { invited?: boolean; aged?: boolean; plans?: unknown[]; accounting?: boolean } = {}): Server {
@@ -68,6 +86,7 @@ function installServer(options: { invited?: boolean; aged?: boolean; plans?: unk
       previews_open: true,
       pilot_ends_at: null,
       pilot_ended: false,
+      records_purge_at: "2026-11-09T10:00:00+01:00",
       feedback_ids: [],
       has_plan: false,
     },
@@ -76,6 +95,8 @@ function installServer(options: { invited?: boolean; aged?: boolean; plans?: unk
     },
     previewOutcome: "image",
     restoreFails: false,
+    catalogFailures: 0,
+    previewGate: null,
   };
   const currentToken = () => `token-${server.token}`;
   const success = (plan: unknown) => ({
@@ -93,7 +114,7 @@ function installServer(options: { invited?: boolean; aged?: boolean; plans?: unk
     const headers = Object.fromEntries(new Headers(init?.headers).entries());
     const raw = init?.body;
     const body = raw instanceof FormData ? raw : typeof raw === "string" ? object(JSON.parse(raw)) : null;
-    server.requests.push({ url, body, headers });
+    server.requests.push({ url, body, headers, signal: init?.signal ?? null });
     const session = server.session;
     if (url === "/api/session") return json(session);
     if (url === "/api/session/invite") {
@@ -109,7 +130,13 @@ function installServer(options: { invited?: boolean; aged?: boolean; plans?: unk
       session.photo_consent = object(body).consent;
       return json(session);
     }
-    if (url === "/api/catalog") return json(catalog);
+    if (url === "/api/catalog") {
+      if (server.catalogFailures > 0) {
+        server.catalogFailures -= 1;
+        return json({ detail: "Service Unavailable", reason: null }, 503);
+      }
+      return json(catalog);
+    }
     if (url === "/api/plans") {
       const request = object(body);
       if (!headers["x-operation-id"]) return json({ detail: "no id", reason: "operation_id" }, 400);
@@ -147,6 +174,7 @@ function installServer(options: { invited?: boolean; aged?: boolean; plans?: unk
     if (url === "/api/previews") {
       if (headers["x-plan-token"] !== currentToken()) return json({ detail: "expired", reason: "plan_expired" }, 409);
       if (server.previewOutcome === "budget") return json({ detail: "budget", reason: "budget" }, 503);
+      if (server.previewGate) await server.previewGate;
       session.preview_requests_used = Number(session.preview_requests_used) + 1;
       return new Response(new TextEncoder().encode("preview"), { status: 200, headers: { "Content-Type": "image/png" } });
     }
@@ -212,6 +240,23 @@ describe(`${FIXTURE_LABEL}: access`, () => {
     expect(await screen.findByRole("heading", { name: "Your preferences" })).toBeTruthy();
     expect(object(server.requests[0].body)).toEqual({ code: "good-invite" });
     expect(window.location.hash).toBe("");
+  });
+
+  it("keeps an accepted invite when the catalog fails once, and loads it again on request", async () => {
+    const server = installServer({ invited: false, plans: [firstPlan] });
+    server.catalogFailures = 1;
+    render(<App />);
+    fireEvent.change(await screen.findByLabelText("Invite code"), { target: { value: "good-invite" } });
+    fireEvent.click(screen.getByRole("button", { name: "Open invite" }));
+    expect(await screen.findByText("The catalog could not be loaded")).toBeTruthy();
+    expect(screen.queryByText("Loading the catalog")).toBeNull();
+    expect(screen.queryByLabelText("Invite code")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Load the catalog again" }));
+    await generate();
+    const urls = server.requests.map((entry) => entry.url);
+    expect(urls.filter((url) => url === "/api/session/invite")).toHaveLength(1);
+    expect(urls.filter((url) => url === "/api/catalog")).toHaveLength(2);
   });
 });
 
@@ -393,6 +438,78 @@ describe(`${FIXTURE_LABEL}: try-on`, () => {
     expect(await screen.findByText(/Most Compatible/)).toBeTruthy();
   });
 
+  it("withdrawing consent stops a running try-on, and its late answer restores nothing", async () => {
+    const server = await prepareTryOn(installServer({ plans: [firstPlan] }));
+    const provider = deferred();
+    server.previewGate = provider.promise;
+    fireEvent.click(await screen.findByRole("button", { name: "Try on look 1" }));
+    await screen.findByRole("button", { name: "Cancel try-on" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Withdraw consent" }));
+    const sent = server.requests.find((entry) => entry.url === "/api/previews");
+    expect(sent?.signal?.aborted).toBe(true);
+    expect(screen.getByText(/Consent withdrawn/)).toBeTruthy();
+    expect((screen.getByLabelText("Portrait photo") as HTMLInputElement).files?.length ?? 0).toBe(0);
+    await screen.findByRole("button", { name: "I agree to this processing of my photos" });
+    const consent = server.requests.filter((entry) => entry.url === "/api/session/photo-consent").at(-1);
+    expect(object(consent?.body)).toEqual({ consent: false });
+
+    const sessionReads = () => server.requests.filter((entry) => entry.url === "/api/session").length;
+    const before = sessionReads();
+    provider.resolve(); // the provider answers after all
+    await waitFor(() => expect(sessionReads()).toBeGreaterThan(before));
+    expect(URL.createObjectURL).not.toHaveBeenCalled();
+    expect(screen.queryByRole("img", { name: /Experimental try-on/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "I agree to this processing of my photos" }));
+    await screen.findByText("You agreed to this processing.");
+    expect((screen.getByRole("button", { name: "Try on look 1" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("drops a photo still being prepared at withdrawal, and works again after a new consent", async () => {
+    installServer({ plans: [firstPlan] });
+    render(<App />);
+    await generate();
+    fireEvent.click(screen.getByRole("button", { name: "I agree to this processing of my photos" }));
+    await screen.findByText("You agreed to this processing.");
+    const slow = deferred<Blob>();
+    vi.mocked(normalizePhoto).mockImplementationOnce(() => slow.promise);
+    fireEvent.change(screen.getByLabelText("Portrait photo"), {
+      target: { files: [new File(["p"], "portrait.png", { type: "image/png" })] },
+    });
+    await screen.findByRole("button", { name: "Preparing photo…" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Withdraw consent" }));
+    fireEvent.click(await screen.findByRole("button", { name: "I agree to this processing of my photos" }));
+    await screen.findByText("You agreed to this processing.");
+    await act(async () => {
+      slow.resolve(new Blob(["late"], { type: "image/jpeg" })); // finishes after the new consent
+      await slow.promise;
+    });
+    fireEvent.change(screen.getByLabelText("Full-body photo"), {
+      target: { files: [new File(["f"], "full.webp", { type: "image/webp" })] },
+    });
+    const tryOn = await screen.findByRole("button", { name: "Try on look 1" });
+    expect((tryOn as HTMLButtonElement).disabled).toBe(true); // the old portrait did not come back
+
+    fireEvent.change(screen.getByLabelText("Portrait photo"), {
+      target: { files: [new File(["p2"], "portrait-2.png", { type: "image/png" })] },
+    });
+    await waitFor(() => expect((tryOn as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(tryOn);
+    expect(await screen.findByRole("img", { name: "Experimental try-on of look 1" })).toBeTruthy();
+  });
+
+  it("withdrawing consent removes a shown try-on and releases its image", async () => {
+    await prepareTryOn(installServer({ plans: [firstPlan] }));
+    fireEvent.click(await screen.findByRole("button", { name: "Try on look 1" }));
+    await screen.findByRole("img", { name: "Experimental try-on of look 1" });
+    fireEvent.click(screen.getByRole("button", { name: "Withdraw consent" }));
+    expect(screen.queryByRole("img", { name: /Experimental try-on/ })).toBeNull();
+    await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:tryon"));
+    expect((screen.getByLabelText("Full-body photo") as HTMLInputElement).files?.length ?? 0).toBe(0);
+  });
+
   it("reports a closed image budget and keeps the plan", async () => {
     const server = await prepareTryOn(installServer({ plans: [firstPlan] }));
     server.previewOutcome = "budget";
@@ -408,6 +525,7 @@ describe(`${FIXTURE_LABEL}: feedback`, () => {
     render(<App />);
     await screen.findByRole("heading", { name: "Tell us how it went" });
     const form = within(screen.getByRole("heading", { name: "Tell us how it went" }).closest("section") as HTMLElement);
+    expect(form.getByText(/is deleted on 9 November 2026 at 10:00 Vienna time\./)).toBeTruthy();
     fireEvent.click(form.getByRole("radio", { name: "Yes" }));
     fireEvent.click(within(form.getByRole("group", { name: /How useful/ })).getByRole("radio", { name: "4" }));
     fireEvent.click(form.getByRole("radio", { name: "I can't judge it" }));

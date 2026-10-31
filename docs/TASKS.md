@@ -70,6 +70,8 @@ The author and friends use the whole product on the deployed site: invite, prefe
 
 The catalog covers four example profiles in three scenarios, each with three different complete looks with closed shoes and at least one unlocked position that a valid replacement can fill ([DATA.md](DATA.md#catalog-coverage)).
 
+Withdrawing photo consent stops a try-on in progress and clears its photos and result, and a catalog that fails to load after an accepted invite can be loaded again. A running model call blocks its invite until it ends or is 300 seconds old, whichever revision started it ([D-48](DECISIONS.md#d-48-a-running-call-blocks-its-invite-whichever-process-started-it)). A scheduled job deletes the pilot records on 2026-11-09 at 10:00 Vienna time, after the pilot ends, and the beta closes then ([D-49](DECISIONS.md#d-49-a-scheduled-job-deletes-the-pilot-records-and-the-beta-closes-then)).
+
 Done when: the checks in the [README](../README.md#check-a-change) pass, including the browser flow on a desktop and a phone viewport and the catalog coverage test; the error cases pass (incompatible budget, no replacement, timeout, cancellation, a foreign or stale plan token, an exhausted quota, a repeated operation ID, a restart); logs, the pilot store, saved plans and the build hold no photo, try-on, full profile or secret; live runs with three synthetic adult personas pass a preliminary visual check by an independent agent; and one full run on the deployed beta with the real providers and synthetic photos succeeds, with try-on enabled for invited sessions and spending counted across a restart.
 
 ## T-06: Evaluation and submission

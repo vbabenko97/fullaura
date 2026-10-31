@@ -11,6 +11,18 @@ export function formatCheckedDate(value: string): string {
   return `Price checked ${new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: "UTC" }).format(date)}`;
 }
 
+/** When the beta deletes its records, as a sentence ending; the beta runs on Vienna time. */
+export function recordsDeletedText(value: string | null): string {
+  const date = new Date(value ?? Number.NaN);
+  if (Number.isNaN(date.getTime())) return "after the beta ends";
+  const when = new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "long",
+    timeStyle: "short",
+    timeZone: "Europe/Vienna",
+  }).format(date);
+  return `on ${when} Vienna time`;
+}
+
 export function labelCategory(category: Category): string {
   return category.replaceAll("_", " ");
 }

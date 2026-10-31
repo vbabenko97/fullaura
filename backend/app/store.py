@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
 from urllib.parse import quote
+from xml.etree import ElementTree
 
 import httpx2
 
@@ -52,6 +53,10 @@ class Store(Protocol):
         ...
 
     def delete(self, name: str) -> None: ...
+
+    def names(self) -> list[str]:
+        """Every document's name."""
+        ...
 
 
 def _encode(data: dict[str, Any]) -> bytes:
@@ -145,6 +150,13 @@ class DirectoryStore:
         with self._lock:
             self._path(name).unlink(missing_ok=True)
 
+    def names(self) -> list[str]:
+        with self._lock:
+            if not self._root.is_dir():
+                return []
+            files = (path for path in self._root.rglob("*") if path.is_file())
+            return sorted(path.relative_to(self._root).as_posix() for path in files)
+
     @staticmethod
     def _write(path: Path, content: bytes) -> str:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -201,7 +213,8 @@ class AzureBlobStore:
         }
 
     def _url(self, name: str) -> str:
-        return f"{self.account_url.rstrip('/')}/{self.container}/{quote(name)}"
+        container = f"{self.account_url.rstrip('/')}/{self.container}"
+        return f"{container}/{quote(name)}" if name else container
 
     def _send(self, method: str, name: str, **kwargs: Any) -> httpx2.Response:
         headers = self._headers(kwargs.pop("headers", None))
@@ -244,6 +257,36 @@ class AzureBlobStore:
         gone = response.status_code == 404 and _error_code(response) == "BlobNotFound"
         if response.status_code != 202 and not gone:
             raise StoreUnavailable(f"Blob DELETE returned HTTP {response.status_code}")
+
+    def names(self) -> list[str]:
+        """Every blob in the container, page by page
+        (https://learn.microsoft.com/en-us/rest/api/storageservices/list-blobs)."""
+        names: list[str] = []
+        marker = ""
+        while True:
+            params = {"restype": "container", "comp": "list"}
+            response = self._send("GET", "", params=params | ({"marker": marker} if marker else {}))
+            if response.status_code != 200:
+                raise StoreUnavailable(f"Blob list returned HTTP {response.status_code}")
+            try:
+                listing = ElementTree.fromstring(response.content)
+            except ElementTree.ParseError:
+                raise StoreUnavailable("Blob list is unreadable") from None
+            names += [name.text or "" for name in listing.iterfind("Blobs/Blob/Name")]
+            marker = listing.findtext("NextMarker") or ""
+            if not marker:
+                return names
+
+
+def open_store(url: str) -> Store:
+    if url == "memory://":
+        return MemoryStore()
+    if url.startswith("file://"):
+        return DirectoryStore(Path(url.removeprefix("file://")))
+    if url.startswith("https://") and ".blob.core.windows.net/" in url:
+        account_url, container = url.rstrip("/").rsplit("/", 1)
+        return AzureBlobStore(account_url, container)
+    raise ValueError("FULLAURA_STORE_URL must be memory://, file:///folder or a blob container URL")
 
 
 def _error_code(response: httpx2.Response) -> str | None:

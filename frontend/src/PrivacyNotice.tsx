@@ -1,7 +1,9 @@
+import { recordsDeletedText } from "./format";
+
 const META_TERMS = "https://dev.meta.ai/legal/terms-of-service";
 
 /** How the beta handles personal data, in the words a participant needs. */
-export function PrivacyNotice() {
+export function PrivacyNotice({ recordsPurgeAt }: { recordsPurgeAt: string | null }) {
   return (
     <footer className="privacy-footer no-print">
       <details>
@@ -20,8 +22,8 @@ export function PrivacyNotice() {
           </li>
           <li>
             FullAura records for your invite only your age confirmation, photo consent, request counts and costs, and
-            any feedback you send. These records are deleted 30 days after their last change; you can delete feedback
-            yourself at any time.
+            any feedback you send. These records are deleted {recordsDeletedText(recordsPurgeAt)}, when the beta
+            closes; you can delete feedback yourself at any time.
           </li>
           <li>Saved plans stay in this browser until you delete them. FullAura never infers traits from photos.</li>
           <li>To have your invite's records deleted earlier, ask the person who sent you the invite.</li>
