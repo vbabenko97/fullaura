@@ -169,7 +169,9 @@ def report(
         for kind in OperationKind
     }
 
-    feedback = _feedback(store, names, records, succeeded[OperationKind.PREVIEW])
+    feedback = _feedback(
+        store, names, records, succeeded[OperationKind.PREVIEW], succeeded[OperationKind.PLAN]
+    )
 
     def counted(record: dict[str, Any], key: str) -> bool:
         return record.get(key, 0) > 0  # invite records from earlier revisions lack new counters
@@ -261,6 +263,7 @@ def _feedback(
     names: list[str],
     records: dict[str, dict[str, Any]],
     tried_on: set[str],
+    planned: set[str],
 ) -> dict[str, Any]:
     """Current answers are those an invite's record lists and the store still holds. The latest
     is the one saved last, and between equal times the one listed last."""
@@ -330,9 +333,31 @@ def _feedback(
             "comment_written": share(
                 sum(bool(a.get("comment")) for a in answers), every["of"], every["denominator"]
             ),
+            "by_plan": {
+                "means": "whether the invite has a recorded successful planning call; that call "
+                "does not show that the person saw the looks",
+                "with_a_plan": _plan_answers(
+                    [a for i, a in latest.items() if i in planned],
+                    "latest answers of invites with a successful planning call",
+                ),
+                "without_a_plan": _plan_answers(
+                    [a for i, a in latest.items() if i not in planned],
+                    "latest answers of invites without one",
+                ),
+            },
         },
     }
     return {"summary": summary, "latest": latest}
+
+
+def _plan_answers(answers: list[dict[str, Any]], denominator: str) -> dict[str, Any]:
+    return {
+        "of": len(answers),
+        "denominator": denominator,
+        "would_wear_yes": sum(a["would_wear"] is True for a in answers),
+        "would_wear_no": sum(a["would_wear"] is False for a in answers),
+        "usefulness": {s: sum(str(a["usefulness"]) == s for a in answers) for s in SCORES},
+    }
 
 
 COST_CERTAINTY = {
