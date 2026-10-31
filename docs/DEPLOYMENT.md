@@ -1,6 +1,6 @@
 # Azure deployment
 
-**Status:** The closed beta runs on Azure Container Apps in France Central since 2026-10-30, with the fixes of 2026-10-31 and, since that evening, the pilot measurement and participant fixes of T-10 and a try-on that turns off the image model's own web and image search ([D-60](DECISIONS.md#d-60-a-try-on-turns-off-the-image-models-own-web-and-image-search)). Invited sessions can plan and try looks on; everyone else sees the invite step. The pilot closes model calls at 2026-11-06 23:59 Vienna time. The purge job is scheduled to delete the pilot records at 2026-11-09 10:00 Vienna time, when the beta closes; it has not run on the real records yet.
+**Status:** The closed beta runs on Azure Container Apps in France Central since 2026-10-30, with the fixes of 2026-10-31 and, since that evening, the pilot measurement and participant fixes of T-10 and a try-on that turns off the image model's own web and image search ([D-60](DECISIONS.md#d-60-a-try-on-turns-off-the-image-models-own-web-and-image-search)), and since that night `main` with Design My Look off: bounded request bodies and prompt inputs ([D-61](DECISIONS.md#d-61-api-request-bodies-and-prompt-inputs-are-bounded)) and kept items, working plans and try-ons that stay consistent. Invited sessions can plan and try looks on; everyone else sees the invite step. The pilot closes model calls at 2026-11-06 23:59 Vienna time. The purge job is scheduled to delete the pilot records at 2026-11-09 10:00 Vienna time, when the beta closes; it has not run on the real records yet.
 
 ## Deployed configuration
 
@@ -12,7 +12,7 @@
 | Log Analytics workspace | `law-fullaura-demo-frc`, 30-day retention |
 | Container Apps environment | `cae-fullaura-demo-frc`, Consumption workload profile |
 | Container App | `fullaura-demo`, with a system-assigned managed identity |
-| Revision | `fullaura-demo--0000010`, serving all traffic since 2026-10-31 |
+| Revision | `fullaura-demo--0000011`, serving all traffic since 2026-10-31 |
 | Compute and scaling | 0.5 vCPU / 1 GiB; minimum 0 and maximum 1 replica; scales to zero after 300 seconds without traffic |
 | Ingress | External HTTPS, target port 8000, insecure HTTP disabled |
 | Beta | `FULLAURA_BETA_ENABLED=true`; 11 invite digests in the secret `invite-hashes` (10 for participants, 1 for the operator); cookies signed with the secret `session-secret` |
@@ -22,10 +22,10 @@
 | Purge job | `fullaura-demo-purge`, a scheduled Container Apps job in the same environment with a system-assigned identity: cron `0 9 9-15 11 *` in UTC, 0.25 vCPU / 0.5 GiB, 600-second replica timeout, 3 retries, its own image, the purge job image below ([Deleting the pilot records](#deleting-the-pilot-records)) |
 | Planning model | `meta-models/muse-spark-open-1026` at `https://inference.baseten.co/v1`, key in the secret `baseten-api-key` |
 | Try-on model | `muse-image-1.0` in Standard mode, key in the secret `model-api-key` |
-| App image | `ghcr.io/vbabenko97/fullaura@sha256:3d3d86e61978d5c87cfbe40b5d9a0c89014e5d61d1d25e310ee281ee36b207a9` (tag `97530e2-linux-amd64`; its `linux/amd64` manifest is `sha256:26d52e0e1c9632af2e92fe691fe40512c3943d3e8315b4352117a99f963c69b1`) |
-| Purge job image | `ghcr.io/vbabenko97/fullaura@sha256:5366c7af7995102dd036c450a59415c81fd919630d68a3ac178bc8b327207e68`, the build of `62bd84f` (its `linux/amd64` manifest is `sha256:f61b8767673ccd9d4e5b6f7ec92c0472bce3f101cd6a64952ad946c1d3d5772a`); its purge writes the closure marker. The deployments of `7e1d48d` and `97530e2` changed nothing the job runs, so the job kept this image |
-| Application source | `97530e2` on the branch `hotfix/d60-tool-enablement`: `7e1d48d` with the change of [D-60](DECISIONS.md#d-60-a-try-on-turns-off-the-image-models-own-web-and-image-search) and without the Design My Look work that `main` has since `7e1d48d` |
-| App rollback image | `ghcr.io/vbabenko97/fullaura@sha256:0b8d5252e36b901257668ca05a96d9c10ccc4ff69285072887d9fdfaf34513f9`, the build of `7e1d48d`, which served until the evening of 2026-10-31. It is the same code without D-60, so it reads and writes the same records and keeps the beta on, but its try-ons leave the image model's search tools on ([Rolling back](#rolling-back)). Images older than `62bd84f`, such as `ghcr.io/vbabenko97/fullaura@sha256:4a46e357f6ac485c5655436b0d41dadde4185a54cbcaf908ed08ee5ebbd0ad97` of `a7eba24`, only with `FULLAURA_BETA_ENABLED=false` |
+| App image | `ghcr.io/vbabenko97/fullaura@sha256:d2b3002535c01a2848596d9b48e9c76ca8e7b82a0c13b88b241b91b98b289a01` (tag `b9e7cd0-linux-amd64`; its `linux/amd64` manifest is `sha256:f8f0c961285d070449d43b7d6a80ba7634da85c9c81df83fae5681bb8a5de575`) |
+| Purge job image | `ghcr.io/vbabenko97/fullaura@sha256:5366c7af7995102dd036c450a59415c81fd919630d68a3ac178bc8b327207e68`, the build of `62bd84f` (its `linux/amd64` manifest is `sha256:f61b8767673ccd9d4e5b6f7ec92c0472bce3f101cd6a64952ad946c1d3d5772a`); its purge writes the closure marker. The deployments of `7e1d48d`, `97530e2` and `b9e7cd0` changed nothing the job runs, so the job kept this image |
+| Application source | `main` at `b9e7cd0`, with `FULLAURA_DESIGN_MODE` unset, so Design My Look is off |
+| App rollback image | `ghcr.io/vbabenko97/fullaura@sha256:3d3d86e61978d5c87cfbe40b5d9a0c89014e5d61d1d25e310ee281ee36b207a9`, the build of `97530e2` on the branch `hotfix/d60-tool-enablement` (`7e1d48d` with D-60), which served on the evening of 2026-10-31. It reads and writes the same records, keeps the beta on and the image model's search tools off, but has neither the request-size limit nor the participant fixes of `b9e7cd0` ([Rolling back](#rolling-back)). The build of `7e1d48d`, `ghcr.io/vbabenko97/fullaura@sha256:0b8d5252e36b901257668ca05a96d9c10ccc4ff69285072887d9fdfaf34513f9`, also keeps the beta on but leaves the search tools on. Images older than `62bd84f`, such as `ghcr.io/vbabenko97/fullaura@sha256:4a46e357f6ac485c5655436b0d41dadde4185a54cbcaf908ed08ee5ebbd0ad97` of `a7eba24`, only with `FULLAURA_BETA_ENABLED=false` |
 | Purge job rollback image | none: no earlier image can run the purge job |
 | ARM deployments | `fullaura-beta-20261030`, `fullaura-beta-budgets-20261030`, `fullaura-beta-fixes-20261031` and `fullaura-purge-fence-20261031`, from `infra/azure/main.bicep` |
 
@@ -81,6 +81,15 @@ Later on 2026-10-31, after the deployment of `97530e2`, which applies [D-60](DEC
 - `scripts/smoke_http.py` passed over HTTPS with an open beta session.
 - The operator invite planned and tried on a look for the synthetic persona p1 with `e2e/live.e2e.ts`; both succeeded, in 28 seconds together.
 - `scripts/pilot_report.py` against the real store showed that none of the ten participant invites had been opened, so every participant's try-on runs with the search tools off. The ledger then held $0.057937 for planning and $0.06 for images.
+
+Later on 2026-10-31, after the deployment of `main` at `b9e7cd0`, which adds bounded request bodies and prompt inputs ([D-61](DECISIONS.md#d-61-api-request-bodies-and-prompt-inputs-are-bounded)), consistent kept items, working plans and try-ons, and the Design My Look code behind its flag, with `az containerapp update` of the app image only and `FULLAURA_DESIGN_MODE` unset:
+
+- CI passed on `b9e7cd0`, including the browser flows with Design My Look on and off ([run 41241096970](https://github.com/vbabenko97/fullaura/actions/runs/41241096970)). The pushed amd64 image passed `scripts/smoke_http.py` locally and answered 413 to a 1 MB request to `/api/plans`.
+- Before the update, the operator invite planned on revision `fullaura-demo--0000010` for the synthetic persona p1 and saved the plan in the browser.
+- Revision `fullaura-demo--0000011` serves all traffic with the app image above. The app's environment variables, secret names, scale settings and revision mode, and the purge job's image, schedule and settings, are the same as before the update.
+- `scripts/smoke_http.py` passed over HTTPS with an open beta session, and a 1 MB request to `/api/plans` on the deployed site answered 413, which only the new revision does.
+- The same browser state, reopened on the new revision: the tab's working plan came back on load; `/api/session` reported `design_open: false` and the page showed no Design My Look control; the plan saved before the update was restored and still passed every check; an update from its new token passed; and a try-on succeeded.
+- `scripts/pilot_report.py` against the real store showed that none of the ten participant invites had been opened. The ledger then held $0.079099 for planning and $0.07 for images. The operator invite has used all 8 of its planning requests.
 
 URL: <https://fullaura-demo.blackbay-aaeee2c5.francecentral.azurecontainerapps.io>.
 
@@ -165,7 +174,7 @@ To deploy only a new app image, run step 1 and then `az containerapp update --na
 
 The app and the purge job roll back separately, each to the digest recorded for it in the table above ([D-51](DECISIONS.md#d-51-the-app-and-the-purge-job-have-their-own-images-and-roll-back-apart)).
 
-- **App.** The recorded app rollback image, of `7e1d48d`, checks the closure marker and can serve the beta: run `az containerapp update` with its digest alone, then check it with `scripts/smoke_http.py <URL>`, which must report an open beta. It writes the same records as the current image, but its try-ons leave the image model's web and image search on ([D-60](DECISIONS.md#d-60-a-try-on-turns-off-the-image-models-own-web-and-image-search)). The image of `62bd84f` also checks the marker; it records no call outcome and no infeasible request, and refuses feedback from a page opened before the rollback until the page is reloaded. An image older than `62bd84f` writes without checking the marker, so switch the beta off in the same command:
+- **App.** The recorded app rollback image, of `97530e2`, checks the closure marker and can serve the beta: run `az containerapp update` with its digest alone, then check it with `scripts/smoke_http.py <URL>`, which must report an open beta. It writes the same records as the current image and keeps the image model's search tools off, but reads request bodies of any size and has the earlier kept-item and try-on behavior. The image of `7e1d48d` is the same without D-60, so its try-ons leave the image model's web and image search on ([D-60](DECISIONS.md#d-60-a-try-on-turns-off-the-image-models-own-web-and-image-search)). The image of `62bd84f` also checks the marker; it records no call outcome and no infeasible request, and refuses feedback from a page opened before the rollback until the page is reloaded. An image older than `62bd84f` writes without checking the marker, so switch the beta off in the same command:
 
   ```bash
   az containerapp update --name fullaura-demo --resource-group rg-fullaura-demo --subscription <subscription ID> \
