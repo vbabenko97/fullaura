@@ -73,11 +73,34 @@ The Baseten hackathon key is not linked to the DevRain workspace, and its remain
 
 The app keeps each browser session's checked plan in process memory, so it keeps one Uvicorn worker and one replica; a restart or a scale-down forgets the plans, and browsers restore them. Quotas, spending and feedback live in the pilot store and survive restarts. The store costs cents at this size; blob storage, transactions and Log Analytics ingestion are the only charges beyond Container Apps.
 
-The Free Trial credit expires on 2026-11-22. The pilot ends before that, but the 30-day deletion of pilot records runs until early December; if the subscription is not upgraded, Azure disables its resources when the trial ends, so delete the pilot records with the commands under [Stopping the beta](#stopping-the-beta) after the pilot rather than relying on the lifecycle rule.
+The Free Trial ends about 2026-11-22 18:56 UTC: the subscription was created on 2026-10-23 at 18:57 UTC, the trial lasts 30 days, and the last billing record available on 2026-10-29 showed the credit expiring then. If the subscription is not upgraded, Azure disables its resources when the trial ends. The pilot ends on 2026-11-06, and the purge job deletes its records on 2026-11-09 ([Deleting the pilot records](#deleting-the-pilot-records)), so the 30-day lifecycle rule, which would run into December, is only a backstop.
+
+## Deleting the pilot records
+
+The template creates the Container Apps job `fullaura-demo-purge` in the same environment when `recordsPurgeAt` is set ([D-49](DECISIONS.md#d-49-a-scheduled-job-deletes-the-pilot-records-and-the-beta-closes-then)). It runs the app's image with `python -m backend.app.purge`, 0.25 vCPU and 0.5 GiB, on the cron schedule `recordsPurgeSchedule`, which Container Apps evaluates in UTC ([Jobs in Azure Container Apps](https://learn.microsoft.com/en-us/azure/container-apps/jobs)). Its system-assigned identity has Storage Blob Data Contributor on the `pilot` container only, through its own role assignment.
+
+| Setting | Value for this pilot |
+| --- | --- |
+| Pilot end, `pilotEndsAt` | 2026-11-06 23:59 Vienna time (22:59 UTC) |
+| Purge time, `recordsPurgeAt` | `2026-11-09T10:00:00+01:00`: 2026-11-09 10:00 Vienna time, 09:00 UTC |
+| Schedule, `recordsPurgeSchedule` | `0 9 9-15 11 *`: 09:00 UTC every day from 9 to 15 November |
+| Retries | each run retries a store call three times within 7 seconds; the job retries a failed run up to three times within 600 seconds; the next day's run repeats it |
+
+Each run lists the container. Before the purge time it deletes nothing: it deletes a name that cannot exist, which proves the right to delete, logs the number of records and exits 0. From the purge time on it deletes every record, lists the container again and exits 0 only when nothing is left. A repeated run finds nothing and succeeds. A settings error, such as a purge time that is not after the pilot's end, exits 2, and an unreachable store exits 1, so the job retries. The log, in `ContainerAppConsoleLogs_CL`, holds counts only. At the purge time the app closes the beta, so no new record appears after the job runs, and the pilot's end keeps model calls closed although the ledger is gone.
+
+The job deletes only blobs in the `pilot` container. It does not touch the container itself, other storage, the logs or any Azure resource. To check the configuration and the job's runs:
+
+```bash
+az containerapp job show --name fullaura-demo-purge --resource-group rg-fullaura-demo --subscription <subscription ID> \
+  --query "{schedule:properties.configuration.scheduleTriggerConfig.cronExpression,image:properties.template.containers[0].image,env:properties.template.containers[0].env}"
+az containerapp job execution list --name fullaura-demo-purge --resource-group rg-fullaura-demo --subscription <subscription ID> --output table
+```
+
+To check access without deleting anything before the purge time, start a run with `az containerapp job start` and read its log line. Moving the pilot's end later needs a later `recordsPurgeAt` and `recordsPurgeSchedule` in the same deployment.
 
 ## Deployment procedure
 
-The template `infra/azure/main.bicep` describes every resource in `rg-fullaura-demo`: the Log Analytics workspace, the Container Apps environment, the app with its system-assigned managed identity, the private storage account for pilot records with its 30-day deletion rule, and the role assignment that lets the app's identity read and write that account's blobs. Deploy it to the existing resource group so that it updates these resources and creates no second stack. The Azure CLI's default subscription is another one, so every command names the FullAura subscription.
+The template `infra/azure/main.bicep` describes every resource in `rg-fullaura-demo`: the Log Analytics workspace, the Container Apps environment, the app with its system-assigned managed identity, the private storage account for pilot records with its 30-day deletion rule, the purge job that deletes the records after the pilot, and the role assignments that let the app's and the job's identities read, write and delete the blobs in the `pilot` container. Deploy it to the existing resource group so that it updates these resources and creates no second stack. The Azure CLI's default subscription is another one, so every command names the FullAura subscription.
 
 1. Build and smoke-test the image as described in `README.md`, then build it for `linux/amd64`, push it to `ghcr.io/vbabenko97/fullaura` and note its digest and source commit.
 2. Check the subscription, its spending limit and credit, and the provider prices and terms named in [BETA.md](BETA.md#costs). Azure budgets notify; they do not stop spending.
@@ -86,23 +109,24 @@ The template `infra/azure/main.bicep` describes every resource in `rg-fullaura-d
    ```bash
    az deployment group what-if --subscription <subscription ID> --resource-group rg-fullaura-demo \
      --template-file infra/azure/main.bicep --parameters containerImage=ghcr.io/vbabenko97/fullaura@<digest> \
-     betaEnabled=true pilotEndsAt=<ISO date-time with zone> planningBudgetUsd=<USD> imageBudgetUsd=<USD> \
+     betaEnabled=true pilotEndsAt=<ISO date-time with zone> recordsPurgeAt=<later ISO date-time with zone> \
+     recordsPurgeSchedule=<cron in UTC> planningBudgetUsd=<USD> imageBudgetUsd=<USD> \
      basetenApiKey=<key> modelApiKey=<key> \
      sessionSecret=<secret> inviteHashes=<comma-separated digests>
    ```
 
-   `pilotEndsAt` is required while the beta is enabled; the app refuses to start without it. Expect changes only to the app, the new storage resources and the role assignment. Stop if the preview deletes or recreates the environment or the workspace.
+   `pilotEndsAt` and `recordsPurgeAt` are required while the beta is enabled; the app refuses to start without them or with a purge time that is not after the end. Expect changes only to the app, the purge job, the storage resources and the role assignments. Stop if the preview deletes or recreates the environment, the workspace or the storage account.
 4. Run the same command with `az deployment group create`. A deployment keeps the session secret only if the same value is passed again; a new secret signs out every participant.
 5. Wait for the role assignment to take effect, which can take a few minutes, then check `/`, `/api/health`, `/api/ready`, `/api/session` and a JSON 404 for an unknown `/api` route with `scripts/smoke_http.py <URL>`, and open the operator's invite to check planning and a try-on.
 6. Record the URL, source commit, resource names, deployed digest and the previous working digest below.
 
-To deploy only a new image, run step 1 and then `az containerapp update --name fullaura-demo --resource-group rg-fullaura-demo --subscription <subscription ID> --image ghcr.io/vbabenko97/fullaura@<digest>`. In single-revision mode this creates a new revision, moves all traffic to it, and keeps the environment variables and secrets. To roll back, run the same command with the previous working digest.
+To deploy only a new image, run step 1 and then `az containerapp update --name fullaura-demo --resource-group rg-fullaura-demo --subscription <subscription ID> --image ghcr.io/vbabenko97/fullaura@<digest>`, and the same with `az containerapp job update --name fullaura-demo-purge` for the purge job. In single-revision mode this creates a new revision, moves all traffic to it, and keeps the environment variables and secrets. To roll back, run the same command with the previous working digest.
 
 ## Stopping the beta
 
 - Close model calls and the beta's routes at once: `az containerapp update --name fullaura-demo --resource-group rg-fullaura-demo --subscription <subscription ID> --set-env-vars FULLAURA_BETA_ENABLED=false`. Plans saved on participants' devices stay readable in their browsers.
 - Stop serving altogether: `az containerapp ingress disable --name fullaura-demo --resource-group rg-fullaura-demo --subscription <subscription ID>`.
-- Delete every pilot record now rather than after 30 days: `az storage blob delete-batch --account-name <storage account> --source pilot --auth-mode login --subscription <subscription ID>`. The operator needs the Storage Blob Data Contributor role on the account.
+- Delete every pilot record before the purge job does: `az storage blob delete-batch --account-name <storage account> --source pilot --auth-mode login --subscription <subscription ID>`. The operator needs the Storage Blob Data Contributor role on the account.
 - Remove all FullAura resources: `az group delete --name rg-fullaura-demo --subscription <subscription ID>`. This also deletes the logs and cannot be undone.
 
 ## Official references

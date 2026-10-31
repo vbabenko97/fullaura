@@ -8,7 +8,7 @@ import logging
 import time
 import uuid
 from collections.abc import Iterator, Sequence
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -478,11 +478,46 @@ def test_the_production_beta_needs_a_secret_a_store_and_invites(tmp_path: Path) 
     }
     with pytest.raises(RuntimeError, match="PILOT_ENDS_AT"):
         create_app(Settings(**complete))
-    beta = Settings(**complete, pilot_ends_at=datetime(2026, 11, 9, 23, 59, tzinfo=UTC))
+    ends_at = datetime.now(UTC) + timedelta(days=7)
+    with pytest.raises(RuntimeError, match="RECORDS_PURGE_AT"):
+        create_app(Settings(**complete, pilot_ends_at=ends_at))
+    with pytest.raises(ValueError, match="after FULLAURA_PILOT_ENDS_AT"):
+        Settings(**complete, pilot_ends_at=ends_at, records_purge_at=ends_at)
+    beta = Settings(**complete, pilot_ends_at=ends_at, records_purge_at=ends_at + timedelta(days=2))
     with TestClient(create_app(beta), base_url="https://testserver") as http:
         joined = http.post("/api/session/invite", json={"code": CODE})
         assert "secure" in joined.headers["set-cookie"].lower()
         assert joined.json()["beta"] is True
+
+
+def test_deleted_records_reopen_no_budget_and_the_beta_closes_when_they_go(
+    tmp_path: Path, store: MemoryStore
+) -> None:
+    now = datetime.now(UTC)
+    purge_at = now + timedelta(days=1)
+    ended = settings(tmp_path, pilot_ends_at=now - timedelta(days=1), records_purge_at=purge_at)
+    feedback = {"would_wear": True, "usefulness": 3, "try_on": 2}
+    with TestClient(create_app(ended, spark=ScriptedSpark(VALID), store=store)) as http:
+        join(http)
+        assert http.post("/api/feedback", json=feedback).status_code == 201
+        for name in store.names():  # what the purge job does
+            store.delete(name)
+        session = http.get("/api/session").json()
+        assert session["pilot_ended"] and not session["planning_open"]
+        assert session["records_purge_at"] == purge_at.isoformat()
+        refused = plan(http)
+        assert (refused.status_code, refused.json()["reason"]) == (403, "pilot_ended")
+        assert store.names() == []
+
+    purged = settings(
+        tmp_path, pilot_ends_at=now - timedelta(days=2), records_purge_at=now - timedelta(hours=1)
+    )
+    with TestClient(create_app(purged, store=store)) as http:
+        assert http.get("/api/session").json()["beta"] is False
+        assert http.post("/api/session/invite", json={"code": CODE}).status_code == 404
+        assert http.post("/api/session/confirm-age", json={"over_18": True}).status_code == 404
+        assert http.post("/api/feedback", json=feedback).status_code == 404
+    assert store.names() == []  # nothing new was written after the deletion
 
 
 def test_the_image_budget_setting_closes_try_ons(tmp_path: Path, store: MemoryStore) -> None:

@@ -30,7 +30,16 @@ param planningBudgetUsd string = '8'
 @description('US dollars the beta may spend on try-on images, after spending outside the ledger.')
 param imageBudgetUsd string = '3'
 
-@description('Days after its last change before a pilot record is deleted.')
+@description('When the purge job deletes every pilot record and the beta closes, as an ISO date-time with a time zone after pilotEndsAt; empty for no job.')
+param recordsPurgeAt string = ''
+
+@description('When the purge job runs, as a five-field cron expression in UTC. The first run should fall at recordsPurgeAt; the job deletes nothing earlier, and later runs retry a failure.')
+param recordsPurgeSchedule string = '0 9 9-15 11 *'
+
+@description('Name of the scheduled job that deletes the pilot records.')
+param purgeJobName string = 'fullaura-demo-purge'
+
+@description('Days after its last change before a pilot record is deleted, as a backstop to the purge job.')
 param pilotDataRetentionDays int = 30
 
 @secure()
@@ -228,6 +237,10 @@ resource app 'Microsoft.App/containerApps@2025-07-01' = {
                 value: pilotEndsAt
               }
               {
+                name: 'FULLAURA_RECORDS_PURGE_AT'
+                value: recordsPurgeAt
+              }
+              {
                 name: 'FULLAURA_PLANNING_BUDGET_USD'
                 value: planningBudgetUsd
               }
@@ -291,6 +304,67 @@ resource pilotAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
   scope: container
   properties: {
     principalId: app.identity.principalId
+    principalType: 'ServicePrincipal'
+    roleDefinitionId: storageBlobDataContributor
+  }
+}
+
+// Deletes the pilot records once recordsPurgeAt has passed (backend/app/purge.py). Its identity
+// may read, write and delete blobs in the pilot container only.
+resource purgeJob 'Microsoft.App/jobs@2025-07-01' = if (!empty(recordsPurgeAt)) {
+  name: purgeJobName
+  location: location
+  identity: {
+    type: 'SystemAssigned'
+  }
+  properties: {
+    environmentId: environment.id
+    workloadProfileName: 'Consumption'
+    configuration: {
+      triggerType: 'Schedule'
+      replicaTimeout: 600
+      replicaRetryLimit: 3
+      scheduleTriggerConfig: {
+        cronExpression: recordsPurgeSchedule
+        parallelism: 1
+        replicaCompletionCount: 1
+      }
+    }
+    template: {
+      containers: [
+        {
+          name: 'purge'
+          image: containerImage
+          command: ['python', '-m', 'backend.app.purge']
+          resources: {
+            cpu: json('0.25')
+            memory: '0.5Gi'
+          }
+          env: [
+            {
+              name: 'FULLAURA_STORE_URL'
+              value: '${storage.properties.primaryEndpoints.blob}${pilotContainer}'
+            }
+            {
+              name: 'FULLAURA_PILOT_ENDS_AT'
+              value: pilotEndsAt
+            }
+            {
+              name: 'FULLAURA_RECORDS_PURGE_AT'
+              value: recordsPurgeAt
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
+
+resource purgeAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = if (!empty(recordsPurgeAt)) {
+  name: guid(container.id, purgeJob.id, storageBlobDataContributor)
+  scope: container
+  properties: {
+    principalId: purgeJob!.identity.principalId
     principalType: 'ServicePrincipal'
     roleDefinitionId: storageBlobDataContributor
   }

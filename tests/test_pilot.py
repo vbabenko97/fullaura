@@ -153,15 +153,19 @@ def test_age_and_photo_consent_come_before_any_call() -> None:
 
 
 def test_after_a_restart_counts_and_spending_remain_and_a_running_call_is_not_retried() -> None:
-    store = MemoryStore()
-    before = pilot(store)
+    store, clock = MemoryStore(), Clock()
+    before = pilot(store, clock)
     invite = ready(before)
     before.finish(before.begin(invite, PLAN, op(), 1000), 400, "success")
     lost = before.begin(invite, PLAN, op(), 1000)  # the process ends during this call
 
-    after = pilot(store)  # a new process: same store, new instance ID
+    after = pilot(store, clock)  # a new process: same store, new instance ID
     assert after.status(invite).plan_requests_used == 2
-    after.finish(after.begin(invite, PLAN, op(), 1000), 300, "success")  # not busy any more
+    with pytest.raises(Refused) as refused:  # it cannot know the other process has ended
+        after.begin(invite, PLAN, op(), 1000)
+    assert refused.value.reason is Refusal.BUSY
+    clock.now += timedelta(seconds=301)
+    after.finish(after.begin(invite, PLAN, op(), 1000), 300, "success")
     ledger = after.ledger()
     assert ledger["spent"]["planning"] == 400 + 1000 + 300  # the lost call keeps its reservation
     assert ledger["reserved"]["planning"] == 0
@@ -169,6 +173,65 @@ def test_after_a_restart_counts_and_spending_remain_and_a_running_call_is_not_re
     assert operation is not None and operation.data["status"] == "interrupted"
     before.finish(lost, 100, "success")  # a late finish cannot refund a held reservation
     assert after.ledger()["spent"]["planning"] == 1700
+
+
+def test_two_live_instances_never_run_two_calls_for_one_invite() -> None:
+    """Two revisions overlap during a deployment and share the store."""
+    store, clock = MemoryStore(), Clock()
+    old, new = pilot(store, clock), pilot(store, clock)
+    assert old.instance_id != new.instance_id
+    invite = ready(old, photos=True)
+    running = old.begin(invite, PLAN, op(), 1000)
+    for call in (
+        lambda: new.check(invite, PREVIEW, 1000),
+        lambda: new.begin(invite, PREVIEW, op(), 1000),
+        lambda: new.begin(invite, PLAN, op(), 1000),
+    ):
+        with pytest.raises(Refused) as refused:
+            call()
+        assert refused.value.reason is Refusal.BUSY
+    assert old.ledger()["running"].keys() == {running.id}
+    assert new.status(invite).plan_requests_used == 1  # the refused calls counted nothing
+
+    old.finish(running, 250, "success")  # the old revision's call ends normally
+    new.finish(new.begin(invite, PREVIEW, op(), 1000), 10_000, "succeeded")
+    ledger = new.ledger()
+    assert ledger["spent"] == {"planning": 250, "images": 10_000}
+    assert ledger["reserved"] == {"planning": 0, "images": 0} and ledger["running"] == {}
+
+
+def test_a_dead_instances_call_is_released_only_after_the_timeout_and_keeps_its_reservation() -> (
+    None
+):
+    store, clock = MemoryStore(), Clock()
+    old, new = pilot(store, clock), pilot(store, clock)
+    invite = ready(old)
+    dead = old.begin(invite, PLAN, op(), 1000)  # the old revision stops during this call
+    clock.now += timedelta(seconds=299)
+    with pytest.raises(Refused) as refused:
+        new.check(invite, PLAN, 1000)
+    assert refused.value.reason is Refusal.BUSY
+    clock.now += timedelta(seconds=2)
+    new.check(invite, PLAN, 1000)
+    current = new.begin(invite, PLAN, op(), 2000)
+    ledger = new.ledger()
+    assert ledger["spent"]["planning"] == 1000  # the dead call's whole reservation
+    assert ledger["reserved"]["planning"] == 2000 and ledger["running"].keys() == {current.id}
+
+    # The dead call's process reports late: no refund, and the new call stays untouched.
+    old.finish(dead, None, "error")
+    old.finish(dead, 1, "success")
+    ledger = new.ledger()
+    assert ledger["spent"]["planning"] == 1000
+    assert ledger["reserved"]["planning"] == 2000 and ledger["running"].keys() == {current.id}
+    with pytest.raises(Refused) as refused:  # the new call still holds the invite
+        old.begin(invite, PLAN, op(), 1000)
+    assert refused.value.reason is Refusal.BUSY
+    new.finish(current, 500, "success")
+    ledger = new.ledger()
+    assert ledger["spent"]["planning"] == 1500 and ledger["reserved"]["planning"] == 0
+    record = store.read(f"operations/{dead.id}.json")
+    assert record is not None and record.data["status"] == "interrupted"
 
 
 def test_a_call_older_than_every_deadline_stops_blocking_its_invite() -> None:

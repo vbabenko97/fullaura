@@ -30,6 +30,8 @@ class Settings:
     planning_budget_usd: float = 8.0
     image_budget_usd: float = 3.0
     pilot_ends_at: datetime | None = None
+    # When the scheduled job deletes every pilot record; the beta closes at that moment.
+    records_purge_at: datetime | None = None
     # Muse Spark on Baseten; empty values fall back to the planner's defaults.
     baseten_api_key: str = field(default="", repr=False)
     baseten_base_url: str = ""
@@ -42,6 +44,11 @@ class Settings:
             raise ValueError("FULLAURA_ENV must be development or production")
         if self.pilot_ends_at is not None and self.pilot_ends_at.tzinfo is None:
             raise ValueError("FULLAURA_PILOT_ENDS_AT needs a time zone, such as +01:00")
+        if self.records_purge_at is not None:
+            if self.records_purge_at.tzinfo is None:
+                raise ValueError("FULLAURA_RECORDS_PURGE_AT needs a time zone, such as +01:00")
+            if self.pilot_ends_at is None or self.records_purge_at <= self.pilot_ends_at:
+                raise ValueError("FULLAURA_RECORDS_PURGE_AT must come after FULLAURA_PILOT_ENDS_AT")
 
     @property
     def beta_open(self) -> bool:
@@ -51,6 +58,7 @@ class Settings:
     def from_env(cls) -> Settings:
         web_dist = os.getenv("FULLAURA_WEB_DIST")
         ends_at = os.getenv("FULLAURA_PILOT_ENDS_AT", "")
+        purge_at = os.getenv("FULLAURA_RECORDS_PURGE_AT", "")
         hashes = os.getenv("FULLAURA_INVITE_HASHES", "")
         defaults = cls()
         return cls(
@@ -75,6 +83,7 @@ class Settings:
                 os.getenv("FULLAURA_IMAGE_BUDGET_USD", defaults.image_budget_usd)
             ),
             pilot_ends_at=datetime.fromisoformat(ends_at) if ends_at else None,
+            records_purge_at=datetime.fromisoformat(purge_at) if purge_at else None,
             baseten_api_key=os.getenv("BASETEN_API_KEY", ""),
             baseten_base_url=os.getenv("BASETEN_BASE_URL", ""),
             baseten_model=os.getenv("BASETEN_MODEL", ""),

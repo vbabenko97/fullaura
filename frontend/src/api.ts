@@ -285,6 +285,7 @@ export function parseSession(value: unknown): Session {
     previews_open: readFlag(value.previews_open, "try-on flag"),
     pilot_ends_at: readNullableString(value.pilot_ends_at, "pilot end"),
     pilot_ended: readFlag(value.pilot_ended, "pilot end flag"),
+    records_purge_at: readNullableString(value.records_purge_at, "record deletion time"),
     feedback_ids: readArray(value.feedback_ids, "feedback IDs").map((id) => readString(id, "feedback ID")),
     has_plan: readFlag(value.has_plan, "plan flag"),
   };

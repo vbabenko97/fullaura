@@ -13,7 +13,6 @@ import logging
 import secrets
 import time
 import uuid
-from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import FastAPI
@@ -77,7 +76,7 @@ from backend.app.sessions import (
     sign_session,
 )
 from backend.app.state import State
-from backend.app.store import AzureBlobStore, DirectoryStore, MemoryStore, Store, StoreUnavailable
+from backend.app.store import Store, StoreUnavailable, open_store
 
 OPERATION_HEADER = "X-Operation-Id"
 PLAN_TOKEN_HEADER = "X-Plan-Token"
@@ -155,17 +154,6 @@ def _invalid(error: ValidationError) -> JSONResponse:
     return JSONResponse({"detail": details, "reason": "invalid"}, status_code=422, headers=NO_STORE)
 
 
-def open_store(url: str) -> Store:
-    if url == "memory://":
-        return MemoryStore()
-    if url.startswith("file://"):
-        return DirectoryStore(Path(url.removeprefix("file://")))
-    if url.startswith("https://") and ".blob.core.windows.net/" in url:
-        account_url, container = url.rstrip("/").rsplit("/", 1)
-        return AzureBlobStore(account_url, container)
-    raise ValueError("FULLAURA_STORE_URL must be memory://, file:///folder or a blob container URL")
-
-
 def create_app(
     settings: Settings | None = None,
     spark: SparkClient | None = None,
@@ -185,10 +173,12 @@ def create_app(
             raise RuntimeError("The beta needs a persistent FULLAURA_STORE_URL")
         if not settings.invite_hashes:
             raise RuntimeError("The beta needs FULLAURA_INVITE_HASHES")
+        # The end closes model calls whatever the ledger holds, so deleting the records cannot
+        # reopen the budgets; the purge time tells participants when the records go.
         if settings.pilot_ends_at is None:
-            # Pilot records expire 30 days after their last change; an end date keeps a quiet
-            # month from reopening the budgets.
             raise RuntimeError("The beta needs FULLAURA_PILOT_ENDS_AT")
+        if settings.records_purge_at is None:
+            raise RuntimeError("The beta needs FULLAURA_RECORDS_PURGE_AT")
 
     app = FastAPI(
         title="FullAura API",
@@ -208,6 +198,7 @@ def create_app(
                 (Budget.IMAGES, round(settings.image_budget_usd * 1_000_000)),
             ),
             ends_at=settings.pilot_ends_at,
+            records_purge_at=settings.records_purge_at,
         ),
         settings.invite_hashes,
     )
@@ -236,13 +227,17 @@ def create_app(
             return None
         return MuseImageClient(settings.model_api_key, settings.meta_image_model)
 
+    def beta_open() -> bool:
+        """Once the pilot records are deleted, the beta stays closed, so none reappears."""
+        return settings.beta_open and not pilot.purged()
+
     def session_of(request: Request) -> Session | None:
         session = read_session(secret, request.cookies.get(SESSION_COOKIE))
         return session if session and pilot.knows(session.invite_id) else None
 
     def session_payload(session: Session | None) -> dict[str, Any]:
         payload: dict[str, Any] = {
-            "beta": settings.beta_open,
+            "beta": beta_open(),
             "invited": session is not None,
             "accounting": False,
             "age_confirmed": False,
@@ -255,10 +250,13 @@ def create_app(
             "previews_open": False,
             "pilot_ends_at": settings.pilot_ends_at.isoformat() if settings.pilot_ends_at else None,
             "pilot_ended": pilot.ended(),
+            "records_purge_at": (
+                settings.records_purge_at.isoformat() if settings.records_purge_at else None
+            ),
             "feedback_ids": [],
             "has_plan": False,
         }
-        if session is None or not settings.beta_open:
+        if session is None or not beta_open():
             return payload
         payload["has_plan"] = plans.get(session) is not None
         try:
@@ -327,7 +325,7 @@ def create_app(
     @app.post("/api/session/invite", tags=["session"])
     def open_invite(invite: InviteCode, request: Request) -> JSONResponse:
         """Exchange an invite code for a signed session cookie."""
-        if not settings.beta_open:
+        if not beta_open():
             return closed()
         invite_id = pilot.invite_id(invite.code)
         if invite_id is None:
@@ -349,7 +347,7 @@ def create_app(
     def confirm_age(confirmation: AgeConfirmation, request: Request) -> JSONResponse:
         """Record that the invited person confirmed they are 18 or older."""
         session = session_of(request)
-        if not settings.beta_open:
+        if not beta_open():
             return closed()
         if session is None:
             return not_invited()
@@ -365,7 +363,7 @@ def create_app(
     def photo_consent(consent: PhotoConsent, request: Request) -> JSONResponse:
         """Record or withdraw consent to the photo processing notice."""
         session = session_of(request)
-        if not settings.beta_open:
+        if not beta_open():
             return closed()
         if session is None:
             return not_invited()
@@ -378,7 +376,7 @@ def create_app(
     @app.get("/api/catalog", tags=["catalog"])
     def get_catalog(request: Request) -> JSONResponse:
         """Catalog facts for invited sessions."""
-        if not settings.beta_open:
+        if not beta_open():
             return closed()
         if session_of(request) is None:
             return not_invited()
@@ -388,7 +386,7 @@ def create_app(
     def create_plan(submission: PlanSubmission, request: Request) -> JSONResponse:
         """Three looks from the catalog, checked against every hard constraint. An update or a
         replacement names the current plan by its token; a failure keeps that plan current."""
-        if not settings.beta_open:
+        if not beta_open():
             return closed()
         session = session_of(request)
         if session is None:
@@ -469,7 +467,7 @@ def create_app(
     def restore_plan(saved: RestoreRequest, request: Request) -> JSONResponse:
         """Check a saved plan again against the current catalog and constraints, with offers
         chosen again, and make it current. No model call."""
-        if not settings.beta_open:
+        if not beta_open():
             return closed()
         session = session_of(request)
         if session is None:
@@ -514,7 +512,7 @@ def create_app(
     async def create_preview(request: Request) -> Response:
         """An experimental try-on of one look of the current plan on two upright JPEGs. Every
         access check runs before the body is read; the server writes the prompt."""
-        if not settings.beta_open:
+        if not beta_open():
             return closed()
         session = session_of(request)
         if session is None:
@@ -631,7 +629,7 @@ def create_app(
     @app.post("/api/feedback", tags=["feedback"])
     def add_feedback(answers: FeedbackAnswers, request: Request) -> JSONResponse:
         """Short product feedback, without photos, plans or profiles."""
-        if not settings.beta_open:
+        if not beta_open():
             return closed()
         session = session_of(request)
         if session is None:
@@ -645,7 +643,7 @@ def create_app(
     @app.delete("/api/feedback/{feedback_id}", tags=["feedback"])
     def delete_feedback(feedback_id: str, request: Request) -> Response:
         """Delete one of this invite's feedback entries."""
-        if not settings.beta_open:
+        if not beta_open():
             return closed()
         session = session_of(request)
         if session is None:

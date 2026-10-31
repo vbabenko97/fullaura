@@ -89,6 +89,16 @@ test("an invited person plans, tries on, edits, saves, restores, exports and giv
   await expect(page.getByText(/Experimental visualization/)).toBeVisible();
   await shot(page, project, "04-try-on");
 
+  // Withdrawing consent removes the result and the chosen photos from the page.
+  await page.getByRole("button", { name: "Withdraw consent" }).click();
+  await expect(page.getByRole("img", { name: /Experimental try-on/ })).toHaveCount(0);
+  await expect(page.getByText(/Consent withdrawn/)).toBeVisible();
+  await expect(consent).toBeVisible();
+  for (const label of ["Portrait photo", "Full-body photo"]) {
+    expect(await page.getByLabel(label).evaluate((input: HTMLInputElement) => input.files?.length ?? 0)).toBe(0);
+  }
+  await expect(page.getByRole("button", { name: "Try on look 1" })).toBeDisabled();
+
   const keep = page.getByRole("button", { name: /^Keep .* in look_1$/ }).first();
   const kept = (await keep.getAttribute("aria-label"))?.replace(/^Keep /, "Release ") ?? "";
   await keep.click();

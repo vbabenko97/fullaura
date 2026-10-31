@@ -1,15 +1,17 @@
 import { useState } from "react";
 import type { FormEvent } from "react";
 import { errorMessage, postJson } from "./api";
+import { recordsDeletedText } from "./format";
 
 interface FeedbackFormProps {
   feedbackIds: string[];
+  recordsPurgeAt: string | null;
   onChanged: () => void;
 }
 
 const SCALE = [1, 2, 3, 4, 5] as const;
 
-export function FeedbackForm({ feedbackIds, onChanged }: FeedbackFormProps) {
+export function FeedbackForm({ feedbackIds, recordsPurgeAt, onChanged }: FeedbackFormProps) {
   const [wouldWear, setWouldWear] = useState<"" | "yes" | "no">("");
   const [usefulness, setUsefulness] = useState("");
   const [tryOn, setTryOn] = useState("");
@@ -62,7 +64,10 @@ export function FeedbackForm({ feedbackIds, onChanged }: FeedbackFormProps) {
     <section className="feedback-panel no-print" aria-labelledby="feedback-title">
       <div className="panel-heading">
         <h2 id="feedback-title">Tell us how it went</h2>
-        <p>Four short answers. Feedback is kept without your plan, preferences or photos, and is deleted 30 days after the beta.</p>
+        <p>
+          Four short answers. Feedback is kept without your plan, preferences or photos, and is deleted{" "}
+          {recordsDeletedText(recordsPurgeAt)}.
+        </p>
       </div>
       <form className="feedback-form" onSubmit={(event) => void submit(event)}>
         <fieldset className="budget-mode choice-row">

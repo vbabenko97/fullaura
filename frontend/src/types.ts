@@ -220,6 +220,7 @@ export interface Session {
   previews_open: boolean;
   pilot_ends_at: string | null;
   pilot_ended: boolean;
+  records_purge_at: string | null;
   feedback_ids: string[];
   has_plan: boolean;
 }
