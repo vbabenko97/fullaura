@@ -17,7 +17,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.config import Settings
 from backend.app.main import create_app
-from backend.app.meta_images import ImageResult, InputImage
+from backend.app.meta_images import ImageRequestError, ImageResult, InputImage
 from backend.app.pilot import invite_hash, planning_reserve_micro_usd
 from backend.app.planner import MAX_TOKENS, SparkClient
 from backend.app.store import Document, MemoryStore, StoreUnavailable
@@ -113,6 +113,11 @@ def plan(http: TestClient, headers: dict[str, str] | None = None, **fields: Any)
     return http.post("/api/plans", json=body, headers=headers or operation())
 
 
+def operation_record(store: MemoryStore, name: str) -> dict[str, Any] | None:
+    document = store.read(name) if name.startswith("operations/") else None
+    return document.data if document else None
+
+
 def try_on(http: TestClient, token: str, look_id: str = "look_1", **headers: str) -> Any:
     return http.post(
         "/api/previews",
@@ -202,11 +207,33 @@ def test_a_failed_update_keeps_the_previous_plan_current(
     assert plan(http, plan_token=first["plan_token"]).json()["outcome"] == "success"
 
 
-def test_infeasible_requests_cost_no_quota(http: TestClient, spark: ScriptedSpark) -> None:
+def test_infeasible_requests_cost_no_quota(
+    http: TestClient, spark: ScriptedSpark, store: MemoryStore
+) -> None:
     join(http)
-    impossible = plan(http, state=STATE | {"footwear": "open"}).json()
+    repeated = operation()
+    impossible = plan(http, repeated, state=STATE | {"footwear": "open"}).json()
+    assert plan(http, repeated, state=STATE | {"footwear": "open"}).json() == impossible
     assert impossible["outcome"] == "infeasible" and spark.sent == []
     assert http.get("/api/session").json()["plan_requests_used"] == 0
+    # Counted once for the pilot report, by rule, without the request itself
+    rules = sorted({conflict["rule"] for conflict in impossible["conflicts"]})
+    invites = [store.read(name) for name in store.names() if name.startswith("invites/")]
+    assert [
+        (d.data["infeasible_requests"], sorted(d.data["infeasible_rules"])) for d in invites if d
+    ] == [(1, rules)]
+
+
+def test_an_infeasible_answer_does_not_depend_on_the_store(
+    tmp_path: Path, spark: ScriptedSpark
+) -> None:
+    store = UnavailableStore()
+    app = create_app(settings(tmp_path), spark=spark, store=store)
+    with TestClient(app) as http:
+        join(http)
+        store.down = True
+        response = plan(http, state=STATE | {"footwear": "open"})
+    assert response.status_code == 200 and response.json()["outcome"] == "infeasible"
 
 
 def test_a_repeated_request_is_answered_without_a_second_model_call(
@@ -399,6 +426,41 @@ def test_a_try_on_that_times_out_keeps_its_reservation(
     ledger = store.read("ledger.json")
     assert ledger is not None and ledger.data["spent"]["images"] == 30_000
     assert ledger.data["running"] == {}
+    previews = [operation_record(store, name) for name in store.names()]
+    assert [(r["status"], r["outcome"]) for r in previews if r and r["kind"] == "preview"] == [
+        ("unknown", "timeout")
+    ]
+
+
+@pytest.mark.parametrize(
+    ("failure", "outcome"),
+    [
+        (ImageRequestError("refused", attempts=2), "provider_error"),
+        (RuntimeError("an unexpected failure"), "unknown"),
+    ],
+)
+def test_a_failed_try_on_records_what_happened_and_keeps_its_reservation(
+    tmp_path: Path, store: MemoryStore, failure: Exception, outcome: str
+) -> None:
+    class FailingEditor:
+        async def edit_async(
+            self, prompt: str, images: Sequence[InputImage], *, deadline: float
+        ) -> ImageResult:
+            raise failure
+
+    app = create_app(
+        settings(tmp_path), spark=ScriptedSpark(VALID), image_editor=FailingEditor(), store=store
+    )
+    with TestClient(app, raise_server_exceptions=False) as http:
+        join(http, photos=True)
+        response = try_on(http, plan(http).json()["plan_token"])
+    assert response.status_code != 200
+    previews = [operation_record(store, name) for name in store.names()]
+    assert [
+        (r["status"], r["outcome"], r["cost"]) for r in previews if r and r["kind"] == "preview"
+    ] == [("unknown", outcome, None)]
+    ledger = store.read("ledger.json")
+    assert ledger is not None and ledger.data["spent"]["images"] == 30_000
 
 
 def test_try_on_quota_is_per_invite(tmp_path: Path, store: MemoryStore) -> None:
@@ -433,10 +495,37 @@ def test_feedback_is_stored_without_the_plan_and_can_be_deleted(
     feedback_id = created.json()["id"]
     assert http.get("/api/session").json()["feedback_ids"] == [feedback_id]
     stored = [store.read(name) for name in store.names() if name.startswith("feedback/")]
+    # A page from before the try-on question sends no such field, so none is stored
     assert [document.data["answers"] for document in stored if document] == [answers]
     assert all("quiet smart casual" not in name for name in store.names())
     assert http.delete(f"/api/feedback/{feedback_id}").status_code == 204
     assert http.delete(f"/api/feedback/{feedback_id}").status_code == 404
+
+
+@pytest.mark.parametrize(
+    ("try_on", "issues", "status"),
+    [
+        (2, ["likeness", "background"], 201),
+        (5, ["none_noticed"], 201),
+        (4, None, 201),  # skipped: kept as null
+        ("cannot_assess", None, 201),
+        (3, ["none_noticed", "other"], 422),  # no problems and a problem
+        (3, ["other", "other"], 422),
+        (3, [], 422),
+        (3, ["the face"], 422),  # only the listed categories
+        ("cannot_assess", ["none_noticed"], 422),  # no score, so nothing to explain
+    ],
+)
+def test_try_on_issues_must_agree_with_the_try_on_answer(
+    http: TestClient, store: MemoryStore, try_on: int | str, issues: list[str] | None, status: int
+) -> None:
+    join(http)
+    answers = {"would_wear": False, "usefulness": 2, "try_on": try_on, "try_on_issues": issues}
+    assert http.post("/api/feedback", json=answers).status_code == status
+    saved = [store.read(name) for name in store.names() if name.startswith("feedback/")]
+    assert [d.data["answers"]["try_on_issues"] for d in saved if d] == (
+        [issues] if status == 201 else []
+    )
 
 
 def test_logs_hold_outcomes_and_usage_but_nothing_a_person_entered(

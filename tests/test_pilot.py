@@ -85,6 +85,22 @@ def test_an_unknown_outcome_keeps_the_whole_reservation() -> None:
     assert p.ledger()["spent"]["planning"] == 200_000
 
 
+def test_a_record_keeps_the_outcome_apart_from_an_unknown_cost() -> None:
+    store = MemoryStore()
+    p = pilot(store)
+    invite = ready(p, photos=True)
+    known, unknown = op(), op()
+    p.finish(p.begin(invite, PREVIEW, known, 30_000), 10_000, "succeeded")
+    p.finish(p.begin(invite, PREVIEW, unknown, 30_000), None, "provider_error")
+    fields = ("status", "outcome", "cost")
+    records = [store.read(f"operations/{name}.json") for name in (known, unknown)]
+    assert [tuple(r.data[field] for field in fields) for r in records if r] == [
+        ("succeeded", "succeeded", 10_000),
+        ("unknown", "provider_error", None),
+    ]
+    assert p.ledger()["spent"]["images"] == 40_000  # the unknown cost counts at its reservation
+
+
 def test_a_repeated_operation_id_never_starts_a_second_paid_call() -> None:
     p = pilot()
     invite = ready(p)
@@ -175,6 +191,7 @@ def test_after_a_restart_counts_and_spending_remain_and_a_running_call_is_not_re
     assert ledger["reserved"]["planning"] == 0
     operation = store.read(f"operations/{lost.id}.json")
     assert operation is not None and operation.data["status"] == "interrupted"
+    assert operation.data["outcome"] == "interrupted"  # what happened to it is not known
     before.finish(lost, 100, "success")  # a late finish cannot refund a held reservation
     assert after.ledger()["spent"]["planning"] == 1700
 

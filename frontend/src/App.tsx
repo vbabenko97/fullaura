@@ -11,7 +11,7 @@ import {
 } from "./api";
 import { AccessGate } from "./AccessGate";
 import { FeedbackForm } from "./FeedbackForm";
-import { formatCheckedDate, formatMoney } from "./format";
+import { budgetKept, formatCheckedDate, formatMoney } from "./format";
 import { LookCard } from "./LookCard";
 import {
   fitDraftFrom,
@@ -21,8 +21,7 @@ import {
   preferenceKey,
   sameItem,
   shoppingList,
-  totalLookCosts,
-  wholePlanCost,
+  shoppingTotal,
 } from "./plan";
 import type { Preferences } from "./plan";
 import { PreferencesForm } from "./PreferencesForm";
@@ -414,6 +413,9 @@ export function App() {
       setRequestState("error");
       setRequestMessage(error instanceof PlanLostError ? error.message : errorMessage(error));
     } finally {
+      // The submit button is disabled while planning, which drops keyboard focus; bring it to the
+      // results so the next Tab does not start again from the top of the page.
+      if (document.activeElement === document.body) document.getElementById("results-title")?.focus();
       void refreshSession();
     }
   }
@@ -461,12 +463,6 @@ export function App() {
   const planCurrent = Boolean(current && current.preferenceKey === currentKey);
   const ready = session !== null && session.beta && session.invited && session.age_confirmed;
   const canSubmit = ready && catalogState === "ready" && !loading && session.planning_open;
-  const planTotal =
-    current && catalog
-      ? current.state.budget.mode === "whole_plan"
-        ? wholePlanCost(current.plan, catalog)
-        : totalLookCosts(current.plan, catalog)
-      : null;
   const lines = current && catalog ? shoppingList(current.plan, catalog, current.state.owned_items) : [];
   const remainingPlans = session ? Math.max(0, session.plan_requests_limit - session.plan_requests_used) : 0;
   const closedText = !session
@@ -553,7 +549,7 @@ export function App() {
             <section className="results-panel" aria-labelledby="results-title">
               <div className="results-heading">
                 <div>
-                  <h2 id="results-title">Three looks</h2>
+                  <h2 id="results-title" tabIndex={-1}>Three looks</h2>
                   <p className="no-print">
                     Keep items to hold them in place through an update, or replace one item; every other position
                     stays and all three looks are checked again.
@@ -561,8 +557,11 @@ export function App() {
                 </div>
                 {current && (
                   <p className="plan-total">
-                    {current.state.budget.mode === "whole_plan" ? "All three looks" : "If each look is bought"}
-                    <strong>{formatMoney(planTotal)}</strong>
+                    Items total, each once
+                    <strong>{formatMoney(shoppingTotal(lines))}</strong>
+                    <span className="plan-budget">
+                      {budgetKept(current.state.budget.amount_cents, current.state.budget.mode)}
+                    </span>
                   </p>
                 )}
               </div>

@@ -1,6 +1,49 @@
+import { useState } from "react";
 import { formatCheckedDate, formatMoney, labelCategory, labelSlot } from "./format";
 import { catalogItem, hasReplacementAlternative, selectedOffer } from "./plan";
-import type { Catalog, Fit, FootwearChoice, ItemRef, Look, OwnedItem, OwnedNotice, Plan, Slot } from "./types";
+import type {
+  Catalog,
+  Fit,
+  FootwearChoice,
+  ItemRef,
+  Look,
+  OwnedItem,
+  OwnedNotice,
+  Plan,
+  Slot,
+  VariantImage,
+} from "./types";
+
+/** The variant's own photo, in a box sized before it loads; a failed load keeps the box. */
+function ItemImage({ image }: { image: VariantImage }) {
+  const [failed, setFailed] = useState(false);
+  return (
+    <figure className="item-image">
+      {failed ? (
+        <div
+          aria-label={`${image.alt}: image unavailable`}
+          className="item-image-missing"
+          role="img"
+          style={{ aspectRatio: `${image.width} / ${image.height}` }}
+        >
+          Image unavailable
+        </div>
+      ) : (
+        <img
+          alt={image.alt}
+          decoding="async"
+          height={image.height}
+          loading="lazy"
+          onError={() => setFailed(true)}
+          referrerPolicy="no-referrer"
+          src={image.url}
+          width={image.width}
+        />
+      )}
+      {image.attribution && <figcaption>{image.attribution}</figcaption>}
+    </figure>
+  );
+}
 
 interface ProductLineProps {
   catalog: Catalog;
@@ -110,6 +153,7 @@ export function ProductLine({
     .filter((value): value is string => value !== null)
     .join(", ");
   const offerLink = offer && /^https:\/\//i.test(offer.url) ? offer.url : null;
+  const image = entry.variant.image;
 
   return (
     <li className="look-item">
@@ -138,21 +182,26 @@ export function ProductLine({
         </div>
       </div>
       {!hasAlternative && <p className="item-facts">No other catalog or owned item can fill this position.</p>}
-      <h3>{entry.product.title}</h3>
-      {facts && <p className="item-facts">{facts}</p>}
-      <p className="item-facts">{composition}</p>
-      {offer?.stock === null && <p className="item-facts">Stock not reported</p>}
-      <div className="item-source">
-        <span className="item-price">{formatMoney(offer?.price_cents ?? null)}</span>
-        {offerLink ? (
-          <a href={offerLink} rel="noreferrer" target="_blank">
-            {offer?.retailer ?? "Source"}
-          </a>
-        ) : (
-          <span>Source unavailable</span>
-        )}
+      <div className={`item-body${image ? " has-image" : ""}`}>
+        {image && <ItemImage image={image} key={image.url} />}
+        <div className="item-details">
+          <h3>{entry.product.title}</h3>
+          {facts && <p className="item-facts">{facts}</p>}
+          <p className="item-facts">{composition}</p>
+          {offer?.stock === null && <p className="item-facts">Stock not reported</p>}
+          <div className="item-source">
+            <span className="item-price">{formatMoney(offer?.price_cents ?? null)}</span>
+            {offerLink ? (
+              <a href={offerLink} rel="noreferrer" target="_blank">
+                {offer?.retailer ?? "Source"}
+              </a>
+            ) : (
+              <span>Source unavailable</span>
+            )}
+          </div>
+          {offer && <p className="source-date">{formatCheckedDate(offer.source.checked_at)}</p>}
+        </div>
       </div>
-      {offer && <p className="source-date">{formatCheckedDate(offer.source.checked_at)}</p>}
     </li>
   );
 }

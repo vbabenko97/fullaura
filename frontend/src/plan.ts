@@ -212,34 +212,6 @@ export function lookCost(look: Look, plan: Plan, catalog: Catalog): number | nul
   return total;
 }
 
-export function wholePlanCost(plan: Plan, catalog: Catalog): number | null {
-  const variantIds = new Set(
-    plan.looks.flatMap((look) =>
-      Object.values(look.items).flatMap((item) =>
-        item?.kind === "catalog" ? [item.id] : [],
-      ),
-    ),
-  );
-  let total = 0;
-  for (const variantId of variantIds) {
-    const entry = catalogItem(catalog, variantId);
-    const offer = entry ? selectedOffer(plan, entry.variant) : null;
-    if (!offer || offer.price_cents === null) return null;
-    total += offer.price_cents;
-  }
-  return total;
-}
-
-export function totalLookCosts(plan: Plan, catalog: Catalog): number | null {
-  let total = 0;
-  for (const look of plan.looks) {
-    const cost = lookCost(look, plan, catalog);
-    if (cost === null) return null;
-    total += cost;
-  }
-  return total;
-}
-
 export interface Preferences {
   styleGoal: string;
   colors: string[];

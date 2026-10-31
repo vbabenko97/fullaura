@@ -1,5 +1,5 @@
 {
-  "id": "fullaura-catalog-2026-10-30-2",
+  "id": "fullaura-catalog-2026-10-31",
   "synthetic": false,
   "products": [
     {
@@ -2576,6 +2576,84 @@
               "source": {
                 "url": "https://www.tom-tailor.at/de/p/sneaker-mit-erhoehter-sohle-frauen-5397304_O1147",
                 "checked_at": "2026-10-30T20:34:00Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tt-sneaker-mesh-einsatz-white-40-product",
+      "title": "Sneaker mit Mesh-Einsatz",
+      "brand": "Tom Tailor",
+      "category": "footwear",
+      "line": "women",
+      "garment_type": null,
+      "footwear_closure": "closed",
+      "variants": [
+        {
+          "id": "tt-sneaker-mesh-einsatz-white-40",
+          "sku": null,
+          "color": "white",
+          "size": "40",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "40"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 80,
+                "part": "upper"
+              },
+              {
+                "material": "polyurethane",
+                "percent": 20,
+                "part": "upper"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "lining"
+              },
+              {
+                "material": "polyurethane",
+                "percent": 95,
+                "part": "sole"
+              },
+              {
+                "material": "polyurethane",
+                "percent": 5,
+                "part": "sole"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "insole"
+              }
+            ],
+            "source_text": "Obermaterial: 80% Polyester, 20% Polyurethan / Innenfutter: 100% Polyester / Sohle: 95% Polyurethan, 5% Polyurethan / Innensohle: 100% Polyester"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/sneaker-mit-mesh-einsatz-frauen-2690170001_O500",
+            "checked_at": "2026-10-31T15:18:00Z"
+          },
+          "offers": [
+            {
+              "id": "tt-sneaker-mesh-einsatz-white-40-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/sneaker-mit-mesh-einsatz-frauen-2690170001_O500",
+              "price_cents": 4499,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/sneaker-mit-mesh-einsatz-frauen-2690170001_O500",
+                "checked_at": "2026-10-31T15:18:00Z"
               }
             }
           ]

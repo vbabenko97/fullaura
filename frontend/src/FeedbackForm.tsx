@@ -1,7 +1,9 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { errorMessage, postJson } from "./api";
 import { recordsDeletedText } from "./format";
+import { TRY_ON_ISSUES } from "./types";
+import type { TryOnIssue } from "./types";
 
 interface FeedbackFormProps {
   feedbackIds: string[];
@@ -10,15 +12,39 @@ interface FeedbackFormProps {
 }
 
 const SCALE = [1, 2, 3, 4, 5] as const;
+const ISSUE_LABELS: Record<TryOnIssue, string> = {
+  likeness: "It did not look like me",
+  body_proportions: "Body proportions looked off",
+  clothes_or_colors: "Clothes or colors differ from the look",
+  background: "The background looked wrong",
+  other: "Something else",
+  none_noticed: "I noticed no problems",
+};
+
+/** "No problems" and a problem exclude each other, so choosing one clears the other kind. */
+function toggleIssue(current: TryOnIssue[], issue: TryOnIssue): TryOnIssue[] {
+  if (current.includes(issue)) return current.filter((item) => item !== issue);
+  if (issue === "none_noticed") return [issue];
+  return [...current.filter((item) => item !== "none_noticed"), issue];
+}
 
 export function FeedbackForm({ feedbackIds, recordsPurgeAt, onChanged }: FeedbackFormProps) {
   const [wouldWear, setWouldWear] = useState<"" | "yes" | "no">("");
   const [usefulness, setUsefulness] = useState("");
   const [tryOn, setTryOn] = useState("");
+  const [tryOnIssues, setTryOnIssues] = useState<TryOnIssue[]>([]);
   const [catalogProblem, setCatalogProblem] = useState("");
   const [comment, setComment] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; error: boolean } | null>(null);
+  // Sending disables the button and deleting removes it, so focus moves to the message instead.
+  const focusMessage = useRef(false);
+  const scored = tryOn !== "" && tryOn !== "cannot_assess";
+
+  function report(text: string, error: boolean) {
+    focusMessage.current = true;
+    setMessage({ text, error });
+  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -29,18 +55,21 @@ export function FeedbackForm({ feedbackIds, recordsPurgeAt, onChanged }: Feedbac
         would_wear: wouldWear === "yes",
         usefulness: Number(usefulness),
         try_on: tryOn === "cannot_assess" ? tryOn : Number(tryOn),
+        // null keeps "skipped" apart from "no problems noticed"
+        try_on_issues: scored && tryOnIssues.length > 0 ? tryOnIssues : null,
         catalog_problem: catalogProblem.trim(),
         comment: comment.trim(),
       });
-      setMessage({ text: "Thank you. Your feedback is saved.", error: false });
+      report("Thank you. Your feedback is saved.", false);
       setWouldWear("");
       setUsefulness("");
       setTryOn("");
+      setTryOnIssues([]);
       setCatalogProblem("");
       setComment("");
       onChanged();
     } catch (error) {
-      setMessage({ text: errorMessage(error), error: true });
+      report(errorMessage(error), true);
     } finally {
       setBusy(false);
     }
@@ -51,10 +80,10 @@ export function FeedbackForm({ feedbackIds, recordsPurgeAt, onChanged }: Feedbac
     try {
       const response = await fetch(`/api/feedback/${encodeURIComponent(id)}`, { method: "DELETE" });
       if (!response.ok && response.status !== 404) throw new Error(String(response.status));
-      setMessage({ text: "Your feedback was deleted.", error: false });
+      report("Your feedback was deleted.", false);
       onChanged();
     } catch {
-      setMessage({ text: "The feedback could not be deleted. Try again later.", error: true });
+      report("The feedback could not be deleted. Try again later.", true);
     } finally {
       setBusy(false);
     }
@@ -65,7 +94,7 @@ export function FeedbackForm({ feedbackIds, recordsPurgeAt, onChanged }: Feedbac
       <div className="panel-heading">
         <h2 id="feedback-title">Tell us how it went</h2>
         <p>
-          Four short answers. Feedback is kept without your plan, preferences or photos, and is deleted{" "}
+          A few short answers. Feedback is kept without your plan, preferences or photos, and is deleted{" "}
           {recordsDeletedText(recordsPurgeAt)}.
         </p>
       </div>
@@ -97,9 +126,44 @@ export function FeedbackForm({ feedbackIds, recordsPurgeAt, onChanged }: Feedbac
             </label>
           ))}
           <label className="radio-choice">
-            <input checked={tryOn === "cannot_assess"} name="try-on" onChange={() => setTryOn("cannot_assess")} required type="radio" />
+            <input
+              checked={tryOn === "cannot_assess"}
+              name="try-on"
+              onChange={() => {
+                setTryOn("cannot_assess");
+                setTryOnIssues([]);
+              }}
+              required
+              type="radio"
+            />
             <span>I can't judge it</span>
           </label>
+          <p className="field-help">Choose "I can't judge it" if you did not try a look on.</p>
+        </fieldset>
+        <fieldset
+          aria-describedby="try-on-issues-help"
+          className="budget-mode feedback-issues"
+          disabled={!scored}
+        >
+          <legend>What did you notice in the try-on? (optional)</legend>
+          <p className="field-help" id="try-on-issues-help">
+            {scored
+              ? "Choose any that apply. This is about the drawing only; it does not show how the products would fit you."
+              : "Asked once you give the try-on a score from 1 to 5."}
+          </p>
+          <div className="choice-grid">
+            {TRY_ON_ISSUES.map((issue) => (
+              <label className="check-choice" key={issue}>
+                <input
+                  checked={tryOnIssues.includes(issue)}
+                  onChange={() => setTryOnIssues((current) => toggleIssue(current, issue))}
+                  type="checkbox"
+                  value={issue}
+                />
+                <span>{ISSUE_LABELS[issue]}</span>
+              </label>
+            ))}
+          </div>
         </fieldset>
         <div className="form-field">
           <label htmlFor="catalog-problem">A problem with the products, if any</label>
@@ -122,7 +186,17 @@ export function FeedbackForm({ feedbackIds, recordsPurgeAt, onChanged }: Feedbac
         </button>
       </form>
       {message && (
-        <p className={`preview-status${message.error ? " is-error" : ""}`} role={message.error ? "alert" : "status"}>
+        <p
+          className={`preview-status${message.error ? " is-error" : ""}`}
+          ref={(node) => {
+            if (node && focusMessage.current) {
+              focusMessage.current = false;
+              node.focus();
+            }
+          }}
+          role={message.error ? "alert" : "status"}
+          tabIndex={-1}
+        >
           {message.text}
         </p>
       )}

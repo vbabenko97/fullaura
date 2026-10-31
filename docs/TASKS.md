@@ -11,6 +11,8 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-05](#t-05-azure-demo) Azure demo | done | 2026-10-29 |
 | [T-08](#t-08-looks-for-a-stated-wearer) Looks for a stated wearer | next | |
 | [T-09](#t-09-closed-beta) Closed beta | done | 2026-10-30 |
+| [T-10](#t-10-beta-measurement-and-participant-fixes) Beta measurement and participant fixes | next | |
+| [T-11](#t-11-product-photos) Product photos | planned | |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -73,6 +75,20 @@ The catalog covers four example profiles in three scenarios, each with three dif
 Withdrawing photo consent stops a try-on in progress and clears its photos and result, and a catalog that fails to load after an accepted invite can be loaded again. A running model call blocks its invite until it ends or is 300 seconds old, whichever revision started it ([D-48](DECISIONS.md#d-48-a-running-call-blocks-its-invite-whichever-process-started-it)). A scheduled job deletes the pilot records on 2026-11-09 from 10:00 Vienna time, after the pilot ends, and the beta closes then ([D-49](DECISIONS.md#d-49-a-scheduled-job-deletes-the-pilot-records-and-the-beta-closes-then)). A closure marker and a grace period keep a write accepted just before then from bringing a record back ([D-50](DECISIONS.md#d-50-a-closure-marker-and-a-grace-period-keep-writes-from-outliving-the-purge)), and the app and the job roll back separately ([D-51](DECISIONS.md#d-51-the-app-and-the-purge-job-have-their-own-images-and-roll-back-apart)).
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, including the browser flow on a desktop and a phone viewport and the catalog coverage test; the error cases pass (incompatible budget, no replacement, timeout, cancellation, a foreign or stale plan token, an exhausted quota, a repeated operation ID, a restart); logs, the pilot store, saved plans and the build hold no photo, try-on, full profile or secret; live runs with three synthetic adult personas pass a preliminary visual check by an independent agent; and one full run on the deployed beta with the real providers and synthetic photos succeeds, with try-on enabled for invited sessions and spending counted across a restart.
+
+## T-10: Beta measurement and participant fixes
+
+Make the closed beta answer what to build next, and remove what participants would trip over. The pilot report counts invites, call outcomes, feedback and spending, each with its denominator, and call records keep the outcome apart from the cost ([D-52](DECISIONS.md#d-52-a-call-record-keeps-its-outcome-apart-from-its-cost-and-the-pilot-report-counts-invites)). Feedback asks what a try-on got wrong ([D-53](DECISIONS.md#d-53-feedback-asks-what-a-try-on-got-wrong-from-a-fixed-list)). The interface says what the budget limits next to the request button ([D-54](DECISIONS.md#d-54-the-interface-says-what-the-budget-limits-next-to-the-request-button)), and the data notice describes what Baseten receives and keeps, and that an owned item's description can be part of a try-on's text. A second closed shoe in EU 40 removes the catalog's single point of failure ([D-55](DECISIONS.md#d-55-a-second-closed-shoe-in-eu-40-keeps-womens-l-from-depending-on-one-pair)), and evaluation runs record their provenance ([D-57](DECISIONS.md#d-57-evaluation-run-records-carry-their-provenance-including-failed-runs)). Keyboard focus no longer falls back to the top of the page after a plan request or a feedback answer. The rules for deciding on the pilot's results are proposed, not agreed ([D-58](DECISIONS.md#d-58-proposed-rules-for-deciding-on-the-pilots-results)).
+
+The deployed beta runs the earlier revision until this work is deployed.
+
+Done when: the checks in the [README](../README.md#check-a-change) pass, including the browser flows on a desktop and a phone viewport; the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes and the deployed site passes the HTTP smoke check, before the final pilot report is read.
+
+## T-11: Product photos
+
+Show a photo of each recommended variant in its color, so people can compare looks in the app ([D-56](DECISIONS.md#d-56-a-variant-can-carry-a-photo-only-with-recorded-rights)). A catalog variant can carry a photo with a description, its size and a credit, and the look cards show it in a box sized before it loads, with a fallback when it fails. No source whose rights allow displaying the photos is recorded yet, so no variant has one and the cards look as before.
+
+Done when: [DATA.md](DATA.md) records the license, feed terms or own photography for the photos of the variants the coverage cases use, those variants carry them, the data notice names the host that serves them, and the look cards show them on the deployed site.
 
 ## T-06: Evaluation and submission
 

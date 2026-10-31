@@ -13,12 +13,12 @@ import logging
 import secrets
 import time
 import uuid
-from typing import Annotated, Any, Literal
+from typing import Annotated, Any, Literal, Self
 
 from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, StrictBool, ValidationError
+from pydantic import BaseModel, Field, StrictBool, ValidationError, model_validator
 from starlette.requests import Request
 from starlette.responses import Response
 
@@ -45,6 +45,7 @@ from backend.app.pilot import (
     PilotLimits,
     Refusal,
     Refused,
+    TryOnIssue,
     planning_cost_micro_usd,
     planning_reserve_micro_usd,
 )
@@ -131,8 +132,23 @@ class FeedbackAnswers(Record):
     would_wear: StrictBool  # would wear at least one of the looks
     usefulness: Annotated[int, Field(ge=1, le=5)]
     try_on: Annotated[int, Field(ge=1, le=5)] | Literal["cannot_assess"]
+    # None when the question was skipped; answers saved before it existed have no such key
+    try_on_issues: tuple[TryOnIssue, ...] | None = None
     catalog_problem: Annotated[str, Field(max_length=300)] = ""
     comment: Annotated[str, Field(max_length=500)] = ""
+
+    @model_validator(mode="after")
+    def _issues_go_with_a_judged_try_on(self) -> Self:
+        issues = self.try_on_issues
+        if issues is None:
+            return self
+        if not issues or len(set(issues)) != len(issues):
+            raise ValueError("List each try-on issue once, or send null to skip the question")
+        if TryOnIssue.NONE_NOTICED in issues and len(issues) > 1:
+            raise ValueError("'No problems noticed' cannot go with a problem")
+        if self.try_on == "cannot_assess":
+            raise ValueError("Try-on issues need a try-on score")
+        return self
 
 
 def _error(
@@ -426,6 +442,11 @@ def create_app(
         state = plan_request.state
         conflicts = infeasibility(state, catalog)
         if conflicts:  # no plan can pass, so no model call and no quota
+            try:  # counted for the pilot report; the answer does not depend on it
+                rules = [str(c.rule) for c in conflicts]
+                pilot.record_infeasible(session.invite_id, operation_id, rules)
+            except StoreUnavailable as error:
+                logger.warning("infeasible request not counted: %s", error)
             result = PlanResult(Outcome.INFEASIBLE, Usage(), conflicts=tuple(conflicts))
             return JSONResponse({**result_json(result), "catalog_id": catalog.id}, headers=NO_STORE)
         client = planning_client()
@@ -634,8 +655,11 @@ def create_app(
         session = session_of(request)
         if session is None:
             return not_invited()
+        stored = answers.model_dump(mode="json")
+        if "try_on_issues" not in answers.model_fields_set:
+            del stored["try_on_issues"]  # a page from before the question: not asked, not skipped
         try:
-            feedback_id = pilot.add_feedback(session.invite_id, answers.model_dump(mode="json"))
+            feedback_id = pilot.add_feedback(session.invite_id, stored)
         except StoreUnavailable:
             return _error("Feedback could not be saved; try again later", 503, "accounting")
         return JSONResponse({"id": feedback_id}, status_code=201, headers=NO_STORE)

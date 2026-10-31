@@ -69,7 +69,9 @@ function deferred<T = void>() {
   return { promise, resolve };
 }
 
-function installServer(options: { invited?: boolean; aged?: boolean; plans?: unknown[]; accounting?: boolean } = {}): Server {
+function installServer(
+  options: { invited?: boolean; aged?: boolean; plans?: unknown[]; accounting?: boolean; catalog?: unknown } = {},
+): Server {
   const server: Server = {
     plans: options.plans ?? [],
     requests: [],
@@ -140,7 +142,7 @@ function installServer(options: { invited?: boolean; aged?: boolean; plans?: unk
         server.catalogFailures -= 1;
         return json({ detail: "Service Unavailable", reason: null }, 503);
       }
-      return json(catalog);
+      return json(options.catalog ?? catalog);
     }
     if (url === "/api/plans") {
       const request = object(body);
@@ -266,6 +268,21 @@ describe(`${FIXTURE_LABEL}: access`, () => {
   });
 });
 
+describe(`${FIXTURE_LABEL}: data notice`, () => {
+  it("names what Baseten receives and keeps, with its source, and the owned item in a try-on's text", async () => {
+    installServer();
+    render(<App />);
+    fireEvent.click(await screen.findByText("How FullAura handles your data"));
+    const notice = within(screen.getByText("How FullAura handles your data").closest("details") as HTMLElement);
+    expect(notice.getByRole("link", { name: "documentation" }).getAttribute("href")).toBe(
+      "https://docs.baseten.co/inference/model-apis/overview",
+    );
+    expect(notice.getByText(/does not store the\s+inputs or outputs of these requests/)).toBeTruthy();
+    expect(notice.getByText(/not a check of FullAura's account/)).toBeTruthy();
+    expect(notice.getByText(/If the look includes an item you own, the description includes the color/)).toBeTruthy();
+  });
+});
+
 describe(`${FIXTURE_LABEL}: planning`, () => {
   it("sends preferences, closed shoes and an operation ID, never a plan", async () => {
     const server = installServer({ plans: [firstPlan] });
@@ -347,6 +364,27 @@ describe(`${FIXTURE_LABEL}: planning`, () => {
     expect(object(last?.state).locks).toEqual([]);
   });
 
+  it("says next to the button what the budget limits, and totals the plan as the shopping list does", async () => {
+    installServer({ plans: [firstPlan] });
+    render(<App />);
+    await screen.findByText(/products\. Price checked/);
+    const button = screen.getByRole("button", { name: "Generate three looks" });
+    const meaning = () => document.getElementById(button.getAttribute("aria-describedby") ?? "")?.textContent ?? "";
+    expect(meaning()).toMatch(/^The budget is a limit for each look on its own, so the three looks together can cost more\./);
+    fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "150" } });
+    expect(meaning()).toMatch(/150,00 is the limit for each look on its own, so the three looks together can cost up to €\s450,00\./);
+    expect(meaning()).toMatch(/without delivery or returns/);
+    fireEvent.click(screen.getByRole("radio", { name: "All three looks together" }));
+    expect(meaning()).toMatch(/150,00 is the limit for all three looks together, counting an item used in more than one look once/);
+    fireEvent.click(screen.getByRole("radio", { name: "Each look" }));
+
+    await generate();
+    const heading = screen.getByText(/Items total, each once/).closest("p") as HTMLElement;
+    const listTotal = screen.getByText(/^Items total$/).closest("p") as HTMLElement;
+    expect(heading.querySelector("strong")?.textContent).toBe(listTotal.querySelector("strong")?.textContent);
+    expect(heading.textContent).toMatch(/Each look within €\s250,00/);
+  });
+
   it("pauses planning when spending cannot be recorded", async () => {
     installServer({ accounting: false });
     render(<App />);
@@ -391,6 +429,54 @@ describe(`${FIXTURE_LABEL}: shopping list and saved plans`, () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
     await screen.findByText("Deleted from this device.");
     expect(JSON.parse(localStorage.getItem("fullaura.saved-plans.v1") ?? "[]")).toEqual([]);
+  });
+});
+
+describe(`${FIXTURE_LABEL}: product photos`, () => {
+  /** The real catalog has no photo FullAura may show, so this adds an invented one. */
+  function catalogWithPhoto(): unknown {
+    const copy = object(structuredClone(catalog));
+    const variants = (copy.products as Body[]).flatMap((product) => product.variants as Body[]);
+    const variant = variants.find((entry) => entry.id === "ae-maarkos-moonshadow-m");
+    if (!variant) throw new Error("The fixture variant is missing");
+    variant.image = {
+      url: "https://images.synthetic.example/maarkos-grey.jpg",
+      alt: "Synthetic test photo of a grey T-shirt",
+      width: 600,
+      height: 800,
+      attribution: "Synthetic test image",
+    };
+    return copy;
+  }
+
+  it("shows a variant's photo in a sized box with its description, and keeps the box if it fails", async () => {
+    installServer({ plans: [firstPlan], catalog: catalogWithPhoto() });
+    render(<App />);
+    await generate();
+    const photos = screen.getAllByRole("img", { name: "Synthetic test photo of a grey T-shirt" });
+    expect(photos).toHaveLength(2); // the T-shirt is in look 1 and look 3
+    expect([photos[0].getAttribute("width"), photos[0].getAttribute("height")]).toEqual(["600", "800"]);
+    expect(photos[0].getAttribute("loading")).toBe("lazy");
+    expect(photos[0].getAttribute("referrerpolicy")).toBe("no-referrer"); // the host sees no page URL
+    expect(screen.getAllByText("Synthetic test image")).toHaveLength(2);
+    expect(screen.getAllByRole("img")).toHaveLength(2); // items without a photo show none
+
+    fireEvent.error(photos[0]);
+    expect(screen.getByRole("img", { name: "Synthetic test photo of a grey T-shirt: image unavailable" })).toBeTruthy();
+    const item = screen.getByText("Image unavailable").closest("li") as HTMLElement;
+    expect(within(item).getByRole("link", { name: "Armedangels" }).getAttribute("href")).toMatch(/^https:\/\//);
+    expect(within(item).getByText(/^€/)).toBeTruthy();
+  });
+
+  it("refuses a photo that is not served over HTTPS", async () => {
+    const copy = object(catalogWithPhoto());
+    const variant = (copy.products as Body[])
+      .flatMap((product) => product.variants as Body[])
+      .find((entry) => entry.id === "ae-maarkos-moonshadow-m");
+    object(variant?.image).url = "http://images.synthetic.example/maarkos-grey.jpg";
+    installServer({ catalog: copy });
+    render(<App />);
+    expect(await screen.findByText("The catalog could not be loaded")).toBeTruthy();
   });
 });
 
@@ -557,11 +643,42 @@ describe(`${FIXTURE_LABEL}: feedback`, () => {
       would_wear: true,
       usefulness: 4,
       try_on: "cannot_assess",
+      try_on_issues: null,
       catalog_problem: "No shoes in 38",
       comment: "",
     });
     fireEvent.click(await screen.findByRole("button", { name: "Delete answer 1" }));
     await screen.findByText("Your feedback was deleted.");
     await waitFor(() => expect(screen.queryByRole("button", { name: "Delete answer 1" })).toBeNull());
+  });
+
+  it("keeps 'no problems' apart from problems, and asks only after a try-on score", async () => {
+    const server = installServer();
+    render(<App />);
+    await screen.findByRole("heading", { name: "Tell us how it went" });
+    const form = within(screen.getByRole("heading", { name: "Tell us how it went" }).closest("section") as HTMLElement);
+    const issues = form.getByRole("group", { name: /What did you notice in the try-on/ });
+    const box = (name: string) => within(issues).getByRole("checkbox", { name }) as HTMLInputElement;
+
+    expect((issues as HTMLFieldSetElement).disabled).toBe(true); // no try-on score yet
+    fireEvent.click(form.getByRole("radio", { name: "I can't judge it" }));
+    expect((issues as HTMLFieldSetElement).disabled).toBe(true);
+    fireEvent.click(within(form.getByRole("group", { name: /How good was the try-on/ })).getByRole("radio", { name: "2" }));
+    expect((issues as HTMLFieldSetElement).disabled).toBe(false);
+
+    fireEvent.click(box("It did not look like me"));
+    fireEvent.click(box("The background looked wrong"));
+    fireEvent.click(box("I noticed no problems"));
+    expect([box("It did not look like me").checked, box("I noticed no problems").checked]).toEqual([false, true]);
+    fireEvent.click(box("Body proportions looked off"));
+    expect([box("Body proportions looked off").checked, box("I noticed no problems").checked]).toEqual([true, false]);
+
+    fireEvent.click(form.getByRole("radio", { name: "No" }));
+    fireEvent.click(within(form.getByRole("group", { name: /How useful/ })).getByRole("radio", { name: "3" }));
+    fireEvent.click(form.getByRole("button", { name: "Send feedback" }));
+    await screen.findByText("Thank you. Your feedback is saved.");
+    const sent = object(server.requests.find((entry) => entry.url === "/api/feedback")?.body);
+    expect(sent).toMatchObject({ try_on: 2, try_on_issues: ["body_proportions"] });
+    expect(box("Body proportions looked off").checked).toBe(false); // the form starts afresh
   });
 });

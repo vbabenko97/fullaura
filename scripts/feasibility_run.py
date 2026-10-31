@@ -17,7 +17,8 @@ relative to that folder:
 Case ids are unique and use letters, digits, "-" and "_". edit_prompt is optional, and so
 is edit_garment within an edit. Each sample makes a look preview from the photos and
 garments, then, when the case has an edit_prompt, one targeted edit of that preview. A run
-writes the images, run.json (model, samples, planned images), attempts.jsonl (one line per
+writes the images, run.json (model, samples, planned images and the run's provenance from
+scripts/run_provenance.py), source.diff (the uncommitted code), attempts.jsonl (one line per
 API call: model, prompt, input names, attempts, latency, usage or error) and scores.csv into
 runs/<UTC time>/ beside cases.json. scores.csv has one row per planned image, including
 failed calls and edits skipped because their look failed. Score each produced image by hand
@@ -33,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import mimetypes
 import os
@@ -50,6 +52,7 @@ from backend.app.meta_images import (
     MuseImageClient,
     strip_jpeg_metadata,
 )
+from scripts.run_provenance import recorded
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_CASES = ROOT / "data" / "private" / "feasibility" / "formal" / "cases.json"
@@ -188,8 +191,11 @@ def identity_by_subject(rows: list[dict[str, str]]) -> dict[str, tuple[int, int]
 
 def summarize(run_dir: Path) -> None:
     planned = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))["planned_images"]
-    with (run_dir / "scores.csv").open(encoding="utf-8", newline="") as file:
+    scores_path = run_dir / "scores.csv"
+    with scores_path.open(encoding="utf-8", newline="") as file:
         rows = list(csv.DictReader(file))
+    # Ties the counts below to the exact scores they come from.
+    print(f"scores.csv sha256 {hashlib.sha256(scores_path.read_bytes()).hexdigest()}")
     if len(rows) != planned:
         raise SystemExit(f"The run has {len(rows)} of {planned} planned rows; it did not finish")
     for check, count in tally(rows).items():
@@ -225,6 +231,7 @@ def call(
         path.write_bytes(result.image)
         entry |= {
             "status": "ok",
+            "output_sha256": hashlib.sha256(result.image).hexdigest(),
             "attempts": result.attempts,
             "latency_s": result.latency_s,
             "usage": result.usage,
@@ -249,12 +256,29 @@ def run(
     run_dir.mkdir(parents=True)
     plan = {"model": client.model, "samples": samples}
     plan["planned_images"] = planned_images(cases, samples)
-    (run_dir / "run.json").write_text(json.dumps(plan), encoding="utf-8")
     results: list[ImageResult] = []
     with (
+        recorded(run_dir, plan, ROOT),
         (run_dir / "attempts.jsonl").open("w", encoding="utf-8") as log,
         (run_dir / "scores.csv").open("w", newline="", encoding="utf-8") as scores_file,
     ):
+        # The inputs and outputs the run used, so the photos and images behind each score can
+        # be identified without copying them.
+        plan["cases_sha256"] = hashlib.sha256(
+            json.dumps(cases, sort_keys=True).encode()
+        ).hexdigest()
+        names = {
+            name
+            for case in cases
+            for name in [*case["photos"], *case["garments"], case.get("edit_garment")]
+            if name
+        }
+        plan["input_sha256"] = {
+            name: hashlib.sha256(input_path(base, name).read_bytes()).hexdigest()
+            for name in sorted(names)
+        }
+        outputs: dict[str, str] = {}
+        plan["output_sha256"] = outputs
         scores = csv.writer(scores_file)
         scores.writerow(COLUMNS)
         for case in cases:
@@ -277,6 +301,7 @@ def run(
                         scores.writerow(score_row(case, sample, "edit", "skipped"))
                     continue
                 look_path, look_result = look
+                outputs[look_path.name] = hashlib.sha256(look_result.image).hexdigest()
                 results.append(look_result)
                 scores.writerow(score_row(case, sample, "look", "ok", look_path.name))
                 if not case.get("edit_prompt"):
@@ -290,6 +315,7 @@ def run(
                 if edit is None:
                     scores.writerow(score_row(case, sample, "edit", "call_failed"))
                     continue
+                outputs[edit[0].name] = hashlib.sha256(edit[1].image).hexdigest()
                 results.append(edit[1])
                 scores.writerow(score_row(case, sample, "edit", "ok", edit[0].name))
     return run_dir, results

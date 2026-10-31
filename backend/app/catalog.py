@@ -2,8 +2,8 @@
 
 A record states only what its source reports. A value the source does not give is null in the
 data and None here, never a guess (docs/DATA.md). Every field except a product's line, garment
-type and footwear closure and a variant's normalized size is required, so a catalog file must
-write an unknown value as an explicit null.
+type and footwear closure and a variant's normalized size and image is required, so a catalog
+file must write an unknown value as an explicit null.
 """
 
 from __future__ import annotations
@@ -216,6 +216,24 @@ class Offer(Record):
     source: Source
 
 
+class ProductImage(Record):
+    """A photo of one variant, in its color, that FullAura may show. docs/DATA.md records the
+    license, feed terms or own photography that allows it; a public URL alone does not (D-25)."""
+
+    url: HttpUrl
+    alt: Annotated[str, Field(min_length=1, max_length=200)]  # what the photo shows
+    width: Annotated[int, Field(gt=0)]  # pixels, so the interface can size the box before load
+    height: Annotated[int, Field(gt=0)]
+    attribution: str | None  # the credit the rights require, shown with the photo
+
+    @field_validator("url")
+    @classmethod
+    def _served_over_https(cls, url: HttpUrl) -> HttpUrl:
+        if url.scheme != "https":
+            raise ValueError("A product image must be served over HTTPS")
+        return url
+
+
 class Variant(Record):
     """One purchasable version of a product, such as one color and size."""
 
@@ -224,6 +242,7 @@ class Variant(Record):
     color: str | None
     size: str | None  # the source's own label, such as "Weite 32 / Länge 32"
     normalized_size: Size | None = None  # the same size in a form code can compare
+    image: ProductImage | None = None  # None when FullAura has no right to show a photo
     composition: Composition
     source: Source
     offers: tuple[Offer, ...] = Field(min_length=1)

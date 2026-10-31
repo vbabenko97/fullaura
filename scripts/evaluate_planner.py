@@ -2,9 +2,10 @@
 
 The default run is offline and produces baseline plans plus a blank human-score sheet. A live
 run requires --live and at least one explicit --case-id; it uses the Baseten key from the
-environment. run.json stores validated item IDs and aggregate usage. provider_responses.jsonl,
-in the same run folder under the ignored runs/, stores every raw provider response, and every
-HTTP error body with the API key redacted.
+environment. run.json stores validated item IDs, aggregate usage and the run's provenance
+(scripts/run_provenance.py), with the uncommitted code in source.diff.
+provider_responses.jsonl, in the same run folder under the ignored runs/, stores every raw
+provider response, and every HTTP error body with the API key redacted.
 """
 
 from __future__ import annotations
@@ -15,7 +16,6 @@ import hashlib
 import io
 import itertools
 import json
-import subprocess
 import time
 from collections import Counter
 from dataclasses import dataclass
@@ -40,8 +40,10 @@ from backend.app.planner import (
     plan_looks,
 )
 from backend.app.state import Budget, BudgetMode, Fit, ItemKind, ItemRef, Look, Plan, Slot, State
+from scripts.run_provenance import recorded, write_record
 
 ROOT = Path(__file__).resolve().parents[1]
+CODE_ROOT = ROOT  # the Git checkout whose revision and uncommitted code the run record keeps
 CATALOG_FILE = ROOT / "backend" / "data" / "catalog.json"
 MAX_LIVE_HTTP_ATTEMPTS = 12  # shared by all cases in a run
 MAX_HTTP_ATTEMPTS_PER_GENERATION = 2
@@ -424,9 +426,7 @@ def score_row(case_id: str, approach: str, metrics: dict[str, Any]) -> dict[str,
 
 
 def write_run(output_dir: Path, run: dict[str, Any], score_rows: list[dict[str, str]]) -> None:
-    (output_dir / "run.json").write_text(
-        json.dumps(run, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    write_record(output_dir, run)
     with (output_dir / "human_scores.csv").open("w", encoding="utf-8", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=SCORE_COLUMNS)
         writer.writeheader()
@@ -461,16 +461,8 @@ def main(output_root: Path = ROOT / "runs" / "t06") -> None:
     catalog = Catalog.model_validate_json(catalog_bytes)
     now = datetime.now(UTC)
     output_dir = output_root / now.strftime("%Y%m%dT%H%M%S%fZ")
-    git_sha = subprocess.run(
-        ["git", "rev-parse", "HEAD"],
-        cwd=ROOT,
-        capture_output=True,
-        check=True,
-        text=True,
-    ).stdout.strip()
     run: dict[str, Any] = {
         "created_at_utc": now.isoformat(),
-        "git_sha": git_sha,
         "catalog_id": catalog.id,
         "catalog_sha256": hashlib.sha256(catalog_bytes).hexdigest(),
         "source_sha256": {
@@ -484,6 +476,7 @@ def main(output_root: Path = ROOT / "runs" / "t06") -> None:
             )
         },
         "mode": "live" if args.live else "baseline_only",
+        "case_ids": [case.id for case in cases],
         "token_pricing": {
             "input_uncached_usd_per_million": INPUT_USD_PER_MILLION_TOKENS,
             "output_usd_per_million": OUTPUT_USD_PER_MILLION_TOKENS,
@@ -520,51 +513,58 @@ def main(output_root: Path = ROOT / "runs" / "t06") -> None:
         else None
     )
 
-    for case in cases:
-        baseline, baseline_cost = cheapest_baseline(case, catalog)
-        baseline_summary = baseline_metrics(case, baseline, baseline_cost, catalog)
-        case_result: dict[str, Any] = {
-            "inputs": {
-                "brief": case.brief.model_dump(mode="json"),
-                "budget_amount_cents": case.budget.amount_cents,
-                "budget_mode": case.budget.mode.value,
-                "material_exclusions": sorted(case.exclusions),
-                "fit": case.fit.model_dump(mode="json"),
-            },
-            "baseline": baseline_summary,
-        }
-        score_rows.append(score_row(case.id, "cheapest_baseline", baseline_summary))
+    with recorded(output_dir, run, CODE_ROOT):
+        try:
+            for case in cases:
+                baseline, baseline_cost = cheapest_baseline(case, catalog)
+                baseline_summary = baseline_metrics(case, baseline, baseline_cost, catalog)
+                case_result: dict[str, Any] = {
+                    "inputs": {
+                        "brief": case.brief.model_dump(mode="json"),
+                        "budget_amount_cents": case.budget.amount_cents,
+                        "budget_mode": case.budget.mode.value,
+                        "material_exclusions": sorted(case.exclusions),
+                        "fit": case.fit.model_dump(mode="json"),
+                    },
+                    "baseline": baseline_summary,
+                }
+                score_rows.append(score_row(case.id, "cheapest_baseline", baseline_summary))
 
-        if (
-            response_recorder
-            and response_recorder.max_http_attempts - response_recorder.http_attempts
-            < attempts_per_case
-        ):
-            # A case cut short by the shared cap would look like a provider failure, so a case
-            # runs only with its full allowance left.
-            response_recorder.limit_reached = True
-            case_result["muse_spark_not_run"] = (
-                f"fewer than {attempts_per_case} of the run's "
-                f"{response_recorder.max_http_attempts} HTTP attempts remained"
-            )
-        elif settings and response_recorder:
-            client = SparkClient(
-                api_key=settings.baseten_api_key,
-                base_url=BASETEN_URL,
-                model=SPARK_MODEL,
-                max_attempts=MAX_HTTP_ATTEMPTS_PER_GENERATION,
-            )
-            response_recorder.attach(client, case.id)
-            started = time.monotonic()
-            result = plan_looks(case.brief, case.state(), catalog, client)
-            model_metrics = plan_metrics(case, result, time.monotonic() - started, catalog)
-            case_result["muse_spark"] = model_metrics
-            score_rows.append(score_row(case.id, "muse_spark", model_metrics))
-        run["cases"][case.id] = case_result
-        if response_recorder:
-            run["http_attempts_used"] = response_recorder.http_attempts
-            run["attempt_limit_reached"] = response_recorder.limit_reached
-        write_run(output_dir, run, score_rows)
+                if (
+                    response_recorder
+                    and response_recorder.max_http_attempts - response_recorder.http_attempts
+                    < attempts_per_case
+                ):
+                    # A case cut short by the shared cap would look like a provider failure, so a
+                    # case runs only with its full allowance left.
+                    response_recorder.limit_reached = True
+                    case_result["muse_spark_not_run"] = (
+                        f"fewer than {attempts_per_case} of the run's "
+                        f"{response_recorder.max_http_attempts} HTTP attempts remained"
+                    )
+                elif settings and response_recorder:
+                    client = SparkClient(
+                        api_key=settings.baseten_api_key,
+                        base_url=BASETEN_URL,
+                        model=SPARK_MODEL,
+                        max_attempts=MAX_HTTP_ATTEMPTS_PER_GENERATION,
+                    )
+                    response_recorder.attach(client, case.id)
+                    started = time.monotonic()
+                    result = plan_looks(case.brief, case.state(), catalog, client)
+                    model_metrics = plan_metrics(case, result, time.monotonic() - started, catalog)
+                    case_result["muse_spark"] = model_metrics
+                    score_rows.append(score_row(case.id, "muse_spark", model_metrics))
+                run["cases"][case.id] = case_result
+                if response_recorder:
+                    run["http_attempts_used"] = response_recorder.http_attempts
+                    run["attempt_limit_reached"] = response_recorder.limit_reached
+                write_run(output_dir, run, score_rows)
+        finally:
+            # A run that fails part-way still records the HTTP attempts it made.
+            if response_recorder:
+                run["http_attempts_used"] = response_recorder.http_attempts
+                run["attempt_limit_reached"] = response_recorder.limit_reached
 
     print(f"mode={run['mode']} catalog={catalog.id} output={output_dir}")
     for case_id, metrics in run["cases"].items():

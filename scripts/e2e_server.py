@@ -132,6 +132,8 @@ def main() -> None:
         session_secret="e2e-session-secret-not-for-production-use",
         invite_hashes=frozenset({invite_hash(E2E_INVITE)}),
         store_url=f"file://{args.store.resolve()}" if args.store else "memory://",
+        # Every browser test and viewport shares the one invite; the quota rule still applies.
+        plan_requests_per_invite=16,
     )
     app = create_app(settings, spark=ScriptedSpark(), image_editor=ScriptedEditor())
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")

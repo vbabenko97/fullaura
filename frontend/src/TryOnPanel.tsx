@@ -194,7 +194,8 @@ export function TryOnPanel({
       <div className="tryon-notice">
         <p>
           Your photos are redrawn on this device without metadata, then sent through FullAura to Meta's
-          Muse Image model in Standard mode with a text description of the look. FullAura keeps them only in
+          Muse Image model in Standard mode with a text description of the look. If the look includes an item you
+          own, that description includes the color and words you entered for it. FullAura keeps your photos only in
           memory for that request and stores neither photos nor results. Standard mode keeps your content
           out of Meta's model training, but Meta may still retain it under its <a href={META_TERMS} rel="noreferrer" target="_blank">terms</a>.
           Use photos of yourself only. Withdrawing consent stops a try-on in progress and removes your photos and
