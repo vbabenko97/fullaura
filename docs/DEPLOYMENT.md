@@ -146,6 +146,21 @@ To check access without deleting anything before the purge time, start a run wit
 
 Change the pilot's end only by deploying the template again with a later `pilotEndsAt`, `recordsPurgeAt` and `recordsPurgeSchedule`. The job keeps its own copy of the purge time: changing `FULLAURA_PILOT_ENDS_AT` on the app alone would let the job delete the quotas and the ledger while the pilot still runs, and the empty ledger would reopen the budgets.
 
+### Checking the deletion
+
+No alert watches the job, so the operator checks the deletion twice on 2026-11-09, with reminders set beforehand: at 10:15 Vienna time (09:15 UTC), when a first run that succeeded has finished, and at 10:45 (09:45 UTC), when a run that needed every retry has finished and its log has reached Log Analytics. Each check uses the operator's Storage Blob Data Reader role:
+
+1. The job succeeded: `az containerapp job execution list --name fullaura-demo-purge --resource-group rg-fullaura-demo --subscription <subscription ID> --output table` lists an execution of 2026-11-09 from about 09:00 UTC with status `Succeeded`, and its log line in `ContainerAppConsoleLogs_CL` reads `pilot records: <n> found, <n> deleted, 0 left`.
+2. The records are gone: `az storage blob list --account-name stfullauradurnz5gu4z --container-name pilot --auth-mode login --subscription <subscription ID> --query "[].name" --output tsv` prints only `purge-marker.json`.
+3. The report agrees: `scripts/pilot_report.py`, run as [BETA.md](BETA.md#running-the-pilot) describes, counts no activated invite, no model call and an empty ledger. Run against a store that holds only the marker, it exits 0 with these zeros.
+
+If an execution failed or any name other than the marker is listed:
+
+1. Start a run by hand with `az containerapp job start --name fullaura-demo-purge --resource-group rg-fullaura-demo --subscription <subscription ID>`. After the purge time a run deletes every record, so check again about five minutes later.
+2. If it fails again, read its log line: `pilot records not deleted: ...` with exit 1 means the job could not reach the store, so check that the job's identity still has Storage Blob Data Contributor on the `pilot` container; exit 2 means a settings error, so compare the job's `FULLAURA_PILOT_ENDS_AT` and `FULLAURA_RECORDS_PURGE_AT` with the table above.
+3. If records still exist, delete them by hand: give the operator Storage Blob Data Contributor on the `pilot` container, run the `az storage blob delete-batch` command in [Stopping the beta](#stopping-the-beta), list the container again, and remove that role assignment. Deleting the marker with the records reopens no write, because the app also refuses every write from the purge time on ([D-50](DECISIONS.md#d-50-a-closure-marker-and-a-grace-period-keep-writes-from-outliving-the-purge)).
+4. Record in this file when the records were gone and how.
+
 ## Deployment procedure
 
 The template `infra/azure/main.bicep` describes every resource in `rg-fullaura-demo`: the Log Analytics workspace, the Container Apps environment, the app with its system-assigned managed identity, the private storage account for pilot records with its 30-day deletion rule, the purge job that deletes the records after the pilot, and the role assignments that let the app's and the job's identities read, write and delete the blobs in the `pilot` container. Deploy it to the existing resource group so that it updates these resources and creates no second stack. The Azure CLI's default subscription is another one, so every command names the FullAura subscription.
