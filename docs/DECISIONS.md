@@ -449,11 +449,11 @@ Each decision has a number that is never reused and a status: accepted, proposed
 - **Reason:** A record held only the Git revision, so a run from a modified working tree could not be reproduced, and a run that crashed before its first case left no record at all.
 - **Consequences:** Runs made with a revision that has `scripts/run_provenance.py` carry these fields; earlier runs do not and are not rewritten. A secret inside a binary file, or one that is not in the environment, is not found ([EVALUATION.md](EVALUATION.md#run)).
 
-## D-58: Proposed rules for deciding on the pilot's results
+## D-58: The pilot's results are read against guideline thresholds
 
 - **Date:** 2026-10-31
-- **Status:** proposed
-- **Decision:** Before the final report's feedback is read, the author accepts or changes the thresholds in [BETA.md](BETA.md#deciding-what-to-build-next): separate minimums of 5 answering invites for planning, 5 try-on scores, and 5 answers that named try-on issues; keep the plans as they are when at least 60% would wear a look and at least half rate usefulness 4 or 5; keep the try-on when at least half of the try-on scores are 3 or more and fewer than a third of the answers that named issues name likeness, with skipped issue questions left out of that share rather than counted as no problem; fix reliability first when fewer than 90% of planning calls succeed or more than 10% have an unknown outcome.
+- **Status:** accepted on 2026-10-31 as the guidelines for this pilot only
+- **Decision:** The final report's feedback is read against the thresholds in [BETA.md](BETA.md#deciding-what-to-build-next), which were set before it was read. Each rule has its own minimum: 5 answering invites for planning, 5 try-on scores, and 5 answers to the try-on issue question, "I noticed no problems" included. The experiment continues with the plans as they are when at least 60% would wear a look and at least half rate usefulness 4 or 5. It continues with the try-on when at least half of the try-on scores are 3 or more and fewer than a third of the answers to the issue question, "I noticed no problems" included, name likeness; a skipped question stays out of that share and does not count as no problem. Reliability comes first when fewer than 90% of planning calls succeed or more than 10% have an unknown outcome.
 - **Reason:** The beta had no rule for what its results mean, and a rule chosen after seeing about ten answers only describes them. One shared minimum would let a single try-on score decide the try-on, and counting a skipped issue question as no problem would understate likeness complaints.
-- **Consequences:** Until the author accepts them, these numbers are a proposal, and the report's counts are read without them.
+- **Consequences:** Passing a threshold means the experiment continues; it does not show that the plans or the try-on are good, because about ten invites answering for themselves cannot show that. The thresholds apply to this pilot only; a later pilot sets its own before its answers are read.
 
