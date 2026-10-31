@@ -69,7 +69,8 @@ def generic_material(name: str) -> str:
     return _GENERIC_NAME[key]
 
 
-Id = Annotated[str, Field(pattern=r"^\S+$")]
+# IDs reach the planning prompt, so their length is bounded, far above any catalog ID.
+Id = Annotated[str, Field(pattern=r"^\S+$", max_length=100)]
 Material = Annotated[str, AfterValidator(generic_material)]
 CountryCode = Annotated[str, Field(pattern=r"^[A-Z]{2}$")]
 

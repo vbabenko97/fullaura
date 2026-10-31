@@ -56,6 +56,9 @@ class Slot(StrEnum):
     ACCESSORY = "accessory"
 
 
+MAX_LOCKS = LOOKS_PER_PLAN * len(Slot)  # one for each position a plan has
+
+
 class ItemKind(StrEnum):
     CATALOG = "catalog"  # a catalog variant, bought through the plan's selected offer
     OWNED = "owned"  # an item the person already owns
@@ -127,7 +130,7 @@ class State(Record):
     fit: Fit = Fit()
     footwear: FootwearChoice = FootwearChoice.ANY
     owned_items: tuple[OwnedItem, ...] = Field(default=(), max_length=MAX_OWNED_ITEMS)
-    locks: tuple[LockedPlacement, ...] = ()
+    locks: tuple[LockedPlacement, ...] = Field(default=(), max_length=MAX_LOCKS)
     plan: Plan | None = None
 
     @model_validator(mode="after")

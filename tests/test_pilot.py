@@ -1,5 +1,6 @@
 """Invites, quotas, reservations and feedback of the closed beta, against an in-memory store."""
 
+import logging
 import time
 import uuid
 from datetime import UTC, datetime, timedelta
@@ -308,6 +309,43 @@ def test_unavailable_accounting_refuses_model_calls() -> None:
         assert refused.value.reason is Refusal.ACCOUNTING_UNAVAILABLE
 
 
+class InviteWritesFail(MemoryStore):
+    """Once armed, refuses every change to an existing invite record, and deletions too when
+    told."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.failing = False
+        self.deletes_fail = False
+
+    def replace(self, name: str, data: dict[str, Any], etag: str) -> str:
+        if self.failing and name.startswith("invites/"):
+            raise StoreUnavailable("invite write failed")
+        return super().replace(name, data, etag)
+
+    def delete(self, name: str) -> None:
+        if self.deletes_fail:
+            raise StoreUnavailable("delete failed")
+        super().delete(name)
+
+
+def test_a_reservation_is_refunded_when_the_quota_cannot_be_counted() -> None:
+    store = InviteWritesFail()
+    p = pilot(store)
+    invite = ready(p)
+    store.failing = True  # the ledger reservation succeeds, then the invite's count fails
+    operation_id = op()
+    with pytest.raises(Refused) as refused:
+        p.begin(invite, PLAN, operation_id, 200_000)
+    assert refused.value.reason is Refusal.ACCOUNTING_UNAVAILABLE
+    ledger = p.ledger()
+    assert ledger["reserved"]["planning"] == 0 and ledger["spent"]["planning"] == 0
+    assert ledger["running"] == {}
+    record = store.read(f"operations/{operation_id}.json")
+    assert record is not None and record.data["status"] == "refused"
+    assert p.status(invite).plan_requests_used == 0
+
+
 def test_the_pilot_window_closes_model_calls() -> None:
     clock = Clock()
     p = pilot(clock=clock, ends_at=clock.now + timedelta(days=7))
@@ -374,6 +412,25 @@ def test_feedback_can_be_deleted_only_by_its_invite() -> None:
     assert not p.delete_feedback(other, feedback_id)
     assert p.delete_feedback(invite, feedback_id)
     assert store.read(f"feedback/{invite}/{feedback_id}.json") is None
+    assert p.status(invite).feedback_ids == ()
+
+
+def test_feedback_its_invite_cannot_list_is_deleted_again(caplog: pytest.LogCaptureFixture) -> None:
+    store = InviteWritesFail()
+    p = pilot(store)
+    invite = ready(p)
+    store.failing = True
+    answers = {"would_wear": True, "usefulness": 4, "try_on": 2, "comment": "private words"}
+    with pytest.raises(StoreUnavailable):
+        p.add_feedback(invite, answers)
+    assert [name for name in store.names() if name.startswith("feedback/")] == []
+
+    store.deletes_fail = True  # the entry stays behind; the original failure is raised
+    with caplog.at_level(logging.WARNING, logger="backend.app"):
+        with pytest.raises(StoreUnavailable, match="invite write failed"):
+            p.add_feedback(invite, answers)
+    assert "unlisted feedback not deleted: StoreUnavailable" in caplog.text
+    assert "private words" not in caplog.text and "delete failed" not in caplog.text
     assert p.status(invite).feedback_ids == ()
 
 
