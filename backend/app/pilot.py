@@ -36,7 +36,7 @@ from datetime import UTC, datetime, timedelta
 from enum import StrEnum
 from typing import Any
 
-from backend.app.store import Document, Store, StoreUnavailable, VersionConflict
+from backend.app.store import SEND_BY, Document, Store, StoreUnavailable, VersionConflict
 
 LEDGER = "ledger.json"
 MAX_WRITE_ATTEMPTS = 8
@@ -161,8 +161,9 @@ class ClosingStore:
     """The pilot's store, with every write refused once the records are closed for deletion.
 
     Reads and listings pass through. A write first checks the purge time and the purge job's
-    marker, then starts only if that check took less than WRITE_WINDOW_S; the job waits longer
-    than that window plus the store's timeouts before it deletes (backend/app/purge.py)."""
+    marker, and must leave the process within WRITE_WINDOW_S of the start of that check, token
+    refresh included; the job waits longer than that window plus the store's timeouts before it
+    deletes (backend/app/purge.py)."""
 
     def __init__(
         self,
@@ -183,25 +184,29 @@ class ClosingStore:
         return self._store.names()
 
     def create(self, name: str, data: dict[str, Any]) -> str:
-        self._check_open()
-        return self._store.create(name, data)
+        return self._write(lambda: self._store.create(name, data))
 
     def replace(self, name: str, data: dict[str, Any], etag: str) -> str:
-        self._check_open()
-        return self._store.replace(name, data, etag)
+        return self._write(lambda: self._store.replace(name, data, etag))
 
     def delete(self, name: str) -> None:
-        self._check_open()
-        self._store.delete(name)
+        self._write(lambda: self._store.delete(name))
 
-    def _check_open(self) -> None:
+    def _write[T](self, call: Callable[[], T]) -> T:
         started = self._monotonic()
         if self._purge_at is not None and self._now() >= self._purge_at:
             raise RecordsClosed("The pilot records are closed for deletion")
         if self._store.read(PURGE_MARKER) is not None:
             raise RecordsClosed("The pilot records are closed for deletion")
-        if self._monotonic() - started > WRITE_WINDOW_S:
+        left = WRITE_WINDOW_S - (self._monotonic() - started)
+        if left < 0:
             raise StoreUnavailable("The check for a running deletion took too long to trust")
+        # The Blob store refuses to send the write once the window has passed (store.SEND_BY).
+        window = SEND_BY.set(time.monotonic() + left)
+        try:
+            return call()
+        finally:
+            SEND_BY.reset(window)
 
 
 def _empty_ledger() -> dict[str, Any]:
@@ -537,7 +542,7 @@ class Pilot:
         for _ in range(MAX_WRITE_ATTEMPTS):
             document = self._store.read(name)
             if document is None and not create:
-                raise StoreUnavailable(f"{name} does not exist")
+                raise StoreUnavailable("A pilot record to update does not exist")  # no name
             data = copy.deepcopy(document.data) if document else initial()
             result = mutate(data)
             try:
@@ -548,7 +553,7 @@ class Pilot:
             except VersionConflict:
                 continue
             return result
-        raise StoreUnavailable(f"{name} kept changing during {MAX_WRITE_ATTEMPTS} attempts")
+        raise StoreUnavailable(f"A pilot record kept changing during {MAX_WRITE_ATTEMPTS} attempts")
 
     def _stamp(self) -> str:
         return self._now().isoformat()

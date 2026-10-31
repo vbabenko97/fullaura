@@ -14,6 +14,7 @@ import os
 import threading
 import time
 from collections.abc import Callable
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -28,6 +29,9 @@ STORE_TIMEOUT_S = 10.0  # per phase of a request: connect, write, read, pool
 # The Blob service abandons an operation it has not finished in this many seconds
 # (https://learn.microsoft.com/en-us/rest/api/storageservices/setting-timeouts-for-blob-service-operations).
 BLOB_SERVER_TIMEOUT_S = 10
+# The monotonic time by which a write must leave this process, set by the pilot's closure check
+# for the write it allows (backend/app/pilot.py); a token refresh or a wait for the lock counts.
+SEND_BY: ContextVar[float | None] = ContextVar("SEND_BY", default=None)
 
 
 class StoreUnavailable(RuntimeError):
@@ -221,6 +225,9 @@ class AzureBlobStore:
 
     def _send(self, method: str, name: str, **kwargs: Any) -> httpx2.Response:
         headers = self._headers(kwargs.pop("headers", None))
+        send_by = SEND_BY.get()
+        if send_by is not None and time.monotonic() > send_by:
+            raise StoreUnavailable("The write was not sent in time after its closure check")
         params = {"timeout": str(BLOB_SERVER_TIMEOUT_S), **kwargs.pop("params", {})}
         try:
             return self.client.request(
@@ -238,7 +245,7 @@ class AzureBlobStore:
         try:
             return Document(json.loads(response.content), response.headers["ETag"])
         except (ValueError, KeyError) as error:
-            raise StoreUnavailable(f"Blob {name} is unreadable: {type(error).__name__}") from None
+            raise StoreUnavailable(f"A blob is unreadable: {type(error).__name__}") from None
 
     def create(self, name: str, data: dict[str, Any]) -> str:
         return self._put(name, data, {"If-None-Match": "*"})

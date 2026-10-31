@@ -1,5 +1,6 @@
 """Invites, quotas, reservations and feedback of the closed beta, against an in-memory store."""
 
+import time
 import uuid
 from datetime import UTC, datetime, timedelta
 from typing import Any
@@ -21,7 +22,7 @@ from backend.app.pilot import (
     planning_cost_micro_usd,
     planning_reserve_micro_usd,
 )
-from backend.app.store import Document, MemoryStore, StoreUnavailable
+from backend.app.store import SEND_BY, Document, MemoryStore, StoreUnavailable
 
 CODE = "invite-code-for-tests"
 OTHER = "another-invite-for-tests"
@@ -320,6 +321,28 @@ def test_a_closure_check_that_took_too_long_or_failed_allows_no_write() -> None:
     with pytest.raises(RecordsClosed):
         closed.create("invites/a.json", {})
     assert store.names() == []
+
+
+class DeadlineStore(MemoryStore):
+    """Records the send-by time that each write receives."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.send_by: list[float | None] = []
+
+    def create(self, name: str, data: dict[str, Any]) -> str:
+        self.send_by.append(SEND_BY.get())
+        return super().create(name, data)
+
+
+def test_an_allowed_write_must_be_sent_within_the_window_of_its_check() -> None:
+    store = DeadlineStore()
+    before = time.monotonic()
+    ClosingStore(store, None, Clock()).create("invites/a.json", {})
+    after = time.monotonic()
+    [send_by] = store.send_by
+    assert send_by is not None and before < send_by <= after + WRITE_WINDOW_S
+    assert SEND_BY.get() is None  # only that write had the window
 
 
 def test_feedback_can_be_deleted_only_by_its_invite() -> None:

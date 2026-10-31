@@ -259,10 +259,10 @@ class GatedStore(MemoryStore):
         super().delete(name)
 
 
-def app_pilot(store: MemoryStore) -> tuple[Pilot, str]:
+def app_pilot(store: MemoryStore, ends_at: datetime = ENDS_AT) -> tuple[Pilot, str]:
     pilot = Pilot(
         store,
-        PilotLimits(ends_at=ENDS_AT, records_purge_at=PURGE_AT),
+        PilotLimits(ends_at=ends_at, records_purge_at=PURGE_AT),
         [invite_hash(CODE)],
         now=lambda: BEFORE,
     )
@@ -375,6 +375,20 @@ def test_deleting_feedback_during_the_deletion_does_not_bring_the_invite_back() 
     outcome = race(store, lambda: app.delete_feedback(invite, feedback_id), ("delete", "feedback/"))
     assert records(store) == []
     assert isinstance(outcome, StoreUnavailable)
+
+
+def test_a_model_call_accepted_just_before_the_end_leaves_no_reservation_behind() -> None:
+    store = GatedStore()
+    # A pilot that ends a moment before the purge time, so the call is accepted in time.
+    app, invite = app_pilot(store, ends_at=BEFORE + timedelta(seconds=30))
+    app.confirm_age(invite)
+    outcome = race(
+        store,
+        lambda: app.begin(invite, OperationKind.PLAN, str(uuid.uuid4()), 1000),
+        ("create", "operations/"),
+    )
+    assert records(store) == []  # neither the operation, the ledger nor the count survives
+    assert isinstance(outcome, Refused) and outcome.reason is Refusal.ACCOUNTING_UNAVAILABLE
 
 
 def test_a_call_that_reports_after_the_deletion_writes_nothing() -> None:
