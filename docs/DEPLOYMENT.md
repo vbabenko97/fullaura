@@ -15,7 +15,7 @@
 | Revision | `fullaura-demo--0000011`, serving all traffic since 2026-10-31 |
 | Compute and scaling | 0.5 vCPU / 1 GiB; minimum 0 and maximum 1 replica; scales to zero after 300 seconds without traffic |
 | Ingress | External HTTPS, target port 8000, insecure HTTP disabled |
-| Beta | `FULLAURA_BETA_ENABLED=true`; 11 invite digests in the secret `invite-hashes` (10 for participants, 1 for the operator); cookies signed with the secret `session-secret` |
+| Beta | `FULLAURA_BETA_ENABLED=true`; 13 invite digests in the secret `invite-hashes` (10 for participants and 3 for the operator: the first, whose planning requests are used up, and two added on 2026-10-31 for the T-08 acceptance and the demo video); cookies signed with the secret `session-secret` |
 | Pilot window | `FULLAURA_PILOT_ENDS_AT=2026-11-06T23:59:00+01:00` and `FULLAURA_RECORDS_PURGE_AT=2026-11-09T10:00:00+01:00` |
 | Budgets in the app | Planning $7.97 and images $2.91: the beta's $8 and $3, less the $0.023 and $0.09 spent outside the ledger on the checks of 2026-10-30 |
 | Pilot store | Storage account `stfullauradurnz5gu4z`, container `pilot`; shared keys and public blob access off; a lifecycle rule deletes each record 30 days after its last change. The app's and the purge job's identities each have Storage Blob Data Contributor on the container; the operator has Storage Blob Data Reader on the account. |
@@ -90,6 +90,12 @@ Later on 2026-10-31, after the deployment of `main` at `b9e7cd0`, which adds bou
 - `scripts/smoke_http.py` passed over HTTPS with an open beta session, and a 1 MB request to `/api/plans` on the deployed site answered 413, which only the new revision does.
 - The same browser state, reopened on the new revision: the tab's working plan came back on load; `/api/session` reported `design_open: false` and the page showed no Design My Look control; the plan saved before the update was restored and still passed every check; an update from its new token passed; and a try-on succeeded.
 - `scripts/pilot_report.py` against the real store showed that none of the ten participant invites had been opened. The ledger then held $0.079099 for planning and $0.07 for images. The operator invite has used all 8 of its planning requests.
+
+Later on 2026-10-31, two operator invites were added to the secret `invite-hashes` with `az containerapp secret set`, keeping the eleven earlier digests, and revision `fullaura-demo--0000011` was restarted so that it reads the new value. The image, `session-secret`, the purge job and the pilot's times stayed as they were.
+
+- The secret holds 13 digests: the ten participants', the first operator invite's and the two new ones. The earlier value is kept in the operator's ignored files; a rollback sets it again and restarts the revision.
+- `scripts/smoke_http.py` passed over HTTPS. Both new invites open a session with 0 of 8 planning requests used and `design_open: false`, and the first operator invite still opens one, with its 8 requests used.
+- `scripts/pilot_report.py` with the participants' digests still counts ten invites, none opened; the operator invites' calls count only under `calls_of_other_invites`.
 
 URL: <https://fullaura-demo.blackbay-aaeee2c5.francecentral.azurecontainerapps.io>.
 
@@ -184,6 +190,8 @@ The template `infra/azure/main.bicep` describes every resource in `rg-fullaura-d
 6. Record the URL, source commit, resource names, both deployed digests and the app's previous working digest above.
 
 To deploy only a new app image, run step 1 and then `az containerapp update --name fullaura-demo --resource-group rg-fullaura-demo --subscription <subscription ID> --image ghcr.io/vbabenko97/fullaura@<digest>`. In single-revision mode this creates a new revision, moves all traffic to it, and keeps the environment variables and secrets. Change the purge job's image only to an image that writes the closure marker, with `az containerapp job update --name fullaura-demo-purge --resource-group rg-fullaura-demo --subscription <subscription ID> --image ghcr.io/vbabenko97/fullaura@<digest>`; that keeps the job's schedule and settings.
+
+To change only the invites, set the secret to every digest that should stay valid, `az containerapp secret set --name fullaura-demo --resource-group rg-fullaura-demo --subscription <subscription ID> --secrets invite-hashes=<comma-separated digests>`, then restart the active revision with `az containerapp revision restart --name fullaura-demo --resource-group rg-fullaura-demo --subscription <subscription ID> --revision <revision name>`: a running revision does not read a changed secret until it restarts ([Manage secrets](https://learn.microsoft.com/en-us/azure/container-apps/manage-secrets)). The restart forgets the plans in memory, and browsers restore them. Keep the session secret, or every participant is signed out.
 
 ## Rolling back
 
