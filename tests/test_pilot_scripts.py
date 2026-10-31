@@ -224,6 +224,23 @@ def test_issues_from_an_invite_without_a_successful_try_on_are_flagged() -> None
     assert issues["from_invites_without_a_successful_try_on"] == 1
 
 
+def test_answers_are_split_by_whether_the_invite_got_a_plan() -> None:
+    store, clock = MemoryStore(), Clock()
+    p = pilot(store, clock)
+    one, two, three = (invite(p, code) for code in CODES)
+    call(p, one, PLAN, 12_500, "success")
+    call(p, two, PLAN, 9_000, "generation_failed")  # asked, but got no plan
+    p.add_feedback(one, answer(usefulness=5))
+    p.add_feedback(two, answer(usefulness=2, would_wear=False))
+    p.add_feedback(three, answer(usefulness=3))  # never asked for a plan
+    by_plan = summary(store)["feedback"]["latest_answer_per_invite"]["by_plan"]
+    planned, unplanned = by_plan["with_a_plan"], by_plan["without_a_plan"]
+    assert (planned["of"], planned["would_wear_yes"], planned["would_wear_no"]) == (1, 1, 0)
+    assert [planned["usefulness"][score] for score in "12345"] == [0, 0, 0, 0, 1]
+    assert (unplanned["of"], unplanned["would_wear_yes"], unplanned["would_wear_no"]) == (2, 1, 1)
+    assert [unplanned["usefulness"][score] for score in "12345"] == [0, 1, 1, 0, 0]
+
+
 def test_the_report_holds_no_codes_or_free_text_unless_asked_for_counts() -> None:
     store, clock = MemoryStore(), Clock()
     p = pilot(store, clock)
