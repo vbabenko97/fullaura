@@ -498,7 +498,7 @@ def _offer_id(variant_id: str, catalog: Catalog, offers: dict[str, Offer]) -> st
     return variant.offers[0].id if variant else "none"
 
 
-_SLOT_CATEGORIES: dict[Slot, frozenset[Category]] = {
+SLOT_CATEGORIES: dict[Slot, frozenset[Category]] = {
     Slot.TOP: frozenset({Category.TOP, Category.KNITWEAR}),
     Slot.BOTTOM: frozenset({Category.BOTTOM}),
     Slot.ONE_PIECE: frozenset({Category.ONE_PIECE}),
@@ -544,7 +544,7 @@ def _look_violations(plan: Plan, state: State, catalog: Catalog) -> list[Violati
             else:
                 owned_item = owned.get(item.id)
                 category = owned_item.category if owned_item else None
-            if category is not None and category not in _SLOT_CATEGORIES[slot]:
+            if category is not None and category not in SLOT_CATEGORIES[slot]:
                 violations.append(
                     Violation(
                         Rule.SLOT_CATEGORY,
@@ -616,7 +616,7 @@ def _base_outfit_conflicts(
     }
     conflicts = []
     if Category.ONE_PIECE not in categories and not (
-        categories & _SLOT_CATEGORIES[Slot.TOP] and Category.BOTTOM in categories
+        categories & SLOT_CATEGORIES[Slot.TOP] and Category.BOTTOM in categories
     ):
         conflicts.append(
             Violation(

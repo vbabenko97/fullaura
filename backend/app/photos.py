@@ -341,11 +341,31 @@ OWNED_TEXT_CHARS = 80
 _PLAIN_TEXT = re.compile(r"[^A-Za-z0-9À-ɏ ,.'/-]+")
 
 
+def plain_words(text: str, limit: int) -> str:
+    """Letters, digits, spaces and light punctuation only, cut to limit characters, so text
+    that did not come from code reads as a description rather than an instruction."""
+    return " ".join(_PLAIN_TEXT.sub(" ", text).split())[:limit].strip()
+
+
 def _quoted(text: str, limit: int) -> str:
-    """A person's own words as a short quoted description: letters, digits, spaces and light
-    punctuation only, so they read as an item's description rather than an instruction."""
-    plain = " ".join(_PLAIN_TEXT.sub(" ", text).split())[:limit].strip()
+    """A person's own words as a short quoted description."""
+    plain = plain_words(text, limit)
     return f'"{plain}"' if plain else "(no description)"
+
+
+def outfit_prompt(lines: list[str]) -> str:
+    """The try-on prompt for an outfit described line by line, one line per worn item."""
+    prompt = (
+        "Create an approximate try-on preview of the person shown in the two photos, a "
+        "portrait and a full-body photo. Show them full body, standing, wearing this outfit:\n"
+        + "\n".join(lines)
+        + "\nKeep their face, hair, skin tone and body proportions exactly as in the photos. "
+        "Draw plain garments in the stated colors and kinds, with no logos, text or brand "
+        "marks. Plain light background."
+    )
+    if len(prompt.encode()) > MAX_PREVIEW_PROMPT_BYTES:
+        raise PhotoInputError("This look is too long to describe in one preview")
+    return prompt
 
 
 def preview_prompt(look: Look, state: State, catalog: Catalog) -> str:
@@ -380,14 +400,4 @@ def preview_prompt(look: Look, state: State, catalog: Catalog) -> str:
         )
         color = f"{variant.color} " if variant.color else ""
         lines.append(f"- {slot.value}: {color}{kind}, like the {product.title.lower()}{made_of}")
-    prompt = (
-        "Create an approximate try-on preview of the person shown in the two photos, a "
-        "portrait and a full-body photo. Show them full body, standing, wearing this outfit:\n"
-        + "\n".join(lines)
-        + "\nKeep their face, hair, skin tone and body proportions exactly as in the photos. "
-        "Draw plain garments in the stated colors and kinds, with no logos, text or brand "
-        "marks. Plain light background."
-    )
-    if len(prompt.encode()) > MAX_PREVIEW_PROMPT_BYTES:
-        raise PhotoInputError("This look is too long to describe in one preview")
-    return prompt
+    return outfit_prompt(lines)

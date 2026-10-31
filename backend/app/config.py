@@ -38,6 +38,8 @@ class Settings:
     baseten_model: str = ""
     model_api_key: str = field(default="", repr=False)
     meta_image_model: str = IMAGE_MODEL
+    # The experimental Design My Look mode (backend/app/concepts.py); off unless set.
+    design_mode: bool = False
 
     def __post_init__(self) -> None:
         if self.environment not in {"development", "production"}:
@@ -89,4 +91,5 @@ class Settings:
             baseten_model=os.getenv("BASETEN_MODEL", ""),
             model_api_key=os.getenv("MODEL_API_KEY", ""),
             meta_image_model=os.getenv("META_IMAGE_MODEL", IMAGE_MODEL),
+            design_mode=os.getenv("FULLAURA_DESIGN_MODE", "").lower() == "true",
         )

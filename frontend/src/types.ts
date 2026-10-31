@@ -242,6 +242,8 @@ export interface Session {
   records_purge_at: string | null;
   feedback_ids: string[];
   has_plan: boolean;
+  /** Design my look is switched on and planning is open for this invite. */
+  design_open: boolean;
 }
 
 export interface OwnedNotice {
@@ -275,6 +277,61 @@ export interface PlanRequest {
   state: StateInput;
   replacement: ReplacementTarget | null;
   plan_token: string | null;
+}
+
+/** What Design my look checks: no owned items and no locks. */
+export type ConceptState = Pick<StateInput, "budget" | "material_exclusions" | "footwear" | "fit">;
+
+export interface ConceptRequest {
+  brief: Brief;
+  state: ConceptState;
+}
+
+export type ConceptOutcome = "success" | "generation_failed" | "provider_timeout" | "provider_error";
+
+/** The closest catalog product code found for a concept item: a close match or an alternative
+ * that differs or is unconfirmed as listed, each with its product, or none. */
+export type ConceptMatch = { differences: string[] } & (
+  | { status: "close" | "alternative"; variant_id: string; offer_id: string }
+  | { status: "none"; variant_id: null; offer_id: null }
+);
+
+/** A concept item as the stylist model describes it; never a product. */
+export interface ConceptItem {
+  slot: Slot;
+  kind: string;
+  color: string;
+  color_family: string;
+  material: string;
+  fit: string;
+  details: string;
+  match: ConceptMatch;
+}
+
+export interface Concept {
+  id: string;
+  name: string;
+  why: string;
+  items: ConceptItem[];
+}
+
+/** Two separate answers: complete when every item has a close match, and, once every item has a
+ * product, whether those products together pass the hard checks. Shoppable as shown needs both. */
+export interface Shoppable {
+  complete: boolean;
+  passes_hard_checks: boolean;
+  matched_total_cents: number | null;
+  violations: string[];
+}
+
+export interface ConceptResponse {
+  outcome: ConceptOutcome;
+  error: string | null;
+  catalog_id: string;
+  concept_token: string | null;
+  concept: Concept | null;
+  matching_failed: boolean;
+  shoppable: Shoppable | null;
 }
 
 /** A checked plan kept on this device, with the facts needed to show it without the server. */

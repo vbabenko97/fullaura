@@ -58,6 +58,9 @@ interface Server {
   /** When set, a try-on answers only once this settles, as a slow provider would. */
   previewGate: Promise<void> | null;
   previewsAnswered: number;
+  concepts: unknown[];
+  /** The token of the concept the server holds now; a try-on with another one is refused. */
+  conceptToken: string | null;
 }
 
 /** A promise the test settles by hand, for responses that arrive late. */
@@ -70,10 +73,20 @@ function deferred<T = void>() {
 }
 
 function installServer(
-  options: { invited?: boolean; aged?: boolean; plans?: unknown[]; accounting?: boolean; catalog?: unknown } = {},
+  options: {
+    invited?: boolean;
+    aged?: boolean;
+    plans?: unknown[];
+    accounting?: boolean;
+    catalog?: unknown;
+    design?: boolean;
+    concepts?: unknown[];
+  } = {},
 ): Server {
   const server: Server = {
     plans: options.plans ?? [],
+    concepts: options.concepts ?? [],
+    conceptToken: null,
     requests: [],
     token: 0,
     session: {
@@ -93,6 +106,7 @@ function installServer(
       records_purge_at: "2026-11-09T10:00:00+01:00",
       feedback_ids: [],
       has_plan: false,
+      design_open: options.design ?? false,
     },
     expireToken: () => {
       server.token += 100;
@@ -178,8 +192,32 @@ function installServer(
       server.token += 1;
       return json({ ...success(object(object(body).state).plan), catalog_changed: false });
     }
+    if (url === "/api/concepts") {
+      const request = object(body);
+      if (!headers["x-operation-id"]) return json({ detail: "no id", reason: "operation_id" }, 400);
+      // Like the server, refuse any field beyond the brief and the four checked state fields.
+      const stateFields = Object.keys(object(request.state));
+      if (
+        Object.keys(request).sort().join() !== "brief,state" ||
+        stateFields.some((field) => !["budget", "material_exclusions", "footwear", "fit"].includes(field))
+      ) {
+        return json({ detail: "extra fields", reason: "invalid" }, 422);
+      }
+      session.plan_requests_used = Number(session.plan_requests_used) + 1;
+      const next = server.concepts.shift();
+      if (next === undefined) throw new Error(`${FIXTURE_LABEL} has no queued concept`);
+      if (object(next).outcome !== "success") return json(next);
+      server.conceptToken = `concept-token-${server.requests.filter((entry) => entry.url === url).length}`;
+      return json({ ...object(next), concept_token: server.conceptToken });
+    }
     if (url === "/api/previews") {
-      if (headers["x-plan-token"] !== currentToken()) return json({ detail: "expired", reason: "plan_expired" }, 409);
+      const conceptToken = headers["x-concept-token"];
+      if (conceptToken !== undefined && conceptToken !== server.conceptToken) {
+        return json({ detail: "replaced", reason: "concept_expired" }, 409);
+      }
+      if (conceptToken === undefined && headers["x-plan-token"] !== currentToken()) {
+        return json({ detail: "expired", reason: "plan_expired" }, 409);
+      }
       if (server.previewOutcome === "budget") return json({ detail: "budget", reason: "budget" }, 503);
       if (server.previewGate) await server.previewGate;
       server.previewsAnswered += 1;
@@ -280,6 +318,23 @@ describe(`${FIXTURE_LABEL}: data notice`, () => {
     expect(notice.getByText(/does not store the\s+inputs or outputs of these requests/)).toBeTruthy();
     expect(notice.getByText(/not a check of FullAura's account/)).toBeTruthy();
     expect(notice.getByText(/If the look includes an item you own, the description includes the color/)).toBeTruthy();
+    expect(notice.queryByText(/Design my look/)).toBeNull(); // nothing about a mode this invite cannot use
+  });
+
+  it("says what Design my look sends only while it is open, and always that a try-on uses no web search", async () => {
+    installServer({ design: true });
+    render(<App />);
+    fireEvent.click(await screen.findByText("How FullAura handles your data"));
+    const notice = within(screen.getByText("How FullAura handles your data").closest("details") as HTMLElement);
+    expect(
+      notice.getByText(
+        /not a check of FullAura's account\. Design my look first sends your style goal, colors, occasion, season, budget, clothing line, the kinds of bottoms and dresses you wear, and your shoe and material choices, without your sizes or owned items; it then sends its concept with the catalog products in your sizes, so that the model can pick the closest ones\. FullAura does not store your preferences; the server keeps your latest plan and your latest concept in memory for up to a day\./,
+      ),
+    ).toBeTruthy();
+    expect(notice.getByText(/a description of the look, or of your concept in Design my look, to Meta's Muse Image model/)).toBeTruthy();
+    expect(
+      notice.getByText(/FullAura turns off the image model's own web and image search, so it works only from your photos and that text\./),
+    ).toBeTruthy();
   });
 });
 
@@ -680,5 +735,314 @@ describe(`${FIXTURE_LABEL}: feedback`, () => {
     const sent = object(server.requests.find((entry) => entry.url === "/api/feedback")?.body);
     expect(sent).toMatchObject({ try_on: 2, try_on_issues: ["body_proportions"] });
     expect(box("Body proportions looked off").checked).toBe(false); // the form starts afresh
+  });
+});
+
+/* Design My Look responses on real catalog records. They are deterministic UI fixtures, not model
+ * output; the server's code decides each match's status, and these are the shapes it produces. */
+function matched(status: "close" | "alternative", variantId: string, differences: string[] = []): Body {
+  return { status, variant_id: variantId, offer_id: `${variantId}-offer`, differences };
+}
+
+const NO_MATCH: Body = { status: "none", variant_id: null, offer_id: null, differences: [] };
+
+function conceptItem(slot: string, kind: string, color: string, match: Body, words: Body = {}): Body {
+  return { slot, kind, color, color_family: color, material: "", fit: "", details: "", ...words, match };
+}
+
+const MIXED_ITEMS = [
+  // A close match: the record confirms the kind, the color and 95% cotton; the concept names no cut
+  conceptItem("top", "t-shirt", "black", matched("close", "tt-basic-t-shirt-deep-black-l"), {
+    material: "cotton",
+    details: "crew neck",
+  }),
+  conceptItem(
+    "bottom",
+    "trousers",
+    "black",
+    matched("alternative", "tt-leggings-lederoptik-deep-black-l", ["kind: leggings, not trousers"]),
+  ),
+  conceptItem(
+    "footwear",
+    "loafers",
+    "white",
+    matched("alternative", "tt-sneaker-mesh-einsatz-white-40", ["kind: sneakers, not loafers"]),
+  ),
+  conceptItem("accessory", "bag", "black", NO_MATCH),
+];
+
+const COMPLETE_ITEMS = [
+  conceptItem("top", "t-shirt", "black", matched("close", "tt-basic-t-shirt-deep-black-l")),
+  conceptItem("bottom", "trousers", "black", matched("close", "tt-relaxed-fit-hose-deep-black-l")),
+  conceptItem("footwear", "sneakers", "white", matched("close", "tt-sneaker-mesh-einsatz-white-40")),
+];
+
+const DIFFERING_ITEMS = [
+  COMPLETE_ITEMS[0],
+  conceptItem(
+    "bottom",
+    "trousers",
+    "black",
+    matched("alternative", "tt-relaxed-fit-hose-deep-black-l", ["material: polyester, not linen"]),
+    { material: "linen" },
+  ),
+  COMPLETE_ITEMS[2],
+];
+
+function conceptResponse(shoppable: Body = {}, items: Body[] = MIXED_ITEMS, fields: Body = {}): Body {
+  return {
+    outcome: "success",
+    error: null,
+    catalog_id: object(catalog).id,
+    concept_token: null, // the mock server issues it
+    concept: { id: "concept_1", name: "Black and white basics", why: "Plain pieces for an office week.", items },
+    matching_failed: false,
+    // 19.99 + 39.99 + 44.99: the three products of the mixed concept, each once
+    shoppable: { complete: false, passes_hard_checks: false, matched_total_cents: 10497, violations: [], ...shoppable },
+    ...fields,
+  };
+}
+
+function conceptFailure(outcome: string, error: string): Body {
+  return {
+    outcome,
+    error,
+    catalog_id: object(catalog).id,
+    concept_token: null,
+    concept: null,
+    matching_failed: false,
+    shoppable: null,
+  };
+}
+
+function conceptRequests(server: Server) {
+  return server.requests.filter((entry) => entry.url === "/api/concepts");
+}
+
+/** Switch to Design my look, fill the two required fields and send; the caller awaits the answer. */
+async function requestConcept(styleGoal = "Black and white office basics", budget = "200") {
+  await screen.findByText(/products\. Price checked/);
+  fireEvent.click(screen.getByRole("radio", { name: "Design my look (experimental)" }));
+  fireEvent.change(screen.getByLabelText("What should the looks work for?"), { target: { value: styleGoal } });
+  fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: budget } });
+  fireEvent.click(screen.getByRole("button", { name: "Design my look" }));
+}
+
+describe(`${FIXTURE_LABEL}: Design my look`, () => {
+  it("adds nothing while the design flag is off", async () => {
+    installServer();
+    render(<App />);
+    await screen.findByText(/products\. Price checked/);
+    expect(screen.queryByRole("group", { name: "Mode" })).toBeNull();
+    expect(screen.queryByRole("radio", { name: "Design my look (experimental)" })).toBeNull();
+    expect(screen.queryByText("Design my look does not use items you own.")).toBeNull();
+    expect(screen.queryByText(/Design my look sends the same choices/)).toBeNull();
+    expect(screen.getByText(/FullAura turns off the image model's own web and image search/)).toBeTruthy();
+  });
+
+  it("switches mode by radio, leaves out owned items, and sends only the brief and the four checked fields", async () => {
+    const server = installServer({ design: true, concepts: [conceptResponse()] });
+    render(<App />);
+    await screen.findByText(/products\. Price checked/);
+    const modes = within(screen.getByRole("group", { name: "Mode" }));
+    expect((modes.getByRole("radio", { name: "Three looks from real products" }) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByText("Items you already own", { selector: "summary span" }));
+    fireEvent.click(screen.getByRole("button", { name: "Add item" })); // an owned item a plan would send
+
+    fireEvent.click(modes.getByRole("radio", { name: "Design my look (experimental)" }));
+    expect(screen.queryByText("Items you already own")).toBeNull();
+    expect(screen.getByText("Design my look does not use items you own.")).toBeTruthy();
+    expect(screen.getByRole("heading", { level: 1, name: "Your look first. Then real products." })).toBeTruthy();
+    // One look, so the budget is not split between looks
+    expect(screen.queryByRole("group", { name: "Budget applies to" })).toBeNull();
+    expect(document.getElementById("budget-meaning")?.textContent).toMatch(/is the limit for the one look/);
+    fireEvent.change(screen.getByLabelText("Letter size"), { target: { value: "M" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "wool" }));
+    await requestConcept();
+    await screen.findByText("Your concept is ready.");
+
+    const [sent] = conceptRequests(server);
+    expect(sent.headers["x-operation-id"]).toMatch(/^[0-9a-f-]{36}$/);
+    expect(Object.keys(object(sent.body)).sort()).toEqual(["brief", "state"]);
+    expect(object(sent.body).state).toEqual({
+      budget: { amount_cents: 20000, mode: "per_look" },
+      material_exclusions: ["wool"],
+      footwear: "closed",
+      fit: { sizes: [{ system: "letter", value: "M" }] },
+    });
+    expect(object(object(sent.body).brief)).toMatchObject({ style_goal: "Black and white office basics" });
+    expect(planRequests(server)).toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Design another" })).toBeTruthy();
+  });
+
+  it("shows a close product with its facts and link, an alternative after its differences, and no match", async () => {
+    const server = installServer({ design: true, concepts: [conceptResponse()] });
+    render(<App />);
+    await requestConcept();
+    await screen.findByText("Your concept is ready.");
+    expect("fit" in object(object(conceptRequests(server)[0].body).state)).toBe(false); // no fit was entered
+
+    const card = within(screen.getByRole("article", { name: "Black and white basics" }));
+    expect(card.getByText(/^A concept, not a product list\. For each item FullAura looked for the closest real product/)).toBeTruthy();
+    expect(card.getByText("Plain pieces for an office week.")).toBeTruthy();
+    const item = (name: string) => within(card.getByRole("heading", { name }).closest("li") as HTMLElement);
+
+    const top = item("Black t-shirt");
+    expect(top.getByText("Top")).toBeTruthy();
+    expect(top.getByText("cotton, crew neck")).toBeTruthy();
+    expect(top.getByText("Close match")).toBeTruthy();
+    expect(top.getByText("Basic T-Shirt mit Rundhalsausschnitt")).toBeTruthy();
+    expect(top.getByText("Tom Tailor, deep black, Size L")).toBeTruthy();
+    expect(top.getByText(/^Materials: /)).toBeTruthy();
+    expect(top.getByText(/^€\s19,99$/)).toBeTruthy();
+    expect(top.getByText("Price checked 30 Oct 2026")).toBeTruthy();
+    const link = top.getByRole("link", { name: "Tom Tailor" });
+    expect(link.getAttribute("href")).toMatch(/^https:\/\//);
+    expect([link.getAttribute("rel"), link.getAttribute("target")]).toEqual(["noreferrer", "_blank"]);
+
+    const bottom = item("Black trousers");
+    const label = bottom.getByText("Alternative, not a confirmed match:");
+    const difference = bottom.getByText("kind: leggings, not trousers");
+    const product = bottom.getByText("Leggings in Lederoptik");
+    // The differences come first, and an alternative is never called a close match.
+    expect(label.compareDocumentPosition(difference) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(difference.compareDocumentPosition(product) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(bottom.queryByText("Close match")).toBeNull();
+    expect(item("White loafers").getByText("kind: sneakers, not loafers")).toBeTruthy();
+
+    const bag = item("Black bag");
+    expect(bag.getByText("No close match in our catalog")).toBeTruthy();
+    expect(bag.queryByRole("link")).toBeNull();
+    expect(screen.queryByRole("button", { name: /^(Replace|Keep) / })).toBeNull();
+  });
+
+  it.each([
+    {
+      name: "a partial match",
+      response: conceptResponse(),
+      texts: [/^Close matches and alternatives together: €\s104,97, each product once\. Not every item can be bought as shown\.$/],
+    },
+    {
+      name: "a complete look that passes",
+      response: conceptResponse({ complete: true, passes_hard_checks: true }, COMPLETE_ITEMS),
+      texts: ["Every item has a close match, and these products pass the budget, size, shoe, material, delivery and stock checks."],
+    },
+    {
+      // The d7 shape: every product passes the hard checks, and one still differs from the concept
+      name: "products that pass the checks but differ from the concept",
+      response: conceptResponse({ passes_hard_checks: true }, DIFFERING_ITEMS),
+      texts: [
+        /^Close matches and alternatives together: €\s104,97, each product once\. Not every item can be bought as shown\.$/,
+        "These products together pass the budget, size, shoe, material, delivery and stock checks, but they differ from the concept as listed above.",
+      ],
+    },
+    {
+      name: "products that differ from the concept and fail a check",
+      response: conceptResponse({ violations: ["EUR 104.97 for the look, over the EUR 100.00 budget"] }, DIFFERING_ITEMS),
+      texts: ["These products together fail:", "EUR 104.97 for the look, over the EUR 100.00 budget"],
+    },
+    {
+      name: "a complete look that fails a check",
+      response: conceptResponse(
+        { complete: true, violations: ["budget: EUR 104.97 for the look, over EUR 100.00"] },
+        COMPLETE_ITEMS,
+      ),
+      texts: ["Every item has a close match, but:", "budget: EUR 104.97 for the look, over EUR 100.00"],
+    },
+    {
+      // No €0.00 total for a search that found nothing
+      name: "a search that found nothing",
+      response: conceptResponse(
+        { matched_total_cents: 0 },
+        MIXED_ITEMS.map((entry) => ({ ...entry, match: NO_MATCH })),
+      ),
+      texts: ["No item has a close match or an alternative in our catalog."],
+    },
+    {
+      name: "a product search that did not finish",
+      response: conceptResponse(
+        { matched_total_cents: 0 },
+        MIXED_ITEMS.map((entry) => ({ ...entry, match: NO_MATCH })),
+        { matching_failed: true },
+      ),
+      texts: ["The product search did not finish, so no products are shown."],
+    },
+  ])("sums up $name", async ({ response, texts }) => {
+    installServer({ design: true, concepts: [response] });
+    render(<App />);
+    await requestConcept();
+    await screen.findByText("Your concept is ready.");
+    for (const text of texts) expect(screen.getByText(text)).toBeTruthy();
+    const summaries = [/^Close matches and alternatives/, /^Every item has a close match/, /^The product search/, /^No item has/];
+    expect(summaries.filter((summary) => screen.queryAllByText(summary).length > 0)).toHaveLength(1);
+    // A hard-check line only for products that were checked together
+    const { passes_hard_checks: passes, violations, complete } = object(object(response).shoppable);
+    const checked = !complete && (passes === true || (violations as string[]).length > 0);
+    expect(screen.queryAllByText(/^These products together/)).toHaveLength(checked ? 1 : 0);
+    if (object(response).matching_failed) expect(screen.queryByText("No close match in our catalog")).toBeNull();
+  });
+
+  it("explains a failed concept, and keeps the last one when a later request times out", async () => {
+    installServer({
+      design: true,
+      concepts: [
+        conceptFailure("generation_failed", "The concept broke these rules: the look needs closed shoes"),
+        conceptResponse(),
+        conceptFailure("provider_timeout", "Planning took too long"),
+      ],
+    });
+    render(<App />);
+    await requestConcept();
+    expect(
+      await screen.findByText(
+        "No concept passed the checks. Adjust your preferences and try again. The concept broke these rules: the look needs closed shoes",
+      ),
+    ).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "No concept yet" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Design my look" }));
+    await screen.findByText("Your concept is ready.");
+    fireEvent.click(screen.getByRole("button", { name: "Design another" }));
+    expect(await screen.findByText(/^The design request timed out\./)).toBeTruthy();
+    expect(screen.getByText(/The concept below is from the last successful request\./)).toBeTruthy();
+    expect(screen.getByRole("article", { name: "Black and white basics" })).toBeTruthy();
+  });
+
+  async function prepareConceptTryOn(server: Server) {
+    render(<App />);
+    await requestConcept();
+    await screen.findByText("Your concept is ready.");
+    fireEvent.click(screen.getByRole("button", { name: "I agree to this processing of my photos" }));
+    await screen.findByText("You agreed to this processing.");
+    fireEvent.change(screen.getByLabelText("Portrait photo"), {
+      target: { files: [new File(["p"], "portrait.png", { type: "image/png" })] },
+    });
+    fireEvent.change(screen.getByLabelText("Full-body photo"), {
+      target: { files: [new File(["f"], "full.webp", { type: "image/webp" })] },
+    });
+    return server;
+  }
+
+  it("tries the concept on with its token alone, and a new concept hides the result", async () => {
+    const server = await prepareConceptTryOn(installServer({ design: true, concepts: [conceptResponse(), conceptResponse()] }));
+    expect(screen.queryByRole("group", { name: "Look to try on" })).toBeNull(); // one look only
+    fireEvent.click(await screen.findByRole("button", { name: "Try on the concept" }));
+    expect(await screen.findByRole("img", { name: "Experimental try-on of the concept" })).toBeTruthy();
+    expect(screen.getByText(/Experimental visualization/)).toBeTruthy();
+    const headers = server.requests.find((entry) => entry.url === "/api/previews")?.headers ?? {};
+    expect(headers["x-concept-token"]).toBe("concept-token-1");
+    expect(Object.keys(headers).filter((name) => name === "x-plan-token" || name === "x-look-id")).toEqual([]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Design another" }));
+    await waitFor(() => expect(server.conceptToken).toBe("concept-token-2"));
+    await waitFor(() => expect(screen.queryByRole("img", { name: /Experimental try-on/ })).toBeNull());
+  });
+
+  it("says when the concept was replaced, and tries no plan restore", async () => {
+    const server = await prepareConceptTryOn(installServer({ design: true, concepts: [conceptResponse()] }));
+    server.conceptToken = "concept-token-from-another-tab";
+    fireEvent.click(await screen.findByRole("button", { name: "Try on the concept" }));
+    expect(await screen.findByText("This concept was replaced. Try on the current one.")).toBeTruthy();
+    expect(server.requests.filter((entry) => entry.url.startsWith("/api/plans"))).toEqual([]);
   });
 });

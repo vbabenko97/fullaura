@@ -22,7 +22,8 @@ from pydantic import BaseModel, Field, StrictBool, ValidationError, model_valida
 from starlette.requests import Request
 from starlette.responses import Response
 
-from backend.app.catalog import Catalog, Record
+from backend.app.catalog import Catalog, Material, Record
+from backend.app.concepts import RESERVED_HTTP_ATTEMPTS, concept_json, concept_prompt, design_look
 from backend.app.config import Settings
 from backend.app.meta_images import ImageRequestError, MuseImageClient
 from backend.app.photos import (
@@ -70,17 +71,20 @@ from backend.app.planner import (
 from backend.app.sessions import (
     SESSION_COOKIE,
     SESSION_COOKIE_MAX_AGE_S,
+    ConceptMemory,
     PlanMemory,
     PlanRecord,
     Session,
     read_session,
     sign_session,
 )
-from backend.app.state import State
+from backend.app.state import Budget as LookBudget
+from backend.app.state import Fit, FootwearChoice, State
 from backend.app.store import Store, StoreUnavailable, open_store
 
 OPERATION_HEADER = "X-Operation-Id"
 PLAN_TOKEN_HEADER = "X-Plan-Token"
+CONCEPT_TOKEN_HEADER = "X-Concept-Token"
 LOOK_HEADER = "X-Look-Id"
 NO_STORE = {"Cache-Control": "no-store"}
 REFUSAL_STATUS = {
@@ -118,6 +122,21 @@ class PlanSubmission(Record):
     state: dict[str, Any]
     replacement: dict[str, Any] | None = None
     plan_token: str | None = None
+
+
+class ConceptState(Record):
+    """What Design My Look checks: the budget, excluded materials, shoes and fit. Owned items
+    and locks are not part of this mode."""
+
+    budget: LookBudget
+    material_exclusions: frozenset[Material] = frozenset()
+    footwear: FootwearChoice = FootwearChoice.ANY
+    fit: Fit = Fit()
+
+
+class ConceptSubmission(Record):
+    brief: Brief
+    state: ConceptState
 
 
 class RestoreRequest(Record):
@@ -219,11 +238,13 @@ def create_app(
         settings.invite_hashes,
     )
     plans = PlanMemory()
+    concepts = ConceptMemory()
     catalog = Catalog.model_validate_json(settings.catalog_file.read_text(encoding="utf-8"))
     plan_reserve = planning_reserve_micro_usd(
         GENERATION_ATTEMPTS * HTTP_ATTEMPTS_PER_CALL, MAX_TOKENS
     )
     preview_reserve = IMAGE_ATTEMPTS * IMAGE_MICRO_USD
+    concept_reserve = planning_reserve_micro_usd(RESERVED_HTTP_ATTEMPTS, MAX_TOKENS)
 
     def planning_client() -> SparkClient | None:
         if spark is not None:
@@ -271,6 +292,7 @@ def create_app(
             ),
             "feedback_ids": [],
             "has_plan": False,
+            "design_open": False,
         }
         if session is None or not beta_open():
             return payload
@@ -279,6 +301,9 @@ def create_app(
             status = pilot.status(session.invite_id)
             planning_budget = pilot.budget_open(OperationKind.PLAN, plan_reserve)
             image_budget = pilot.budget_open(OperationKind.PREVIEW, preview_reserve)
+            design_budget = settings.design_mode and pilot.budget_open(
+                OperationKind.PLAN, concept_reserve
+            )
         except StoreUnavailable:
             return payload
         open_window = not pilot.ended()
@@ -298,6 +323,7 @@ def create_app(
             and status.preview_requests_used < pilot.limits.preview_requests,
             feedback_ids=list(status.feedback_ids),
         )
+        payload["design_open"] = bool(payload["planning_open"] and design_budget)
         return payload
 
     def plan_payload(record: PlanRecord, result: PlanResult) -> dict[str, Any]:
@@ -484,6 +510,60 @@ def create_app(
             return JSONResponse(plan_payload(record, result), headers=NO_STORE)
         return JSONResponse({**result_json(result), "catalog_id": catalog.id}, headers=NO_STORE)
 
+    @app.post("/api/concepts", tags=["design"])
+    def create_concept(submission: ConceptSubmission, request: Request) -> JSONResponse:
+        """Experimental Design My Look: one concept look from the brief alone, and for each of
+        its items the closest catalog product as code judges it, or none. Closed unless
+        FULLAURA_DESIGN_MODE is on. Every call it makes counts as one planning request."""
+        if not beta_open() or not settings.design_mode:
+            return closed()
+        session = session_of(request)
+        if session is None:
+            return not_invited()
+        operation_id = operation_id_of(request)
+        if operation_id is None:
+            return _error(f"Send a UUID in {OPERATION_HEADER}", 400, "operation_id")
+        current = concepts.get(session)
+        if current is not None and current.operation_id == operation_id:
+            # A repeat of the request that produced the current concept: answer it again for free.
+            return JSONResponse(
+                {**current.payload, "concept_token": current.token}, headers=NO_STORE
+            )
+        client = planning_client()
+        if client is None:
+            return _error("The planning model is not configured", 503, "not_configured")
+        # A concept is one look, so its budget is a limit for that look whatever mode is sent.
+        budget = {"amount_cents": submission.state.budget.amount_cents}
+        state = State.model_validate({**submission.state.model_dump(), "budget": budget})
+        try:
+            operation = pilot.begin(
+                session.invite_id, OperationKind.PLAN, operation_id, concept_reserve
+            )
+        except Refused as refused:
+            return _refusal(refused)
+
+        cost: int | None = None
+        outcome = "error"
+        try:
+            result = design_look(submission.brief, state, catalog, client)
+            usage = result.usage
+            cost = planning_cost_micro_usd(
+                usage.prompt_tokens,
+                usage.completion_tokens,
+                usage.calls - usage.unmetered_calls,
+                usage.http_attempts,
+                MAX_TOKENS,
+            )
+            outcome = result.outcome.value
+        finally:
+            pilot.finish(operation, cost, outcome)
+
+        payload = concept_json(result, catalog.id, None)
+        if result.concept is None:
+            return JSONResponse(payload, headers=NO_STORE)
+        stored = concepts.store(session, result.concept, payload, operation_id)
+        return JSONResponse({**payload, "concept_token": stored.token}, headers=NO_STORE)
+
     @app.post("/api/plans/restore", tags=["planning"])
     def restore_plan(saved: RestoreRequest, request: Request) -> JSONResponse:
         """Check a saved plan again against the current catalog and constraints, with offers
@@ -544,15 +624,27 @@ def create_app(
         operation_id = operation_id_of(request)
         if operation_id is None:
             return _error(f"Send a UUID in {OPERATION_HEADER}", 400, "operation_id")
-        record = plans.current(session, request.headers.get(PLAN_TOKEN_HEADER))
-        if record is None or record.state.plan is None:
-            return _error("This plan has expired; restore it first", 409, "plan_expired")
-        look_id = request.headers.get(LOOK_HEADER)
-        look = next((look for look in record.state.plan.looks if look.id == look_id), None)
-        if look is None:
-            return _error("That look is not in the current plan", 404, "look_unknown")
+        concept_token = request.headers.get(CONCEPT_TOKEN_HEADER)
         try:
-            prompt = preview_prompt(look, record.state, catalog)
+            if concept_token is not None:
+                # A Design My Look concept: only the one this page shows now
+                if not settings.design_mode:
+                    return closed()
+                concept = concepts.current(session, concept_token)
+                if concept is None:
+                    return _error(
+                        "This concept was replaced; design the look again", 409, "concept_expired"
+                    )
+                prompt = concept_prompt(concept.concept)
+            else:
+                record = plans.current(session, request.headers.get(PLAN_TOKEN_HEADER))
+                if record is None or record.state.plan is None:
+                    return _error("This plan has expired; restore it first", 409, "plan_expired")
+                look_id = request.headers.get(LOOK_HEADER)
+                look = next((look for look in record.state.plan.looks if look.id == look_id), None)
+                if look is None:
+                    return _error("That look is not in the current plan", 404, "look_unknown")
+                prompt = preview_prompt(look, record.state, catalog)
             await asyncio.to_thread(
                 pilot.check, session.invite_id, OperationKind.PREVIEW, preview_reserve
             )

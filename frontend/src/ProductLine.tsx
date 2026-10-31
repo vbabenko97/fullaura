@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { formatCheckedDate, formatMoney, labelCategory, labelSlot } from "./format";
+import { compositionText, formatCheckedDate, formatMoney, labelCategory, labelSlot, variantFacts } from "./format";
 import { catalogItem, hasReplacementAlternative, selectedOffer } from "./plan";
 import type {
   Catalog,
@@ -136,22 +136,8 @@ export function ProductLine({
   }
 
   const offer = selectedOffer(plan, entry.variant);
-  const materials = [...new Set(entry.variant.composition.components.map((component) => component.material))];
-  const composition =
-    entry.variant.composition.status === "complete"
-      ? `Materials: ${materials.join(", ")}`
-      : entry.variant.composition.status === "partial"
-        ? "Composition is incomplete"
-        : entry.variant.composition.status === "conflicting"
-          ? "Sources disagree on composition"
-          : "Composition not reported";
-  const facts = [
-    entry.product.brand,
-    entry.variant.color,
-    entry.variant.size === null ? null : `Size ${entry.variant.size}`,
-  ]
-    .filter((value): value is string => value !== null)
-    .join(", ");
+  const composition = compositionText(entry.variant);
+  const facts = variantFacts(entry.product, entry.variant);
   const offerLink = offer && /^https:\/\//i.test(offer.url) ? offer.url : null;
   const image = entry.variant.image;
 

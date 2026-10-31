@@ -13,6 +13,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-09](#t-09-closed-beta) Closed beta | done | 2026-10-30 |
 | [T-10](#t-10-beta-measurement-and-participant-fixes) Beta measurement and participant fixes | done | 2026-10-31 |
 | [T-11](#t-11-product-photos) Product photos | planned | |
+| [T-12](#t-12-design-my-look) Design My Look (experimental) | done | 2026-10-31 |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -89,6 +90,12 @@ Done when: the checks in the [README](../README.md#check-a-change) pass, includi
 Show a photo of each recommended variant in its color, so people can compare looks in the app ([D-56](DECISIONS.md#d-56-a-variant-can-carry-a-photo-only-with-recorded-rights)). A catalog variant can carry a photo with a description, its size and a credit, and the look cards show it in a box sized before it loads, with a fallback when it fails. No source whose rights allow displaying the photos is recorded yet, so no variant has one and the cards look as before.
 
 Done when: [DATA.md](DATA.md) records the license, feed terms or own photography for the photos of the variants the coverage cases use, those variants carry them, the data notice names the host that serves them, and the look cards show them on the deployed site.
+
+## T-12: Design My Look
+
+An experimental second mode for the hackathon demo, behind `FULLAURA_DESIGN_MODE`: a concept look from the person's wishes, the person in it as a try-on, and for each item the closest catalog product as code judges it, or an honest "no close match" ([SPEC.md](SPEC.md#design-my-look), [D-59](DECISIONS.md#d-59-design-my-look-is-an-experimental-mode-behind-a-flag)). The catalog-first flow stays the default and the fallback. Deploying the mode or offering it to beta participants needs a separate decision.
+
+Done when: with the flag off, every check in the [README](../README.md#check-a-change) passes and the product behaves as before; with the flag on, a request gives a checked concept, its try-on, and for every item a close match, an alternative with its differences, or no close match, covered by tests and by the browser flow on a desktop and a phone viewport; and an independent review finds no open critical or important issue. A recorded request whose every item has a close match and whose matched look passes every hard constraint is a wanted result for the demo, not a condition.
 
 ## T-06: Evaluation and submission
 

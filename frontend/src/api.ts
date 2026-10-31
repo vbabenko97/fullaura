@@ -2,6 +2,11 @@ import { CATEGORIES, GARMENT_TYPES, PRODUCT_LINES, SIZE_SYSTEMS, SLOTS } from ".
 import type {
   Catalog,
   Category,
+  Concept,
+  ConceptItem,
+  ConceptMatch,
+  ConceptOutcome,
+  ConceptResponse,
   ItemRef,
   NormalizedSize,
   Offer,
@@ -10,6 +15,7 @@ import type {
   PlanOutcome,
   PlanResponse,
   Session,
+  Shoppable,
   Slot,
   Source,
   Variant,
@@ -73,7 +79,7 @@ export function readCategory(value: unknown): Category {
 
 function readChoice<T extends string>(value: unknown, choices: readonly T[], field: string): T {
   const choice = choices.find((candidate) => candidate === value);
-  if (choice === undefined) throw new Error(`Invalid ${field} in catalog response`);
+  if (choice === undefined) throw new Error(`Invalid ${field} in API response`);
   return choice;
 }
 
@@ -285,8 +291,95 @@ function readCount(value: unknown, field: string): number {
 }
 
 function readFlag(value: unknown, field: string): boolean {
-  if (typeof value !== "boolean") throw new Error(`Invalid ${field} in session response`);
+  if (typeof value !== "boolean") throw new Error(`Invalid ${field} in API response`);
   return value;
+}
+
+function readStrings(value: unknown, field: string): string[] {
+  return readArray(value, field).map((entry) => readString(entry, field));
+}
+
+function parseConceptMatch(value: unknown): ConceptMatch {
+  if (!isRecord(value)) throw new Error("Invalid concept match in API response");
+  const status = readChoice(value.status, ["close", "alternative", "none"] as const, "match status");
+  const variantId = readNullableString(value.variant_id, "matched variant ID");
+  const offerId = readNullableString(value.offer_id, "matched offer ID");
+  const base = {
+    differences: readStrings(value.differences, "match differences"),
+  };
+  if (status === "none") return { ...base, status, variant_id: null, offer_id: null };
+  if (variantId === null || offerId === null) throw new Error("A concept match needs its product");
+  // An alternative must never read as the same item, so it always says how it differs.
+  if (status === "alternative" && base.differences.length === 0) {
+    throw new Error("An alternative match needs its differences");
+  }
+  return { ...base, status, variant_id: variantId, offer_id: offerId };
+}
+
+function parseConceptItem(value: unknown): ConceptItem {
+  if (!isRecord(value)) throw new Error("Invalid concept item in API response");
+  return {
+    slot: readChoice(value.slot, SLOTS, "concept slot"),
+    kind: readString(value.kind, "concept kind"),
+    color: readString(value.color, "concept color"),
+    color_family: readString(value.color_family, "concept color family"),
+    material: readString(value.material, "concept material"),
+    fit: readString(value.fit, "concept fit"),
+    details: readString(value.details, "concept details"),
+    match: parseConceptMatch(value.match),
+  };
+}
+
+function parseConcept(value: unknown): Concept {
+  if (!isRecord(value)) throw new Error("Invalid concept in API response");
+  const items = readArray(value.items, "concept items").map(parseConceptItem);
+  if (items.length === 0 || new Set(items.map((item) => item.slot)).size !== items.length) {
+    throw new Error("The design API returned a concept without distinct items");
+  }
+  return {
+    id: readString(value.id, "concept ID"),
+    name: readString(value.name, "concept name"),
+    why: readString(value.why, "concept reason"),
+    items,
+  };
+}
+
+function parseShoppable(value: unknown): Shoppable {
+  if (!isRecord(value)) throw new Error("Invalid shoppable summary in API response");
+  return {
+    complete: readFlag(value.complete, "shoppable flag"),
+    passes_hard_checks: readFlag(value.passes_hard_checks, "hard check flag"),
+    matched_total_cents: readNullableNumber(value.matched_total_cents, "matched total"),
+    violations: readStrings(value.violations, "shoppable violations"),
+  };
+}
+
+const CONCEPT_OUTCOMES: readonly ConceptOutcome[] = [
+  "success",
+  "generation_failed",
+  "provider_timeout",
+  "provider_error",
+];
+
+export function parseConceptResponse(value: unknown): ConceptResponse {
+  if (!isRecord(value)) throw new Error("Invalid design response");
+  const outcome = CONCEPT_OUTCOMES.find((candidate) => candidate === value.outcome);
+  if (outcome === undefined) throw new Error("Unknown design outcome");
+  const concept = value.concept === null ? null : parseConcept(value.concept);
+  const token = readNullableString(value.concept_token, "concept token");
+  const shoppable = value.shoppable === null ? null : parseShoppable(value.shoppable);
+  if (outcome === "success" && (concept === null || token === null || shoppable === null)) {
+    throw new Error("A successful design response needs a concept, its token and its summary");
+  }
+  return {
+    outcome,
+    error: readNullableString(value.error, "design error"),
+    catalog_id: readString(value.catalog_id, "catalog ID"),
+    concept_token: token,
+    concept,
+    matching_failed: readFlag(value.matching_failed, "matching flag"),
+    shoppable,
+  };
 }
 
 export function parseSession(value: unknown): Session {
@@ -308,6 +401,8 @@ export function parseSession(value: unknown): Session {
     records_purge_at: readNullableString(value.records_purge_at, "record deletion time"),
     feedback_ids: readArray(value.feedback_ids, "feedback IDs").map((id) => readString(id, "feedback ID")),
     has_plan: readFlag(value.has_plan, "plan flag"),
+    // minimal: a server from before Design my look sends no flag, which means the mode is off
+    design_open: value.design_open === undefined ? false : readFlag(value.design_open, "design flag"),
   };
 }
 
@@ -323,6 +418,7 @@ const REASON_MESSAGES: Record<string, string> = {
     "Spending cannot be recorded right now, so model requests are paused. Your plan stays available.",
   pilot_ended: "The beta has ended. Your saved plans and shopping list stay available.",
   plan_expired: "This plan is no longer current on the server.",
+  concept_expired: "This concept was replaced. Try on the current one.",
   not_configured: "This feature is not configured on the server.",
   closed: "The beta is closed.",
   timeout: "The request took too long. Try again.",

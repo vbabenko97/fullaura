@@ -22,6 +22,11 @@ import httpx2
 
 API_URL = "https://api.meta.ai/v1"
 IMAGE_MODEL = "muse-image-1.0"  # in the account's model list on 2026-10-26
+# The image generator's planner may otherwise search the web for visual references or facts and
+# run code (ImageToolEnablement, https://dev.meta.ai/docs/api-reference/images/schemas, checked
+# 2026-10-31). A try-on must draw only from the sent photos and text, never from images the
+# model fetches, such as a shop's product photos.
+NO_TOOLS = {"enable_image_search": False, "enable_web_search": False, "enable_shell": False}
 # Rate limits, timeouts and server errors are worth another attempt; other errors are not.
 RETRY_STATUS = frozenset({408, 429, 500, 502, 503, 504})
 JPEG_SEGMENT_MARKERS = frozenset({*range(0xC0, 0xC8), *range(0xC9, 0xD0), 0xCC, *range(0xDB, 0xE0)})
@@ -346,6 +351,7 @@ class MuseImageClient:
                 "model": self.model,
                 "n": 1,
                 "response_format": "b64_json",
+                "tool_enablement": NO_TOOLS,
                 **fields,
             }
             if size:
@@ -426,7 +432,13 @@ class MuseImageClient:
         request: Request | None = None
         payload: dict[str, Any] | None = None
         try:
-            body = {"model": self.model, "n": 1, "response_format": "b64_json", **fields}
+            body = {
+                "model": self.model,
+                "n": 1,
+                "response_format": "b64_json",
+                "tool_enablement": NO_TOOLS,
+                **fields,
+            }
             if size:
                 body["size"] = size
             request = Request(

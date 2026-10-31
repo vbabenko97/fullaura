@@ -3,6 +3,7 @@ import {
   errorMessage,
   newOperationId,
   parseCatalog,
+  parseConceptResponse,
   parsePlanResponse,
   parseSession,
   postJson,
@@ -10,6 +11,7 @@ import {
   reasonOf,
 } from "./api";
 import { AccessGate } from "./AccessGate";
+import { ConceptCard } from "./ConceptCard";
 import { FeedbackForm } from "./FeedbackForm";
 import { budgetKept, formatCheckedDate, formatMoney } from "./format";
 import { LookCard } from "./LookCard";
@@ -34,6 +36,9 @@ import { EMPTY_FIT_DRAFT, OCCASIONS, SEASONS } from "./types";
 import type {
   Brief,
   Catalog,
+  Concept,
+  ConceptRequest,
+  ConceptResponse,
   ItemRef,
   LockedPlacement,
   OwnedNotice,
@@ -43,6 +48,7 @@ import type {
   ReplacementTarget,
   SavedPlan,
   Session,
+  Shoppable,
   Slot,
   StateInput,
 } from "./types";
@@ -59,6 +65,14 @@ interface CurrentPlan {
   state: StateInput;
   notices: OwnedNotice[];
   preferenceKey: string;
+}
+
+/** The Design my look concept the server last made for this page; its token names it for a try-on. */
+interface CurrentConcept {
+  concept: Concept;
+  token: string;
+  shoppable: Shoppable;
+  matchingFailed: boolean;
 }
 
 const INITIAL_PREFERENCES: Preferences = {
@@ -127,6 +141,10 @@ export function App() {
   const [saved, setSaved] = useState<SavedPlan[]>(() => loadSavedPlans());
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [tryOnLook, setTryOnLook] = useState("look_1");
+  const [mode, setMode] = useState<"plan" | "design">("plan");
+  const [concept, setConcept] = useState<CurrentConcept | null>(null);
+  const [designState, setDesignState] = useState<RequestState>("idle");
+  const [designMessage, setDesignMessage] = useState<string | null>(null);
 
   async function refreshSession(): Promise<Session | null> {
     try {
@@ -323,7 +341,8 @@ export function App() {
     });
   }
 
-  function buildRequest(replacement: ReplacementTarget | null): { request: PlanRequest; key: string } | string {
+  /** The brief and the checked fields both modes send, or what to fix first. */
+  function checkedPreferences(): ConceptRequest | string {
     const colors = preferences.colors.map((color) => color.trim()).filter(Boolean);
     if (colors.length > 5 || colors.some((color) => color.length > 30)) {
       return "Enter up to five colors, with no more than 30 characters each.";
@@ -332,22 +351,32 @@ export function App() {
     if (!Number.isSafeInteger(amountCents) || amountCents <= 0) return "Enter a budget greater than zero.";
     const parsedFit = parseFit(preferences.fit);
     if (!parsedFit.ok) return parsedFit.error;
+    return {
+      brief: {
+        style_goal: preferences.styleGoal.trim(),
+        preferred_colors: colors,
+        occasion: OCCASIONS.find((occasion) => occasion === preferences.occasion) ?? null,
+        season: SEASONS.find((season) => season === preferences.season) ?? null,
+      },
+      state: {
+        budget: { amount_cents: amountCents, mode: preferences.budgetMode },
+        material_exclusions: preferences.exclusions,
+        footwear: preferences.footwear,
+        ...(parsedFit.fit ? { fit: parsedFit.fit } : {}),
+      },
+    };
+  }
+
+  function buildRequest(replacement: ReplacementTarget | null): { request: PlanRequest; key: string } | string {
+    const checked = checkedPreferences();
+    if (typeof checked === "string") return checked;
     const state: StateInput = {
-      budget: { amount_cents: amountCents, mode: preferences.budgetMode },
-      material_exclusions: preferences.exclusions,
-      footwear: preferences.footwear,
+      ...checked.state,
       owned_items: preferences.ownedItems,
       locks: replacement && current ? locksForReplacement(current.plan, replacement, locks) : current ? locks : [],
-      ...(parsedFit.fit ? { fit: parsedFit.fit } : {}),
-    };
-    const brief: Brief = {
-      style_goal: preferences.styleGoal.trim(),
-      preferred_colors: colors,
-      occasion: OCCASIONS.find((occasion) => occasion === preferences.occasion) ?? null,
-      season: SEASONS.find((season) => season === preferences.season) ?? null,
     };
     return {
-      request: { brief, state, replacement, plan_token: current?.token ?? null },
+      request: { brief: checked.brief, state, replacement, plan_token: current?.token ?? null },
       key: preferenceKey(preferences),
     };
   }
@@ -420,6 +449,44 @@ export function App() {
     }
   }
 
+  async function requestConcept() {
+    if (!catalog || requestState === "loading" || designState === "loading" || !session?.design_open) return;
+    const request = checkedPreferences();
+    if (typeof request === "string") {
+      setDesignState("error");
+      setDesignMessage(request);
+      return;
+    }
+    setDesignState("loading");
+    setDesignMessage("Designing one look, then looking for the closest products in the catalog.");
+    try {
+      const result = parseConceptResponse(
+        await postJson("/api/concepts", request, { "X-Operation-Id": newOperationId() }),
+      );
+      if (result.outcome === "success" && result.concept && result.concept_token && result.shoppable) {
+        setConcept({
+          concept: result.concept,
+          token: result.concept_token,
+          shoppable: result.shoppable,
+          matchingFailed: result.matching_failed,
+        });
+        revealResults("concept-title");
+        setDesignState("success");
+        setDesignMessage("Your concept is ready.");
+      } else {
+        setDesignState("error");
+        setDesignMessage(conceptFailureMessage(result));
+      }
+    } catch (error) {
+      setDesignState("error");
+      setDesignMessage(errorMessage(error));
+    } finally {
+      // As for plans: the disabled button drops focus, so bring it to the concept.
+      if (document.activeElement === document.body) document.getElementById("concept-title")?.focus();
+      void refreshSession();
+    }
+  }
+
   function saveCurrent() {
     if (!current || !catalog) return;
     const entry = savedFrom(current, catalog);
@@ -459,10 +526,14 @@ export function App() {
   }
 
   const loading = requestState === "loading";
+  const designLoading = designState === "loading";
+  const design = mode === "design";
   const currentKey = preferenceKey(preferences);
   const planCurrent = Boolean(current && current.preferenceKey === currentKey);
   const ready = session !== null && session.beta && session.invited && session.age_confirmed;
-  const canSubmit = ready && catalogState === "ready" && !loading && session.planning_open;
+  // One model request at a time per invite, so neither mode submits while the other runs.
+  const canSubmit = ready && catalogState === "ready" && !loading && !designLoading && session.planning_open;
+  const canDesign = canSubmit && session.design_open;
   const lines = current && catalog ? shoppingList(current.plan, catalog, current.state.owned_items) : [];
   const remainingPlans = session ? Math.max(0, session.plan_requests_limit - session.plan_requests_used) : 0;
   const closedText = !session
@@ -476,6 +547,8 @@ export function App() {
           : !session.planning_open
             ? "Planning is paused because the beta's shared budget is used up, or the model is not configured."
             : null;
+  const designClosedText =
+    closedText ?? (session && !session.design_open ? "Design my look is not available right now." : null);
 
   return (
     <main className="app-shell">
@@ -514,11 +587,23 @@ export function App() {
         <div className="workspace">
           <div className="workspace-heading no-print">
             <div>
-              <h1>Three looks. Rules checked.</h1>
-              <p className="page-description">
-                Real products that ship to Austria, checked against your budget, sizes, shoes and materials. Keep what
-                you like, replace the rest, then try a look on.
-              </p>
+              {design ? (
+                <>
+                  <h1>Your look first. Then real products.</h1>
+                  <p className="page-description">
+                    An experimental mode: a look designed from your wishes, tried on you, and for each item the closest
+                    real product that ships to Austria, marked as a close match, an alternative or no match.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h1>Three looks. Rules checked.</h1>
+                  <p className="page-description">
+                    Real products that ship to Austria, checked against your budget, sizes, shoes and materials. Keep
+                    what you like, replace the rest, then try a look on.
+                  </p>
+                </>
+              )}
             </div>
             <p className="catalog-status" aria-live="polite">
               {catalogState === "loading" && "Loading catalog"}
@@ -533,127 +618,221 @@ export function App() {
                 <h2 id="preferences-title">Your preferences</h2>
                 <p>You set your sizes and limits; FullAura never reads them from photos.</p>
               </div>
+              {/* Stays while a concept is shown, so a closed design budget does not strand the page. */}
+              {(session.design_open || design) && (
+                <fieldset className="budget-mode mode-switch">
+                  <legend>Mode</legend>
+                  <label className="radio-choice">
+                    <input checked={!design} name="mode" onChange={() => setMode("plan")} type="radio" />
+                    <span>Three looks from real products</span>
+                  </label>
+                  <label className="radio-choice">
+                    <input checked={design} name="mode" onChange={() => setMode("design")} type="radio" />
+                    <span>Design my look (experimental)</span>
+                  </label>
+                </fieldset>
+              )}
               <PreferencesForm
-                canSubmit={canSubmit}
-                closedText={closedText}
-                hasPlan={current !== null}
-                loading={loading}
+                canSubmit={design ? canDesign : canSubmit}
+                closedText={design ? designClosedText : closedText}
+                design={design}
+                hasPlan={design ? concept !== null : current !== null}
+                loading={design ? designLoading : loading}
                 onRemoveOwnedItem={removeOwnedItem}
-                onSubmit={() => void requestPlan()}
+                onSubmit={() => void (design ? requestConcept() : requestPlan())}
                 preferences={preferences}
                 quotaText={`Uses one of ${remainingPlans} planning requests left for this invite.`}
                 setPreferences={setPreferences}
               />
             </section>
 
-            <section className="results-panel" aria-labelledby="results-title">
-              <div className="results-heading">
-                <div>
-                  <h2 id="results-title" tabIndex={-1}>Three looks</h2>
-                  <p className="no-print">
-                    Keep items to hold them in place through an update, or replace one item; every other position
-                    stays and all three looks are checked again.
-                  </p>
-                </div>
-                {current && (
-                  <p className="plan-total">
-                    Items total, each once
-                    <strong>{formatMoney(shoppingTotal(lines))}</strong>
-                    <span className="plan-budget">
-                      {budgetKept(current.state.budget.amount_cents, current.state.budget.mode)}
-                    </span>
-                  </p>
-                )}
-              </div>
-
-              {requestMessage && (current || requestState !== "error") && (
-                <p
-                  className={`request-message no-print${requestState === "error" ? " is-error" : ""}`}
-                  role={requestState === "error" ? "alert" : "status"}
-                >
-                  {requestMessage}
-                  {requestState === "success" && current && !planCurrent && " Preferences changed since; update to apply them."}
-                  {requestState === "error" && current && " The looks below are from the last successful request."}
-                </p>
-              )}
-
-              {catalogState === "loading" || (loading && !current) ? (
-                <div className="loading-state" role="status">
-                  <span className="visually-hidden">{loading ? "Planning three looks" : "Loading the catalog"}</span>
-                  {["first", "second", "third"].map((look) => (
-                    <div aria-hidden="true" className="look-skeleton" key={look}>
-                      <span className="skeleton-title" />
-                      <span className="skeleton-row" />
-                      <span className="skeleton-row" />
-                    </div>
-                  ))}
-                </div>
-              ) : catalogState === "error" ? (
-                <div className="empty-state is-error" role="alert">
-                  <h3>The catalog could not be loaded</h3>
-                  <p>Your invite is open. Try again in a moment; your saved plans below are still available.</p>
-                  <button className="secondary-button" onClick={() => void openWorkspace()} type="button">
-                    Load the catalog again
-                  </button>
-                </div>
-              ) : current && catalog ? (
+            <section className="results-panel" aria-labelledby={design ? "concept-title" : "results-title"}>
+              {design ? (
                 <>
-                  <div className="look-grid">
-                    {current.plan.looks.map((look) => (
-                      <LookCard
-                        catalog={catalog}
-                        fit={current.state.fit}
-                        footwear={current.state.footwear}
-                        key={look.id}
-                        lockDisabled={loading}
-                        locks={locks}
-                        look={look}
-                        onReplaceItem={(lookId, slot, item) => void requestPlan({ look_id: lookId, slot, item })}
-                        onToggleLock={toggleLock}
-                        onTryOn={(lookId) => {
-                          setTryOnLook(lookId);
-                          document.getElementById("tryon-title")?.scrollIntoView?.({ block: "start" });
-                        }}
-                        ownedItems={current.state.owned_items}
-                        ownedNotices={current.notices}
-                        plan={current.plan}
-                        replaceDisabled={!planCurrent || !canSubmit}
-                      />
-                    ))}
+                  <div className="results-heading">
+                    <div>
+                      <h2 id="concept-title" tabIndex={-1}>Your concept</h2>
+                      <p className="no-print">
+                        One look the stylist model describes from your preferences, and for each item the closest
+                        real product in the catalog.
+                      </p>
+                    </div>
                   </div>
-                  <TryOnPanel
-                    lookId={current.plan.looks.some((look) => look.id === tryOnLook) ? tryOnLook : current.plan.looks[0].id}
-                    lookIds={current.plan.looks.map((look) => look.id)}
-                    onConsent={setPhotoConsent}
-                    onFinished={() => void refreshSession()}
-                    onRestore={restoreCurrent}
-                    onSelectLook={setTryOnLook}
-                    planToken={current.token}
-                    session={session}
-                  />
-                  <ShoppingList lines={lines} />
+
+                  {designMessage && (concept || designState !== "error") && (
+                    <p
+                      className={`request-message no-print${designState === "error" ? " is-error" : ""}`}
+                      role={designState === "error" ? "alert" : "status"}
+                    >
+                      {designMessage}
+                      {designState === "error" && concept && " The concept below is from the last successful request."}
+                    </p>
+                  )}
+
+                  {catalogState === "loading" || (designLoading && !concept) ? (
+                    <div className="loading-state is-single" role="status">
+                      <span className="visually-hidden">{designLoading ? "Designing a look" : "Loading the catalog"}</span>
+                      <div aria-hidden="true" className="look-skeleton">
+                        <span className="skeleton-title" />
+                        <span className="skeleton-row" />
+                        <span className="skeleton-row" />
+                      </div>
+                    </div>
+                  ) : catalogState === "error" ? (
+                    <div className="empty-state is-error" role="alert">
+                      <h3>The catalog could not be loaded</h3>
+                      <p>Your invite is open. Try again in a moment.</p>
+                      <button className="secondary-button" onClick={() => void openWorkspace()} type="button">
+                        Load the catalog again
+                      </button>
+                    </div>
+                  ) : concept && catalog ? (
+                    <>
+                      <ConceptCard
+                        catalog={catalog}
+                        concept={concept.concept}
+                        matchingFailed={concept.matchingFailed}
+                        shoppable={concept.shoppable}
+                      />
+                      <TryOnPanel
+                        key="concept-try-on"
+                        onConsent={setPhotoConsent}
+                        onFinished={() => void refreshSession()}
+                        session={session}
+                        target={{ kind: "concept", token: concept.token }}
+                      />
+                    </>
+                  ) : designState === "error" && designMessage ? (
+                    <div className="empty-state is-error" role="alert">
+                      <h3>No concept yet</h3>
+                      <p>{designMessage}</p>
+                    </div>
+                  ) : (
+                    <div className="empty-state">
+                      <h3>Your concept will appear here</h3>
+                      <p>Describe what the look is for and set a budget, then design a look.</p>
+                    </div>
+                  )}
                 </>
-              ) : requestState === "error" && requestMessage ? (
-                <div className="empty-state is-error" role="alert">
-                  <h3>No plan yet</h3>
-                  <p>{requestMessage}</p>
-                </div>
               ) : (
-                <div className="empty-state">
-                  <h3>Your plan will appear here</h3>
-                  <p>Describe what the looks are for, set a budget and your sizes, then generate three looks.</p>
-                </div>
+                <>
+                  <div className="results-heading">
+                    <div>
+                      <h2 id="results-title" tabIndex={-1}>Three looks</h2>
+                      <p className="no-print">
+                        Keep items to hold them in place through an update, or replace one item; every other position
+                        stays and all three looks are checked again.
+                      </p>
+                    </div>
+                    {current && (
+                      <p className="plan-total">
+                        Items total, each once
+                        <strong>{formatMoney(shoppingTotal(lines))}</strong>
+                        <span className="plan-budget">
+                          {budgetKept(current.state.budget.amount_cents, current.state.budget.mode)}
+                        </span>
+                      </p>
+                    )}
+                  </div>
+
+                  {requestMessage && (current || requestState !== "error") && (
+                    <p
+                      className={`request-message no-print${requestState === "error" ? " is-error" : ""}`}
+                      role={requestState === "error" ? "alert" : "status"}
+                    >
+                      {requestMessage}
+                      {requestState === "success" && current && !planCurrent && " Preferences changed since; update to apply them."}
+                      {requestState === "error" && current && " The looks below are from the last successful request."}
+                    </p>
+                  )}
+
+                  {catalogState === "loading" || (loading && !current) ? (
+                    <div className="loading-state" role="status">
+                      <span className="visually-hidden">{loading ? "Planning three looks" : "Loading the catalog"}</span>
+                      {["first", "second", "third"].map((look) => (
+                        <div aria-hidden="true" className="look-skeleton" key={look}>
+                          <span className="skeleton-title" />
+                          <span className="skeleton-row" />
+                          <span className="skeleton-row" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : catalogState === "error" ? (
+                    <div className="empty-state is-error" role="alert">
+                      <h3>The catalog could not be loaded</h3>
+                      <p>Your invite is open. Try again in a moment; your saved plans below are still available.</p>
+                      <button className="secondary-button" onClick={() => void openWorkspace()} type="button">
+                        Load the catalog again
+                      </button>
+                    </div>
+                  ) : current && catalog ? (
+                    <>
+                      <div className="look-grid">
+                        {current.plan.looks.map((look) => (
+                          <LookCard
+                            catalog={catalog}
+                            fit={current.state.fit}
+                            footwear={current.state.footwear}
+                            key={look.id}
+                            lockDisabled={loading}
+                            locks={locks}
+                            look={look}
+                            onReplaceItem={(lookId, slot, item) => void requestPlan({ look_id: lookId, slot, item })}
+                            onToggleLock={toggleLock}
+                            onTryOn={(lookId) => {
+                              setTryOnLook(lookId);
+                              document.getElementById("tryon-title")?.scrollIntoView?.({ block: "start" });
+                            }}
+                            ownedItems={current.state.owned_items}
+                            ownedNotices={current.notices}
+                            plan={current.plan}
+                            replaceDisabled={!planCurrent || !canSubmit}
+                          />
+                        ))}
+                      </div>
+                      <TryOnPanel
+                        key="plan-try-on"
+                        onConsent={setPhotoConsent}
+                        onFinished={() => void refreshSession()}
+                        session={session}
+                        target={{
+                          kind: "plan",
+                          token: current.token,
+                          lookId: current.plan.looks.some((look) => look.id === tryOnLook)
+                            ? tryOnLook
+                            : current.plan.looks[0].id,
+                          lookIds: current.plan.looks.map((look) => look.id),
+                          onRestore: restoreCurrent,
+                          onSelectLook: setTryOnLook,
+                        }}
+                      />
+                      <ShoppingList lines={lines} />
+                    </>
+                  ) : requestState === "error" && requestMessage ? (
+                    <div className="empty-state is-error" role="alert">
+                      <h3>No plan yet</h3>
+                      <p>{requestMessage}</p>
+                    </div>
+                  ) : (
+                    <div className="empty-state">
+                      <h3>Your plan will appear here</h3>
+                      <p>Describe what the looks are for, set a budget and your sizes, then generate three looks.</p>
+                    </div>
+                  )}
+                </>
               )}
 
-              <SavedPlans
-                busy={loading}
-                canSave={current !== null}
-                message={savedMessage}
-                onDelete={deleteSaved}
-                onRestore={(entry) => void restoreSaved(entry)}
-                onSave={saveCurrent}
-                saved={saved}
-              />
+              {!design && (
+                <SavedPlans
+                  busy={loading}
+                  canSave={current !== null}
+                  message={savedMessage}
+                  onDelete={deleteSaved}
+                  onRestore={(entry) => void restoreSaved(entry)}
+                  onSave={saveCurrent}
+                  saved={saved}
+                />
+              )}
               <FeedbackForm
                 feedbackIds={session.feedback_ids}
                 onChanged={() => void refreshSession()}
@@ -663,7 +842,7 @@ export function App() {
           </div>
         </div>
       )}
-      <PrivacyNotice recordsPurgeAt={session?.records_purge_at ?? null} />
+      <PrivacyNotice designOpen={session?.design_open ?? false} recordsPurgeAt={session?.records_purge_at ?? null} />
     </main>
   );
 }
@@ -707,9 +886,19 @@ function failureMessage(result: PlanResponse, replacement: boolean, hadLocks: bo
   return diagnostic ? `${summary} ${diagnostic}` : summary;
 }
 
-/** On a narrow screen the looks sit below the form; bring them into view once they change. */
-function revealResults() {
-  const heading = document.getElementById("results-title");
+function conceptFailureMessage(result: ConceptResponse): string {
+  if (result.outcome === "provider_timeout") {
+    return "The design request timed out. Try again with the same or fewer constraints.";
+  }
+  if (result.outcome === "provider_error") return "The planning provider could not complete this design request.";
+  const summary = "No concept passed the checks. Adjust your preferences and try again.";
+  const diagnostic = result.error?.slice(0, 300) ?? "";
+  return diagnostic ? `${summary} ${diagnostic}` : summary;
+}
+
+/** On a narrow screen the results sit below the form; bring them into view once they change. */
+function revealResults(headingId = "results-title") {
+  const heading = document.getElementById(headingId);
   if (!heading) return;
   const top = heading.getBoundingClientRect().top;
   if (top < 0 || top > window.innerHeight) heading.scrollIntoView?.({ block: "start" });
