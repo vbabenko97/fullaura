@@ -62,7 +62,7 @@ npm --prefix frontend run e2e
 
 CI runs these checks, builds the container, and checks its HTTP endpoints. It does not deploy or call a model provider.
 
-Frontend unit tests drive the interface against a scripted API with the checked-in catalog. `npm run e2e` serves the built app with `scripts/e2e_server.py`, whose planner and image model are deterministic stand-ins, and drives the whole beta flow on a desktop and a phone viewport: invite, plan, try-on, keep, lower budget, update, replace, save, restore, copy, print and feedback. A second test uses the budget and feedback controls with the keyboard alone and gives the catalog invented product photos from `synthetic.example`, some of which fail to load. It writes screenshots to the ignored `runs/e2e/screens/`. Nothing it shows is model output.
+Frontend unit tests drive the interface against a scripted API with the checked-in catalog. `npm run e2e` serves the built app with `scripts/e2e_server.py`, whose planner and image model are deterministic stand-ins, and drives the whole beta flow on a desktop and a phone viewport: invite, plan, try-on, keep, lower budget, update, replace, save, restore, copy, print and feedback. A second test uses the budget and feedback controls with the keyboard alone and gives the catalog invented product photos from `synthetic.example`, some of which fail to load. A third test runs Design My Look. The first two tests also run on both viewports against a second server with Design My Look off, the page the closed beta serves, and check that the mode switch is absent there. It writes screenshots to the ignored `runs/e2e/screens/`. Nothing it shows is model output.
 
 ## Run the production container
 
