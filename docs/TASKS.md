@@ -11,7 +11,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-05](#t-05-azure-demo) Azure demo | done | 2026-10-29 |
 | [T-08](#t-08-looks-for-a-stated-wearer) Looks for a stated wearer | next | |
 | [T-09](#t-09-closed-beta) Closed beta | done | 2026-10-30 |
-| [T-10](#t-10-beta-measurement-and-participant-fixes) Beta measurement and participant fixes | next | |
+| [T-10](#t-10-beta-measurement-and-participant-fixes) Beta measurement and participant fixes | done | 2026-10-31 |
 | [T-11](#t-11-product-photos) Product photos | planned | |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
@@ -80,7 +80,7 @@ Done when: the checks in the [README](../README.md#check-a-change) pass, includi
 
 Make the closed beta answer what to build next, and remove what participants would trip over. The pilot report counts invites, call outcomes, feedback and spending, each with its denominator, and call records keep the outcome apart from the cost ([D-52](DECISIONS.md#d-52-a-call-record-keeps-its-outcome-apart-from-its-cost-and-the-pilot-report-counts-invites)). Feedback asks what a try-on got wrong ([D-53](DECISIONS.md#d-53-feedback-asks-what-a-try-on-got-wrong-from-a-fixed-list)). The interface says what the budget limits next to the request button ([D-54](DECISIONS.md#d-54-the-interface-says-what-the-budget-limits-next-to-the-request-button)), and the data notice describes what Baseten receives and keeps, and that an owned item's description can be part of a try-on's text. A second closed shoe in EU 40 removes the catalog's single point of failure ([D-55](DECISIONS.md#d-55-a-second-closed-shoe-in-eu-40-keeps-womens-l-from-depending-on-one-pair)), and evaluation runs record their provenance ([D-57](DECISIONS.md#d-57-evaluation-run-records-carry-their-provenance-including-failed-runs)). Keyboard focus no longer falls back to the top of the page after a plan request or a feedback answer. The rules for deciding on the pilot's results are proposed, not agreed ([D-58](DECISIONS.md#d-58-proposed-rules-for-deciding-on-the-pilots-results)).
 
-The deployed beta runs the earlier revision until this work is deployed.
+The work was deployed on 2026-10-31 as `7e1d48d` and checked on the deployed site ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)).
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, including the browser flows on a desktop and a phone viewport; the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes and the deployed site passes the HTTP smoke check, before the final pilot report is read.
 
