@@ -1,4 +1,4 @@
-import type { BudgetMode, Category, Slot } from "./types";
+import type { BudgetMode, Category, Product, Slot, Variant } from "./types";
 
 export function formatMoney(cents: number | null): string {
   if (cents === null) return "Price not reported";
@@ -14,6 +14,13 @@ export function budgetMeaning(amountCents: number | null, mode: BudgetMode): str
   }
   if (amount === null) return "The budget is a limit for each look on its own, so the three looks together can cost more.";
   return `${formatMoney(amount)} is the limit for each look on its own, so the three looks together can cost up to ${formatMoney(amount * 3)}. The shopping list counts an item used in more than one look once.`;
+}
+
+/** What the budget limits in Design my look, which designs one look; the mode does not matter. */
+export function conceptBudgetMeaning(amountCents: number | null, _mode?: BudgetMode): string {
+  const amount = amountCents !== null && Number.isSafeInteger(amountCents) && amountCents > 0 ? amountCents : null;
+  const limit = amount === null ? "The budget" : formatMoney(amount);
+  return `${limit} is the limit for the one look, checked against the real products found for it.`;
 }
 
 /** The budget a checked plan kept, for its results heading. */
@@ -39,6 +46,25 @@ export function recordsDeletedText(value: string | null): string {
     timeZone: "Europe/Vienna",
   }).format(date);
   return `on ${when} Vienna time`;
+}
+
+/** A catalog variant's brand, color and size, as a product line shows them. */
+export function variantFacts(product: Product, variant: Variant): string {
+  return [product.brand, variant.color, variant.size === null ? null : `Size ${variant.size}`]
+    .filter((value): value is string => value !== null)
+    .join(", ");
+}
+
+/** What the catalog record says about a variant's materials. */
+export function compositionText(variant: Variant): string {
+  const materials = [...new Set(variant.composition.components.map((component) => component.material))];
+  return variant.composition.status === "complete"
+    ? `Materials: ${materials.join(", ")}`
+    : variant.composition.status === "partial"
+      ? "Composition is incomplete"
+      : variant.composition.status === "conflicting"
+        ? "Sources disagree on composition"
+        : "Composition not reported";
 }
 
 export function labelCategory(category: Category): string {

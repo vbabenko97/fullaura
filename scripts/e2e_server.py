@@ -21,6 +21,7 @@ from typing import Any
 
 import uvicorn
 
+from backend.app.concepts import CONCEPT_PROMPT, MATCHING_PROMPT
 from backend.app.config import Settings
 from backend.app.main import create_app
 from backend.app.meta_images import ImageResult, InputImage
@@ -89,13 +90,50 @@ def _choose(request: dict[str, Any]) -> dict[str, Any]:
     return {"looks": looks}
 
 
+# A fixed Design My Look concept: its shoes and accessory have no close product in the catalog,
+# so the browser run sees a close match, an alternative and no match.
+_CONCEPT = {
+    "name": "Scripted black and white",
+    "why": "A fixed concept for the browser run, not model output.",
+    "items": [
+        {"slot": "top", "kind": "t-shirt", "color": "black", "color_family": "black"},
+        {"slot": "bottom", "kind": "trousers", "color": "black", "color_family": "black"},
+        {"slot": "footwear", "kind": "loafers", "color": "white", "color_family": "white"},
+        {"slot": "accessory", "kind": "bag", "color": "black", "color_family": "black"},
+    ],
+}
+
+
+def _match(request: dict[str, Any]) -> dict[str, Any]:
+    """The cheapest candidate of each concept item's category with the item's color in its
+    name; none for the accessory."""
+    matches = []
+    for item in request["concept"]:
+        wanted = {"top": ("top", "knitwear"), "bottom": ("bottom",), "footwear": ("footwear",)}
+        options = [
+            c
+            for c in request["candidates"]
+            if c["category"] in wanted.get(item["slot"], ())
+            and item["color"] in (c["color"] or "").lower()
+        ]
+        chosen = min(options, key=lambda c: (c["price_eur"], c["id"]), default=None)
+        matches.append({"item": item["item"], "candidate_id": chosen["id"] if chosen else None})
+    return {"matches": matches}
+
+
 class ScriptedSpark(SparkClient):
     def __init__(self) -> None:
         super().__init__("scripted", model="scripted-e2e-planner")
 
     def complete(self, messages: Sequence[dict[str, str]], **_: Any) -> tuple[str, dict, int]:
-        plan = _choose(json.loads(messages[1]["content"]))
-        return json.dumps(plan), {"prompt_tokens": 1000, "completion_tokens": 300}, 1
+        request = json.loads(messages[1]["content"])
+        if messages[0]["content"] == CONCEPT_PROMPT:
+            reply: dict[str, Any] = _CONCEPT
+        elif messages[0]["content"] == MATCHING_PROMPT:
+            reply = _match(request)
+        else:
+            reply = _choose(request)
+        return json.dumps(reply), {"prompt_tokens": 1000, "completion_tokens": 300}, 1
 
 
 def _png(width: int = 96, height: int = 144) -> bytes:
@@ -133,7 +171,8 @@ def main() -> None:
         invite_hashes=frozenset({invite_hash(E2E_INVITE)}),
         store_url=f"file://{args.store.resolve()}" if args.store else "memory://",
         # Every browser test and viewport shares the one invite; the quota rule still applies.
-        plan_requests_per_invite=16,
+        plan_requests_per_invite=24,
+        design_mode=True,
     )
     app = create_app(settings, spark=ScriptedSpark(), image_editor=ScriptedEditor())
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")

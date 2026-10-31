@@ -16,7 +16,9 @@ import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import Any
 
+from backend.app.concepts import Concept
 from backend.app.planner import Brief
 from backend.app.state import State
 
@@ -63,8 +65,19 @@ class PlanRecord:
     operation_id: str | None  # the planning request that produced it; None for a restore
 
 
-class PlanMemory:
-    """The last checked plan of each browser session, in process memory only."""
+@dataclass(frozen=True, slots=True)
+class ConceptRecord:
+    """A Design My Look concept and the response that showed it, for a try-on and a repeat."""
+
+    token: str
+    concept: Concept
+    payload: dict[str, Any]  # the response body, without the token
+    operation_id: str
+
+
+class _SessionMemory[R: (PlanRecord, ConceptRecord)]:
+    """The last record of each browser session, in process memory only, bounded per invite and
+    in total. A new record gets a new token, and the previous token stops working."""
 
     def __init__(
         self,
@@ -80,26 +93,61 @@ class PlanMemory:
         self._clock = clock
         self._lock = threading.Lock()
         # Keyed by browser session; the invite ID lets one invite's sessions be bounded.
-        self._plans: dict[str, tuple[PlanRecord, float, str]] = {}
+        self._records: dict[str, tuple[R, float, str]] = {}
 
-    def get(self, session: Session) -> PlanRecord | None:
+    def get(self, session: Session) -> R | None:
         now = self._clock()
         with self._lock:
             self._expire(now)
-            entry = self._plans.get(session.key)
+            entry = self._records.get(session.key)
             if entry is None:
                 return None
-            self._plans[session.key] = (entry[0], now + self._ttl_s, entry[2])
+            self._records[session.key] = (entry[0], now + self._ttl_s, entry[2])
             return entry[0]
 
-    def current(self, session: Session, token: str | None) -> PlanRecord | None:
-        """The session's plan when the token names it; None for a stale or foreign token."""
+    def current(self, session: Session, token: str | None) -> R | None:
+        """The session's record when the token names it; None for a stale or foreign token."""
         record = self.get(session)
         if record is None or token is None:
             return None
         if not hmac.compare_digest(record.token.encode(), token.encode()):
             return None
         return record
+
+    def forget(self, session: Session) -> None:
+        with self._lock:
+            self._records.pop(session.key, None)
+
+    def _put(self, session: Session, make: Callable[[R | None], R]) -> R:
+        now = self._clock()
+        with self._lock:
+            self._expire(now)
+            previous = self._records.get(session.key)
+            record = make(previous[0] if previous else None)
+            self._records[session.key] = (record, now + self._ttl_s, session.invite_id)
+            self._bound(session.invite_id)
+            return record
+
+    def _expire(self, now: float) -> None:
+        for key in [key for key, (_, expires, _) in self._records.items() if expires <= now]:
+            del self._records[key]
+
+    def _bound(self, invite_id: str) -> None:
+        """Drop the records idle longest once an invite, or the process, holds too many."""
+        mine = sorted(
+            (expires, key)
+            for key, (_, expires, owner) in self._records.items()
+            if owner == invite_id
+        )
+        for _, key in mine[: max(0, len(mine) - self._per_invite)]:
+            del self._records[key]
+        everyone = sorted((expires, key) for key, (_, expires, _) in self._records.items())
+        for _, key in everyone[: max(0, len(everyone) - self._limit)]:
+            del self._records[key]
+
+
+class PlanMemory(_SessionMemory[PlanRecord]):
+    """The last checked plan of each browser session."""
 
     def store(
         self,
@@ -110,37 +158,27 @@ class PlanMemory:
         operation_id: str | None,
     ) -> PlanRecord:
         """Keep a newly checked plan under a new token; the previous token stops working."""
-        now = self._clock()
-        with self._lock:
-            self._expire(now)
-            previous = self._plans.get(session.key)
-            record = PlanRecord(
+        return self._put(
+            session,
+            lambda previous: PlanRecord(
                 token=secrets.token_urlsafe(32),
-                version=previous[0].version + 1 if previous else 1,
+                version=previous.version + 1 if previous else 1,
                 brief=brief,
                 state=state,
                 catalog_id=catalog_id,
                 operation_id=operation_id,
-            )
-            self._plans[session.key] = (record, now + self._ttl_s, session.invite_id)
-            self._bound(session.invite_id)
-            return record
-
-    def forget(self, session: Session) -> None:
-        with self._lock:
-            self._plans.pop(session.key, None)
-
-    def _expire(self, now: float) -> None:
-        for key in [key for key, (_, expires, _) in self._plans.items() if expires <= now]:
-            del self._plans[key]
-
-    def _bound(self, invite_id: str) -> None:
-        """Drop the plans idle longest once an invite, or the process, holds too many."""
-        mine = sorted(
-            (expires, key) for key, (_, expires, owner) in self._plans.items() if owner == invite_id
+            ),
         )
-        for _, key in mine[: max(0, len(mine) - self._per_invite)]:
-            del self._plans[key]
-        everyone = sorted((expires, key) for key, (_, expires, _) in self._plans.items())
-        for _, key in everyone[: max(0, len(everyone) - self._limit)]:
-            del self._plans[key]
+
+
+class ConceptMemory(_SessionMemory[ConceptRecord]):
+    """The last Design My Look concept of each browser session. A new concept replaces the
+    previous one, so a try-on can name only the concept the page shows."""
+
+    def store(
+        self, session: Session, concept: Concept, payload: dict[str, Any], operation_id: str
+    ) -> ConceptRecord:
+        return self._put(
+            session,
+            lambda _: ConceptRecord(secrets.token_urlsafe(32), concept, payload, operation_id),
+        )

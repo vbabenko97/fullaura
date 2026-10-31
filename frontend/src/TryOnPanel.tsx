@@ -8,19 +8,27 @@ const CLEARED = "Any try-on in progress was stopped, and your photos and result 
 
 interface TryOnResult {
   url: string;
-  lookId: string;
-  planToken: string;
+  token: string;
+  lookId: string | null;
 }
+
+/** What a try-on draws: one look of the current plan, or the current Design my look concept. */
+type TryOnTarget =
+  | {
+      kind: "plan";
+      token: string;
+      lookIds: string[];
+      lookId: string;
+      onSelectLook: (lookId: string) => void;
+      onRestore: () => Promise<string | null>;
+    }
+  | { kind: "concept"; token: string };
 
 interface TryOnPanelProps {
   session: Session;
-  planToken: string;
-  lookIds: string[];
-  lookId: string;
-  onSelectLook: (lookId: string) => void;
+  target: TryOnTarget;
   /** Records the consent on the server; false when that failed. */
   onConsent: (consent: boolean) => Promise<boolean>;
-  onRestore: () => Promise<string | null>;
   onFinished: () => void;
 }
 
@@ -30,16 +38,7 @@ function lookLabel(lookId: string): string {
   return lookId.replaceAll("_", " ");
 }
 
-export function TryOnPanel({
-  session,
-  planToken,
-  lookIds,
-  lookId,
-  onSelectLook,
-  onConsent,
-  onRestore,
-  onFinished,
-}: TryOnPanelProps) {
+export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPanelProps) {
   const [portrait, setPortrait] = useState<Photo>(null);
   const [fullBody, setFullBody] = useState<Photo>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
@@ -60,8 +59,11 @@ export function TryOnPanel({
     };
   }, [result]);
 
-  // A try-on belongs to the plan version and look it was made for; a changed plan hides it.
-  const shown = result && result.planToken === planToken && result.lookId === lookId ? result : null;
+  const lookId = target.kind === "plan" ? target.lookId : null;
+  const label = lookId ? lookLabel(lookId) : "the concept";
+  // A try-on belongs to the plan version and look, or the concept, it was made for; a changed
+  // plan or a new concept hides it.
+  const shown = result && result.token === target.token && result.lookId === lookId ? result : null;
   const remaining = Math.max(0, session.preview_requests_limit - session.preview_requests_used);
 
   async function choosePhoto(setter: (photo: Photo) => void, file: File | undefined) {
@@ -123,10 +125,12 @@ export function TryOnPanel({
     const form = new FormData();
     form.append("portrait", portrait.blob, "portrait.jpg");
     form.append("full_body", fullBody.blob, "full-body.jpg");
+    const subject: Record<string, string> =
+      target.kind === "plan" ? { "X-Plan-Token": token, "X-Look-Id": target.lookId } : { "X-Concept-Token": token };
     const response = await fetch("/api/previews", {
       method: "POST",
       body: form,
-      headers: { "X-Plan-Token": token, "X-Look-Id": lookId, "X-Operation-Id": operationId },
+      headers: { ...subject, "X-Operation-Id": operationId },
       signal,
     });
     if (!response.ok) await readJson(response);
@@ -145,22 +149,25 @@ export function TryOnPanel({
     controller.current = abort;
     setResult(null);
     setState("loading");
-    setMessage(`Drawing ${lookLabel(lookId)} on your photos. This can take up to two minutes.`);
+    setMessage(`Drawing ${label} on your photos. This can take up to two minutes.`);
     const operationId = newOperationId();
     try {
-      let token = planToken;
+      let token = target.token;
       let image: Blob;
       try {
         image = await send(token, operationId, abort.signal);
       } catch (error) {
-        if (!(error instanceof ApiResponseError && error.reason === "plan_expired")) throw error;
-        const restored = await onRestore();
+        // A replaced concept cannot be brought back; only a plan has a restore path.
+        if (target.kind !== "plan" || !(error instanceof ApiResponseError && error.reason === "plan_expired")) {
+          throw error;
+        }
+        const restored = await target.onRestore();
         if (!restored) throw error;
         token = restored;
         image = await send(token, operationId, abort.signal);
       }
       if (abort.signal.aborted) return;
-      setResult({ url: URL.createObjectURL(image), lookId, planToken: token });
+      setResult({ url: URL.createObjectURL(image), token, lookId });
       setState("idle");
       setMessage(null);
     } catch (error) {
@@ -245,21 +252,23 @@ export function TryOnPanel({
             type="file"
           />
         </div>
-        <fieldset className="budget-mode choice-row">
-          <legend>Look to try on</legend>
-          {lookIds.map((id) => (
-            <label className="radio-choice" key={id}>
-              <input
-                checked={lookId === id}
-                disabled={state === "loading"}
-                name="tryon-look"
-                onChange={() => onSelectLook(id)}
-                type="radio"
-              />
-              <span>{lookLabel(id)}</span>
-            </label>
-          ))}
-        </fieldset>
+        {target.kind === "plan" && (
+          <fieldset className="budget-mode choice-row">
+            <legend>Look to try on</legend>
+            {target.lookIds.map((id) => (
+              <label className="radio-choice" key={id}>
+                <input
+                  checked={lookId === id}
+                  disabled={state === "loading"}
+                  name="tryon-look"
+                  onChange={() => target.onSelectLook(id)}
+                  type="radio"
+                />
+                <span>{lookLabel(id)}</span>
+              </label>
+            ))}
+          </fieldset>
+        )}
         {photoError && <p className="notice notice-error" role="alert">{photoError}</p>}
         <div className="preview-actions">
           {state === "loading" ? (
@@ -271,7 +280,7 @@ export function TryOnPanel({
               onClick={() => void generate()}
               type="button"
             >
-              {state === "preparing" ? "Preparing photo…" : `Try on ${lookLabel(lookId)}`}
+              {state === "preparing" ? "Preparing photo…" : `Try on ${label}`}
             </button>
           )}
           <p className="field-help">
@@ -289,7 +298,7 @@ export function TryOnPanel({
       )}
       {shown && (
         <figure className="tryon-result">
-          <img alt={`Experimental try-on of ${lookLabel(shown.lookId)}`} src={shown.url} />
+          <img alt={`Experimental try-on of ${label}`} src={shown.url} />
           <figcaption>
             Experimental visualization. Colors, shapes and combinations are approximate: it does not show the exact
             products, their fit or your size. It is not saved; download it from your browser if you want to keep it.

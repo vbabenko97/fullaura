@@ -1,7 +1,7 @@
 import type { Dispatch, FormEvent, SetStateAction } from "react";
 import { readCategory } from "./api";
 import { FitFields } from "./FitFields";
-import { budgetMeaning } from "./format";
+import { budgetMeaning, conceptBudgetMeaning } from "./format";
 import { OwnedItemsFields } from "./OwnedItemsFields";
 import type { Preferences } from "./plan";
 import { FOOTWEAR_CHOICES, MATERIALS, OCCASIONS, SEASONS } from "./types";
@@ -33,7 +33,10 @@ interface PreferencesFormProps {
   onSubmit: () => void;
   canSubmit: boolean;
   loading: boolean;
+  /** A plan is shown, or in Design my look a concept. */
   hasPlan: boolean;
+  /** Design my look: one concept, without owned items. */
+  design: boolean;
   quotaText: string | null;
   closedText: string | null;
 }
@@ -46,6 +49,7 @@ export function PreferencesForm({
   canSubmit,
   loading,
   hasPlan,
+  design,
   quotaText,
   closedText,
 }: PreferencesFormProps) {
@@ -159,27 +163,29 @@ export function PreferencesForm({
             value={preferences.budgetAmount}
           />
         </div>
-        <fieldset className="budget-mode">
-          <legend>Budget applies to</legend>
-          <label className="radio-choice">
-            <input
-              checked={preferences.budgetMode === "per_look"}
-              name="budget-mode"
-              onChange={() => update("budgetMode", "per_look")}
-              type="radio"
-            />
-            <span>Each look</span>
-          </label>
-          <label className="radio-choice">
-            <input
-              checked={preferences.budgetMode === "whole_plan"}
-              name="budget-mode"
-              onChange={() => update("budgetMode", "whole_plan")}
-              type="radio"
-            />
-            <span>All three looks together</span>
-          </label>
-        </fieldset>
+        {!design && (
+          <fieldset className="budget-mode">
+            <legend>Budget applies to</legend>
+            <label className="radio-choice">
+              <input
+                checked={preferences.budgetMode === "per_look"}
+                name="budget-mode"
+                onChange={() => update("budgetMode", "per_look")}
+                type="radio"
+              />
+              <span>Each look</span>
+            </label>
+            <label className="radio-choice">
+              <input
+                checked={preferences.budgetMode === "whole_plan"}
+                name="budget-mode"
+                onChange={() => update("budgetMode", "whole_plan")}
+                type="radio"
+              />
+              <span>All three looks together</span>
+            </label>
+          </fieldset>
+        )}
       </div>
 
       <fieldset className="budget-mode">
@@ -225,21 +231,25 @@ export function PreferencesForm({
         </div>
       </details>
 
-      <details className="exclusions-disclosure">
-        <summary>
-          <span>Items you already own</span>
-          <span className="selection-count">{preferences.ownedItems.length} added</span>
-        </summary>
-        <OwnedItemsFields
-          ownedItems={preferences.ownedItems}
-          onAddItem={addOwnedItem}
-          onUpdateItem={updateOwnedItem}
-          onRemoveItem={onRemoveOwnedItem}
-        />
-      </details>
+      {design ? (
+        <p className="field-help">Design my look does not use items you own.</p>
+      ) : (
+        <details className="exclusions-disclosure">
+          <summary>
+            <span>Items you already own</span>
+            <span className="selection-count">{preferences.ownedItems.length} added</span>
+          </summary>
+          <OwnedItemsFields
+            ownedItems={preferences.ownedItems}
+            onAddItem={addOwnedItem}
+            onUpdateItem={updateOwnedItem}
+            onRemoveItem={onRemoveOwnedItem}
+          />
+        </details>
+      )}
 
       <p className="field-help" id="budget-meaning">
-        {budgetMeaning(
+        {(design ? conceptBudgetMeaning : budgetMeaning)(
           preferences.budgetAmount.trim() ? Math.round(Number(preferences.budgetAmount) * 100) : null,
           preferences.budgetMode,
         )}{" "}
@@ -252,7 +262,17 @@ export function PreferencesForm({
         disabled={!canSubmit}
         type="submit"
       >
-        {loading ? "Planning looks…" : hasPlan ? "Update three looks" : "Generate three looks"}
+        {design
+          ? loading
+            ? "Designing a look…"
+            : hasPlan
+              ? "Design another"
+              : "Design my look"
+          : loading
+            ? "Planning looks…"
+            : hasPlan
+              ? "Update three looks"
+              : "Generate three looks"}
       </button>
       {closedText ? (
         <p className="submit-help" role="status">{closedText}</p>

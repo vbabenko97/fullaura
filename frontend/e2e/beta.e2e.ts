@@ -290,3 +290,68 @@ test("the budget and feedback controls work from the keyboard, and product photo
   );
   expect(horizontalOverflow).toBe(false);
 });
+
+/* Design my look against the scripted planner, whose fixed concept gets a close top, only
+ * alternatives for its trousers and loafers, and no product for its bag. Nothing here is model output. */
+test("Design my look is reached by keyboard, shows each item's match honestly, and tries the concept on", async ({
+  page,
+}, testInfo) => {
+  const project = testInfo.project.name;
+  await openWorkspace(page);
+
+  const planMode = page.getByRole("radio", { name: "Three looks from real products" });
+  await expect(planMode).toBeChecked();
+  await tabTo(page, planMode);
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("radio", { name: "Design my look (experimental)" })).toBeChecked();
+  await expect(page.getByText("Design my look does not use items you own.")).toBeVisible();
+  await expect(page.getByText("Items you already own")).toHaveCount(0);
+
+  await page.getByLabel("What should the looks work for?").fill("Design mode check, not a real request");
+  await page.getByLabel("Budget in EUR").fill("300");
+  const submit = page.getByRole("button", { name: "Design my look" });
+  await tabTo(page, submit);
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Your concept is ready.")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Your concept" })).toBeFocused(); // not lost
+  await expect(page.getByRole("button", { name: "Design another" })).toBeVisible();
+
+  const card = page.getByRole("article", { name: "Scripted black and white" });
+  await expect(card.getByText(/^A concept, not a product list\./)).toBeVisible();
+  await expect(card.getByText("Close match", { exact: true })).toHaveCount(1);
+  await expect(card.getByText("Alternative, not a confirmed match:")).toHaveCount(2);
+  await expect(card.getByText("kind: leggings, not trousers")).toBeVisible();
+  await expect(card.getByText("kind: sneakers, not loafers")).toBeVisible();
+  await expect(card.getByText("No close match in our catalog")).toBeVisible();
+  await expect(card.getByRole("link", { name: "Tom Tailor" }).first()).toHaveAttribute("href", /^https:\/\//);
+  await expect(card.getByText(/^Close matches and alternatives together: €.*Not every item can be bought as shown\.$/)).toBeVisible();
+  await shot(page, project, "10-design-concept");
+
+  const consent = page.getByRole("button", { name: "I agree to this processing of my photos" });
+  if (await consent.isVisible()) await consent.click();
+  await expect(page.getByText("You agreed to this processing.")).toBeVisible();
+  await expect(page.getByRole("group", { name: "Look to try on" })).toHaveCount(0);
+  await page.getByLabel("Portrait photo").setInputFiles({
+    name: "portrait.png",
+    mimeType: "image/png",
+    buffer: png(60, 80, [200, 170, 150]),
+  });
+  await page.getByLabel("Full-body photo").setInputFiles({
+    name: "full-body.png",
+    mimeType: "image/png",
+    buffer: png(60, 120, [120, 140, 160]),
+  });
+  const sent = page.waitForRequest((request) => request.url().endsWith("/api/previews"));
+  await page.getByRole("button", { name: "Try on the concept" }).click();
+  const headers = (await sent).headers();
+  expect(headers["x-concept-token"]).toBeTruthy();
+  expect([headers["x-plan-token"], headers["x-look-id"]]).toEqual([undefined, undefined]);
+  await expect(page.getByRole("img", { name: "Experimental try-on of the concept" })).toBeVisible();
+  await expect(page.getByText(/Experimental visualization/)).toBeVisible();
+  await shot(page, project, "11-design-try-on");
+
+  const horizontalOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
+  );
+  expect(horizontalOverflow).toBe(false);
+});
