@@ -364,7 +364,7 @@ Each decision has a number that is never reused and a status: accepted, proposed
 ## D-47: Tom Tailor and Tchibo supply affordable basics and closed shoes
 
 - **Date:** 2026-10-30
-- **Status:** accepted
+- **Status:** accepted; the consequence that women's L under a wool exclusion depends on a single shoe no longer holds after [D-55](#d-55-a-second-closed-shoe-in-eu-40-keeps-womens-l-from-depending-on-one-pair)
 - **Decision:** The catalog adds 23 variants from Tom Tailor's Austrian shop and 2 Tom Tailor sneaker variants sold by Tchibo: men's chinos in 32/32 and 34/32, women's tops and letter-sized trousers and leggings in S and L, and closed sneakers in EU 38, 40, 42 and 43. Every Tom Tailor record has a complete composition, including the four parts of each shoe; the Tchibo shoe's composition is partial. The closed beta's coverage cases ([DATA.md](DATA.md#catalog-coverage)) become a test.
 - **Reason:** With the earlier catalog, no closed wool-free shoe had a complete composition, no women's sizes S or L existed, and no men's bottom fitted 34/32, so none of the twelve coverage cases passed. Both stores' terms have no clause on content use, their robots.txt allows product pages, and they deliver to Austria. On 2026-10-30 these stores were rejected for a content clause: C&A, s.Oliver, bonprix, About You, Rieker and remonte, Clarks, Vagabond, Camper, Think!, Intersport, Superga and Ecoalf; these for blocking automated reading so that their terms could not be read: Decathlon, Next, Native Shoes and Vivobarefoot; Esprit and Lidl have no Austrian online shop. Deichmann, Tamaris, Gabor, Hervis, Waschbär, Novesta, Saye and hessnatur passed the terms but had no shoe that fit: vague or unnamed parts, no line, or prices above €110. Mango passed the terms but blocked the re-check of its product pages, so nothing from it is recorded.
 - **Consequences:** All twelve coverage cases pass. Women's L under a wool exclusion depends on a single shoe, and four shoe prices are sale prices. Shoes whose soles are thermoplastic elastomer or thermoplastic rubber, materials not on the fixed list, stay out until the list gains them.
@@ -400,4 +400,60 @@ Each decision has a number that is never reused and a status: accepted, proposed
 - **Decision:** The template takes the job's image as its own required parameter, `purgeJobImage`, beside the app's `containerImage`, and DEPLOYMENT.md records a digest for each. The app rolls back alone, to its recorded rollback image, and only with `FULLAURA_BETA_ENABLED=false` in the same command, because earlier app images write without checking the closure marker. The purge job keeps its image: only an image whose purge writes the marker may run it, and no earlier image does.
 - **Reason:** Under D-49 one image served both, and the documented rollback pointed both at the image of `00c7e2f`, which has no `backend.app.purge`, so the scheduled deletion would have failed. The image of `a7eba24` has the purge but deletes without the marker. Run locally with the deployed pilot settings and the beta off, both earlier images refused every route that writes and wrote nothing.
 - **Consequences:** An app rollback closes the beta until the current image returns; the schedule, the purge time, budgets, invites and secrets stay. A template deployment must name both images.
+
+## D-52: A call record keeps its outcome apart from its cost, and the pilot report counts invites
+
+- **Date:** 2026-10-31
+- **Status:** accepted
+- **Decision:** A model call's record in the pilot store gains an `outcome` field with what happened to the request, such as `success`, `provider_timeout`, `timeout`, `provider_error`, `disconnected` or `interrupted`. Its `status` keeps its meaning: `unknown` whenever the cost is unknown, which keeps the whole reservation spent. An invite's record also counts the planning requests that no plan can meet, which are answered without a model call or quota, by the hard-constraint rules that ruled them out; it keeps the last 20 of their operation IDs, so a repeated request counts once, and counts nothing before the age confirmation. `scripts/pilot_report.py` prints aggregates only, with a denominator for every count and the time it read the store. Its unit for people is the invite, an approximation of a participant. It sorts the calls that may have reached the provider into succeeded, failed, cancelled, unknown and unfinished, where unfinished needs the ledger to still hold the reservation; counts calls that never reached the provider apart; and splits spending by whether the cost was reported or unknown. Feedback counts each invite's latest answer, saved last and, between equal times, listed last in the invite's record; answers that still exist count, repeats are shown as a number, and free text is counted but not printed. `--per-invite` keeps the earlier per-invite counts.
+- **Reason:** The record set `status` to `unknown` for every call whose cost was unknown, so a try-on that timed out, failed at the provider or was cancelled by the browser could not be told apart, and the report could not say how often planning and try-ons worked. The report printed request counters and a count of feedback IDs, so it could not show how many invites got a plan or what participants answered.
+- **Consequences:** Records written before this change keep `unknown` without an outcome, and the report counts them as unknown rather than guessing. The cost rules of [BETA.md](BETA.md#costs) do not change. The report reads the store document by document, so its final run belongs after model calls close; [BETA.md](BETA.md#reading-the-pilot-report) explains how to read it.
+
+## D-53: Feedback asks what a try-on got wrong, from a fixed list
+
+- **Date:** 2026-10-31
+- **Status:** accepted
+- **Decision:** The feedback form adds an optional question, asked only with a try-on score: whether the try-on did not look like the person, body proportions looked off, clothes or colors differed from the look, the background looked wrong, something else, or no problems were noticed. "No problems" cannot go with a problem; the server refuses that, an empty list and any answer given with "I can't judge it". A skipped question is stored as `null`; an answer sent by a page from before the question existed has no such field.
+- **Reason:** A single 1-to-5 score says that a try-on disappointed but not why, so it cannot show whether likeness, body shape, the garments or the setting needs work. A short fixed list keeps the answers countable without free text about the person.
+- **Consequences:** The answers describe the drawing as the person saw it; they are not a measure of a product's fit and hold nothing about the person. The pilot report counts them out of the answers with a try-on score and flags answers from invites with no recorded successful try-on.
+
+## D-54: The interface says what the budget limits next to the request button
+
+- **Date:** 2026-10-31
+- **Status:** accepted
+- **Decision:** A line above "Generate three looks" or "Update three looks" says what the amount limits. For each look, it says that the three looks together can cost up to three times the amount and that the shopping list counts an item used in several looks once; for the whole plan, it says that such an item counts once. It adds that prices are item prices without delivery or returns. Above the looks, the total is now the shopping list's items total, with the budget the plan kept, such as "Each look within € 150,00", instead of the sum of the three looks' prices.
+- **Reason:** [D-17](#d-17-the-budget-applies-to-each-look-by-default) promised that the interface would show that the looks together can cost more than a per-look amount, but the form showed only the choice. In per-look mode the heading added up the looks, so an item in two looks counted twice and the heading disagreed with the shopping list.
+- **Consequences:** The text promises no saving and no final price. The per-look and whole-plan totals that the heading used are removed from the frontend.
+
+## D-55: A second closed shoe in EU 40 keeps women's L from depending on one pair
+
+- **Date:** 2026-10-31
+- **Status:** accepted
+- **Decision:** The catalog adds Tom Tailor's women's "Sneaker mit Mesh-Einsatz" in white, EU 40, with a complete composition and no wool, at a sale price of €44.99 (regular €59.99). A coverage test removes the platform sneaker in EU 40 and checks that the three women's L cases still give three looks with closed shoes and a valid replacement.
+- **Reason:** Under a wool exclusion, the women's L cases depended on that one platform sneaker; if it sold out, two cases would fail. Of the 51 colour pages in Tom Tailor's women's sneaker category read on 2026-10-31, 42 have soles of thermoplastic elastomer, which is not on the material list, and of the rest only the mesh sneaker and the platform sneaker offered EU 40. The shop offered the "Sneaker mit erhöhter Sohle" in EU 40 only as "Benachrichtigen, wenn verfügbar".
+- **Consequences:** On 2026-10-31, removing any one product left all twelve coverage cases passing; a script checked that, and the test checks only the platform sneaker's removal. Every women's item in those cases still comes from Tom Tailor, so a problem with that shop affects all women's cases ([DATA.md](DATA.md#catalog-coverage)).
+
+## D-56: A variant can carry a photo only with recorded rights
+
+- **Date:** 2026-10-31
+- **Status:** accepted
+- **Decision:** A catalog variant can carry one photo of itself in its color: an HTTPS URL, a description, its width and height, and the credit its rights require. The look cards show it beside the product's facts in a box sized from the width and height, load it lazily, and show "Image unavailable" in the same box when it fails to load. A variant gets a photo only when [DATA.md](DATA.md) records a license, a feed whose terms permit display, or FullAura's own photograph for it. On 2026-10-31 none of the catalog's sources gives that right, so no variant has a photo.
+- **Reason:** Photos would make the looks easier to compare in the app, but [D-25](#d-25-product-facts-and-product-images-need-different-rights) requires rights for images. Checked on 2026-10-31: Armedangels' imprint forbids using its graphics in other publications without express consent; Giesswein sends images to the press on request, and its dealer terms let only its dealers use them; GEA's press downloads hold no product photos and are for their stated purpose only; Tom Tailor's press images are for editorial use; Tchibo reserves all rights. Tom Tailor and Tchibo have affiliate programmes on Awin, whose publisher terms license advertiser images for marketing that advertiser, but only after Awin accepts the publisher and the advertiser approves it.
+- **Consequences:** Showing photos needs a retailer's written permission, an Awin publisher account with a programme's approval, which would also bring tracked affiliate links, or photos the author takes. The interface code and its tests exist; [T-11](TASKS.md#t-11-product-photos) stays planned until rights are recorded.
+
+## D-57: Evaluation run records carry their provenance, including failed runs
+
+- **Date:** 2026-10-31
+- **Status:** accepted
+- **Decision:** `scripts/run_provenance.py` writes, for the planning comparison and the feasibility test, a run record with status `running` before the first model call, and `succeeded` or `failed` with the error at the end. The record holds the command, the HTTP attempts made even when the run fails, the Git revision, whether the working tree differed from it, the hashes of `uv.lock`, `pyproject.toml` and `.python-version`, the Python version and platform, the configuration in use and whether each provider key was set. `source.diff` beside it holds the uncommitted code, untracked files that Git does not ignore included. Values of provider keys and of other secrets in the environment, and each line of a multi-line one, are replaced in both files. The feasibility test also records the hashes of its cases, input photos and garment images, and every image it produced, and its summary prints the hash of the scores it counts.
+- **Reason:** A record held only the Git revision, so a run from a modified working tree could not be reproduced, and a run that crashed before its first case left no record at all.
+- **Consequences:** Runs made with a revision that has `scripts/run_provenance.py` carry these fields; earlier runs do not and are not rewritten. A secret inside a binary file, or one that is not in the environment, is not found ([EVALUATION.md](EVALUATION.md#run)).
+
+## D-58: Proposed rules for deciding on the pilot's results
+
+- **Date:** 2026-10-31
+- **Status:** proposed
+- **Decision:** Before the final report's feedback is read, the author accepts or changes the thresholds in [BETA.md](BETA.md#deciding-what-to-build-next): separate minimums of 5 answering invites for planning, 5 try-on scores, and 5 answers that named try-on issues; keep the plans as they are when at least 60% would wear a look and at least half rate usefulness 4 or 5; keep the try-on when at least half of the try-on scores are 3 or more and fewer than a third of the answers that named issues name likeness, with skipped issue questions left out of that share rather than counted as no problem; fix reliability first when fewer than 90% of planning calls succeed or more than 10% have an unknown outcome.
+- **Reason:** The beta had no rule for what its results mean, and a rule chosen after seeing about ten answers only describes them. One shared minimum would let a single try-on score decide the try-on, and counting a skipped issue question as no problem would understate likeness complaints.
+- **Consequences:** Until the author accepts them, these numbers are a proposal, and the report's counts are read without them.
 

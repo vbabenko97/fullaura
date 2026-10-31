@@ -2,6 +2,7 @@
 
 import io
 import json
+import os
 import sys
 from dataclasses import replace
 from functools import partial
@@ -26,9 +27,21 @@ from scripts.evaluate_planner import (
     plan_metrics,
     score_row,
 )
+from tests.test_run_provenance import make_repo
 
 CATALOG_PATH = Path(__file__).parents[1] / "backend" / "data" / "catalog.json"
 CATALOG = Catalog.model_validate_json(CATALOG_PATH.read_text(encoding="utf-8"))
+
+
+@pytest.fixture
+def checkout(tmp_path_factory: pytest.TempPathFactory, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A throwaway Git checkout for the run record, so a test never copies the developer's
+    uncommitted work into its output."""
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", os.devnull)
+    monkeypatch.setenv("GIT_CONFIG_NOSYSTEM", "1")
+    repo = make_repo(tmp_path_factory.mktemp("checkout") / "repo")
+    monkeypatch.setattr(evaluate_planner, "CODE_ROOT", repo)
+    return repo
 
 
 def test_each_fixed_case_has_three_distinct_checked_baseline_looks() -> None:
@@ -95,6 +108,7 @@ def test_a_score_row_without_a_plan_leaves_its_plan_columns_blank() -> None:
 def test_a_live_run_starts_a_case_only_with_its_full_share_of_twelve_attempts_left(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    checkout: Path,
     server_errors: set[int],
     attempts_per_case: list[int],
 ) -> None:
@@ -118,12 +132,51 @@ def test_a_live_run_starts_a_case_only_with_its_full_share_of_twelve_attempts_le
     evaluate_planner.main(output_root=tmp_path)
 
     run = json.loads(next(tmp_path.glob("*/run.json")).read_text(encoding="utf-8"))
+    assert run["status"] == "succeeded"
+    assert run["case_ids"] == [case.id for case in CASES]
     assert run["attempt_limits"]["total_http_attempts"] == MAX_LIVE_HTTP_ATTEMPTS == 12
     assert sent == run["http_attempts_used"] == sum(attempts_per_case)
     assert run["attempt_limit_reached"]
     *spent, last = (run["cases"][case.id] for case in CASES)
     assert [case["muse_spark"]["http_attempts"] for case in spent] == attempts_per_case
     assert "muse_spark" not in last and last["muse_spark_not_run"]
+
+
+def test_a_live_run_that_raises_keeps_a_failed_record_without_the_key(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, checkout: Path
+) -> None:
+    statuses = []
+
+    def post(request: Request, timeout_s: float) -> dict:
+        (record,) = tmp_path.glob("*/run.json")
+        statuses.append(json.loads(record.read_text(encoding="utf-8"))["status"])
+        raise RuntimeError("connection dropped after sending test-secret-value")
+
+    monkeypatch.setattr(evaluate_planner, "SparkClient", partial(SparkClient, post=post))
+    monkeypatch.setenv("BASETEN_API_KEY", "test-secret-value")
+    monkeypatch.delenv("BASETEN_MODEL", raising=False)
+    monkeypatch.delenv("BASETEN_BASE_URL", raising=False)
+    monkeypatch.setattr(sys, "argv", ["evaluate_planner", "--live", "--case-id", CASES[0].id])
+
+    with pytest.raises(RuntimeError, match="connection dropped"):
+        evaluate_planner.main(output_root=tmp_path)
+
+    (run_dir,) = tmp_path.iterdir()
+    text = (run_dir / "run.json").read_text(encoding="utf-8")
+    run = json.loads(text)
+    assert statuses == ["running"]  # the record existed before the provider call
+    assert run["status"] == "failed"
+    assert run["error"] == {
+        "type": "RuntimeError",
+        "message": "connection dropped after sending [REDACTED]",
+    }
+    assert "test-secret-value" not in text
+    assert b"test-secret-value" not in (run_dir / "source.diff").read_bytes()
+    assert run["case_ids"] == [CASES[0].id] and run["cases"] == {}
+    assert run["http_attempts_used"] == 1  # the attempt that failed after it was sent
+    assert run["provider_keys_set"]["BASETEN_API_KEY"] is True
+    assert run["git_sha"] and run["lock_file_sha256"]["uv.lock"]
+    assert run["catalog_sha256"] and run["source_sha256"]["backend/app/planner.py"]
 
 
 def test_response_recorder_stores_payloads_and_blocks_attempts_over_the_cap(

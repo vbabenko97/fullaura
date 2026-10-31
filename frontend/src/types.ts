@@ -59,6 +59,14 @@ export const PRODUCT_LINES = [...FIT_LINES, "unisex"] as const;
 export const GARMENT_TYPES = ["trousers", "jeans", "shorts", "skirt", "leggings", "dress"] as const;
 export const LETTER_SIZES = ["XXS", "XS", "S", "M", "L", "XL", "XXL", "3XL"] as const;
 export const SIZE_SYSTEMS = ["letter", "waist_length", "eu_shoe"] as const;
+export const TRY_ON_ISSUES = [
+  "likeness",
+  "body_proportions",
+  "clothes_or_colors",
+  "background",
+  "other",
+  "none_noticed",
+] as const;
 export const MAX_FIT_SIZES = 12;
 export const WAIST_SIZE = /^\d{2}(\/\d{2})?$/;
 export const EU_SHOE_SIZE = /^\d{2}(\.5)?$/;
@@ -71,6 +79,7 @@ export type GarmentType = (typeof GARMENT_TYPES)[number];
 export type FootwearChoice = (typeof FOOTWEAR_CHOICES)[number];
 export type Occasion = (typeof OCCASIONS)[number];
 export type Season = (typeof SEASONS)[number];
+export type TryOnIssue = (typeof TRY_ON_ISSUES)[number];
 type LetterSize = (typeof LETTER_SIZES)[number];
 
 
@@ -125,11 +134,21 @@ interface Component {
   part: string | null;
 }
 
+/** A product photo FullAura may show, with the rights recorded in docs/DATA.md. */
+export interface VariantImage {
+  url: string;
+  alt: string;
+  width: number;
+  height: number;
+  attribution: string | null;
+}
+
 export interface Variant {
   id: string;
   color: string | null;
   size: string | null;
   normalized_size: NormalizedSize | null;
+  image: VariantImage | null;
   composition: {
     status: "complete" | "partial" | "unknown" | "conflicting";
     components: Component[];

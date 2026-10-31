@@ -1,14 +1,17 @@
 """The feasibility script rejects bad case files and counts every planned image."""
 
 import csv
+import hashlib
 import json
 from pathlib import Path
 
 import pytest
 
 from backend.app.meta_images import ImageRequestError, ImageResult, InputImage
+from scripts import feasibility_run
 from scripts.feasibility_run import CHECKS, identity_by_subject, load_cases, run, summarize, tally
 from tests.test_meta_images import exif, jpeg
+from tests.test_run_provenance import make_repo
 
 CASE = {
     "id": "s1-o1",
@@ -159,11 +162,20 @@ class FakeClient:
         return ImageResult(WEBP, "image/webp", 1, 0.5, {}, None)
 
 
-def test_a_run_records_failed_looks_and_their_skipped_edits(tmp_path: Path) -> None:
+def test_a_run_records_failed_looks_and_their_skipped_edits(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(feasibility_run, "ROOT", make_repo(tmp_path / "repo"))
     second = {**CASE, "id": "s2-o1", "subject": "s2"}
     cases = [{**CASE, "look_prompt": "fail"}, second]
     run_dir, results = run(
         load_cases(write_cases(tmp_path, cases, FILES)), tmp_path, 1, FakeClient()
+    )
+    record = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert (record["status"], record["model"], record["planned_images"]) == (
+        "succeeded",
+        "muse-image-1.0",
+        4,
     )
     with (run_dir / "scores.csv").open(newline="") as file:
         rows = [(r["case"], r["step"], r["status"], r["file"]) for r in csv.DictReader(file)]
@@ -174,9 +186,38 @@ def test_a_run_records_failed_looks_and_their_skipped_edits(tmp_path: Path) -> N
         ("s2-o1", "edit", "ok", "s2-o1-1-edit.webp"),
     ]
     assert len(results) == 2
-    assert len((run_dir / "attempts.jsonl").read_text().splitlines()) == 3
+    attempts = [json.loads(line) for line in (run_dir / "attempts.jsonl").read_text().splitlines()]
+    assert len(attempts) == 3
+    # Each input and produced image is identified by its hash, without a copy in the record
+    digest = hashlib.sha256(WEBP).hexdigest()
+    assert record["output_sha256"] == {"s2-o1-1.webp": digest, "s2-o1-1-edit.webp": digest}
+    assert [a.get("output_sha256") for a in attempts] == [None, digest, digest]
+    assert record["input_sha256"] == {
+        name: hashlib.sha256((tmp_path / name).read_bytes()).hexdigest() for name in sorted(FILES)
+    }
+    assert len(record["cases_sha256"]) == 64
     with pytest.raises(SystemExit, match="Score these"):
         summarize(run_dir)
+
+
+class BrokenClient(FakeClient):
+    def edit(self, prompt: str, images: list[InputImage]) -> ImageResult:
+        raise RuntimeError("connection dropped")
+
+
+def test_a_run_that_raises_keeps_a_failed_record(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(feasibility_run, "ROOT", make_repo(tmp_path / "repo"))
+    with pytest.raises(RuntimeError, match="connection dropped"):
+        run(load_cases(write_cases(tmp_path, [CASE], FILES)), tmp_path, 1, BrokenClient())
+
+    (run_dir,) = (tmp_path / "runs").iterdir()
+    record = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+    assert record["status"] == "failed"
+    assert record["error"] == {"type": "RuntimeError", "message": "connection dropped"}
+    assert record["planned_images"] == 2
+    assert record["git_sha"] and (run_dir / "source.diff").exists()
 
 
 def test_summarize_refuses_an_unfinished_run(tmp_path: Path) -> None:

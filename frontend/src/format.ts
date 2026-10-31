@@ -1,8 +1,26 @@
-import type { Category, Slot } from "./types";
+import type { BudgetMode, Category, Slot } from "./types";
 
 export function formatMoney(cents: number | null): string {
   if (cents === null) return "Price not reported";
   return new Intl.NumberFormat("en-AT", { style: "currency", currency: "EUR" }).format(cents / 100);
+}
+
+/** What a budget limits, in the terms the hard check uses (docs/SPEC.md#hard-constraints). */
+export function budgetMeaning(amountCents: number | null, mode: BudgetMode): string {
+  const amount = amountCents !== null && Number.isSafeInteger(amountCents) && amountCents > 0 ? amountCents : null;
+  if (mode === "whole_plan") {
+    const limit = amount === null ? "The budget" : formatMoney(amount);
+    return `${limit} is the limit for all three looks together, counting an item used in more than one look once, as the shopping list does.`;
+  }
+  if (amount === null) return "The budget is a limit for each look on its own, so the three looks together can cost more.";
+  return `${formatMoney(amount)} is the limit for each look on its own, so the three looks together can cost up to ${formatMoney(amount * 3)}. The shopping list counts an item used in more than one look once.`;
+}
+
+/** The budget a checked plan kept, for its results heading. */
+export function budgetKept(amountCents: number, mode: BudgetMode): string {
+  return mode === "per_look"
+    ? `Each look within ${formatMoney(amountCents)}`
+    : `All three looks within ${formatMoney(amountCents)}`;
 }
 
 export function formatCheckedDate(value: string): string {

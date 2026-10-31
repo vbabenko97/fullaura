@@ -1,6 +1,7 @@
 import type { Dispatch, FormEvent, SetStateAction } from "react";
 import { readCategory } from "./api";
 import { FitFields } from "./FitFields";
+import { budgetMeaning } from "./format";
 import { OwnedItemsFields } from "./OwnedItemsFields";
 import type { Preferences } from "./plan";
 import { FOOTWEAR_CHOICES, MATERIALS, OCCASIONS, SEASONS } from "./types";
@@ -237,8 +238,16 @@ export function PreferencesForm({
         />
       </details>
 
+      <p className="field-help" id="budget-meaning">
+        {budgetMeaning(
+          preferences.budgetAmount.trim() ? Math.round(Number(preferences.budgetAmount) * 100) : null,
+          preferences.budgetMode,
+        )}{" "}
+        Prices are item prices, without delivery or returns.
+      </p>
       <button
         aria-busy={loading}
+        aria-describedby="budget-meaning"
         className={`primary-button${loading ? " is-loading" : ""}`}
         disabled={!canSubmit}
         type="submit"

@@ -79,6 +79,7 @@ def test_only_shoes_with_complete_wool_free_compositions_pass_a_wool_exclusion()
         "tt-sneaker-erhoehte-sohle-sky-white-38",
         "tt-sneaker-lederimitat-khaki-42",
         "tt-sneaker-lederimitat-khaki-43",
+        "tt-sneaker-mesh-einsatz-white-40",
         "tt-sneaker-plateau-pink-38",
         "tt-sneaker-plateau-pink-40",
     }
@@ -221,6 +222,30 @@ def test_the_synthetic_fixture_is_labeled_and_links_nowhere_real() -> None:
     assert {url.host for url in urls} == {"synthetic.example"}  # a reserved test domain
 
 
+PHOTO = {
+    "url": "https://images.synthetic.example/p01.jpg",
+    "alt": "Synthetic test photo of a white T-shirt",
+    "width": 600,
+    "height": 800,
+    "attribution": None,
+}
+
+
+def test_the_real_catalog_has_no_photos_until_their_rights_are_recorded() -> None:
+    # No register entry allows displaying a photo (docs/DATA.md, D-56). Adding one is the time
+    # to replace this test with a check of the entry that grants the right.
+    assert [variant.id for variant in REAL_VARIANTS if variant.image] == []
+
+
+def test_a_variant_photo_is_optional_and_keeps_its_size_and_description() -> None:
+    data = copy.deepcopy(FIXTURE)
+    first_variant(data)["image"] = PHOTO
+    catalog = Catalog.model_validate(data)
+    photo = catalog.products[0].variants[0].image
+    assert photo is not None and (photo.width, photo.height, photo.alt) == (600, 800, PHOTO["alt"])
+    assert catalog.products[1].variants[0].image is None  # no field means no photo
+
+
 def first_variant(data: dict) -> dict:
     return data["products"][0]["variants"][0]
 
@@ -285,6 +310,17 @@ def variant(data: dict, variant_id: str) -> dict:
                 normalized_size={"system": "waist_length", "value": "32"}
             ),
             id="variant-waist-without-length",
+        ),
+        pytest.param(
+            lambda d: first_variant(d).update(image=PHOTO | {"url": "http://synthetic.example/a"}),
+            id="photo-without-https",
+        ),
+        pytest.param(
+            lambda d: first_variant(d).update(image=PHOTO | {"width": 0}), id="photo-without-size"
+        ),
+        pytest.param(
+            lambda d: first_variant(d).update(image=PHOTO | {"alt": ""}),
+            id="photo-without-description",
         ),
     ],
 )

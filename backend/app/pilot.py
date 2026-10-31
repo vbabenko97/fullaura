@@ -44,6 +44,7 @@ MAX_WRITE_ATTEMPTS = 8
 # when the deletion began and the configured purge time.
 PURGE_MARKER = "purge-marker.json"
 WRITE_WINDOW_S = 5.0  # how long a check that found no marker allows a write to start
+INFEASIBLE_OPERATIONS_KEPT = 20  # recent operation IDs, so a repeated request counts once
 
 # List prices, checked 2026-10-30 (docs/BETA.md#costs). Costs are in micro-dollars.
 PLANNING_INPUT_MICRO_USD_PER_TOKEN = 1.25  # Baseten, Muse Spark Open: $1.25 per million
@@ -65,6 +66,18 @@ class Budget(StrEnum):
 
 
 BUDGET_OF = {OperationKind.PLAN: Budget.PLANNING, OperationKind.PREVIEW: Budget.IMAGES}
+
+
+class TryOnIssue(StrEnum):
+    """What a participant noticed in a try-on, as an optional feedback answer. It describes the
+    drawing, not the fit of a product, and holds nothing about the person."""
+
+    LIKENESS = "likeness"
+    BODY_PROPORTIONS = "body_proportions"
+    CLOTHES_OR_COLORS = "clothes_or_colors"
+    BACKGROUND = "background"
+    OTHER = "other"
+    NONE_NOTICED = "none_noticed"
 
 
 class Refusal(StrEnum):
@@ -290,6 +303,26 @@ class Pilot:
         self._update(self._invite_name(invite_id), record, _empty_invite)
         return self.status(invite_id)
 
+    def record_infeasible(self, invite_id: str, operation_id: str, rules: Iterable[str]) -> None:
+        """Count a planning request that no plan can meet, which is answered without a model call
+        and uses no quota, with the hard-constraint rules that ruled it out. A repeat of a
+        recent operation ID, or a request before the age confirmation, is not counted. Only the
+        counts and the last operation IDs are kept; earlier revisions kept none."""
+        if not self.status(invite_id).age_confirmed:
+            return
+
+        def count(data: dict[str, Any]) -> None:
+            recent = data.setdefault("infeasible_operations", [])
+            if operation_id in recent:
+                return
+            data["infeasible_operations"] = [*recent, operation_id][-INFEASIBLE_OPERATIONS_KEPT:]
+            data["infeasible_requests"] = data.get("infeasible_requests", 0) + 1
+            by_rule = data.setdefault("infeasible_rules", {})
+            for rule in sorted(set(rules)):
+                by_rule[rule] = by_rule.get(rule, 0) + 1
+
+        self._update(self._invite_name(invite_id), count, _empty_invite)
+
     def budget_open(self, kind: OperationKind, reserve_micro_usd: int) -> bool:
         """Whether the shared budget still covers one more call of this kind at its maximum."""
         ledger = self.ledger()
@@ -409,7 +442,10 @@ class Pilot:
         return operation
 
     def finish(self, operation: Operation, cost_micro_usd: int | None, outcome: str) -> None:
-        """Replace the reservation with the actual cost; None keeps the whole reservation."""
+        """Replace the reservation with the actual cost; None keeps the whole reservation.
+
+        The record keeps the outcome apart from the cost: its status is "unknown" whenever the
+        cost is, as before, and its outcome says what happened to the request."""
         budget = BUDGET_OF[operation.kind]
 
         def settle(ledger: dict[str, Any]) -> None:
@@ -423,7 +459,7 @@ class Pilot:
         try:
             self._update(LEDGER, settle, _empty_ledger)
             status = "unknown" if cost_micro_usd is None else outcome
-            self._close(operation.id, status, cost_micro_usd)
+            self._close(operation.id, status, cost_micro_usd, outcome)
         except StoreUnavailable as error:
             # The ledger still marks the call running; the stale rule will keep its reservation.
             logger.warning("pilot accounting unavailable during finish: %s", error)
@@ -481,10 +517,18 @@ class Pilot:
             ledger["spent"][budget] += entry["reserved"]
         return stale
 
-    def _close(self, operation_id: str, outcome: str, cost: int | None) -> None:
+    def _close(
+        self, operation_id: str, status: str, cost: int | None, outcome: str | None = None
+    ) -> None:
+        """Records closed by a revision from before the outcome field, including an older
+        revision still running during a deployment, have none; their status "unknown" hides what
+        happened."""
+
         def close(data: dict[str, Any]) -> None:
             if data.get("status") == "running":
-                data.update(status=outcome, cost=cost, finished_at=self._stamp())
+                data.update(
+                    status=status, outcome=outcome or status, cost=cost, finished_at=self._stamp()
+                )
 
         try:
             self._update(self._operation_name(operation_id), close, dict, create=False)

@@ -84,11 +84,11 @@ def _state(profile: str, scenario: Scenario, plan: Plan | None = None) -> State:
     )
 
 
-def _looks(state: State) -> list[tuple[int, dict[Slot, str]]]:
+def _looks(catalog: Catalog, state: State) -> list[tuple[int, dict[Slot, str]]]:
     """Every top-and-bottom or one-piece with closed shoes from usable variants, cheapest first."""
-    offers = cheapest_usable_offers(CATALOG, state)
+    offers = cheapest_usable_offers(catalog, state)
     by_category: dict[Category, list[str]] = {}
-    for product in CATALOG.products:
+    for product in catalog.products:
         for variant in product.variants:
             if variant.id in offers:
                 by_category.setdefault(product.category, []).append(variant.id)
@@ -108,8 +108,8 @@ def _looks(state: State) -> list[tuple[int, dict[Slot, str]]]:
     return sorted(priced, key=lambda entry: (entry[0], sorted(entry[1].values())))
 
 
-def _plan(chosen: tuple[dict[Slot, str], ...], state: State) -> Plan:
-    offers = cheapest_usable_offers(CATALOG, state)
+def _plan(catalog: Catalog, chosen: tuple[dict[Slot, str], ...], state: State) -> Plan:
+    offers = cheapest_usable_offers(catalog, state)
     looks = tuple(
         Look(
             id=f"look_{number}",
@@ -134,27 +134,27 @@ def _within_budget(
     )
 
 
-def _plans(profile: str, scenario: Scenario) -> Iterator[Plan]:
+def _plans(catalog: Catalog, profile: str, scenario: Scenario) -> Iterator[Plan]:
     state = _state(profile, scenario)
     prices = {
-        key: offer.price_cents or 0 for key, offer in cheapest_usable_offers(CATALOG, state).items()
+        key: offer.price_cents or 0 for key, offer in cheapest_usable_offers(catalog, state).items()
     }
-    looks = [look for _, look in _looks(state)[:CHEAPEST_LOOKS]]
+    looks = [look for _, look in _looks(catalog, state)[:CHEAPEST_LOOKS]]
     for chosen in itertools.combinations(looks, 3):
         if not _within_budget(chosen, prices, scenario.budget):
             continue
-        plan = _plan(chosen, state)
-        if check_complete_plan(plan, state, CATALOG).passed:
+        plan = _plan(catalog, chosen, state)
+        if check_complete_plan(plan, state, catalog).passed:
             yield plan
 
 
-def _has_valid_replacement(plan: Plan, profile: str, scenario: Scenario) -> bool:
+def _has_valid_replacement(catalog: Catalog, plan: Plan, profile: str, scenario: Scenario) -> bool:
     """Whether some position can take a different catalog item of its kind and still pass."""
     state = _state(profile, scenario)
-    offers = cheapest_usable_offers(CATALOG, state)
+    offers = cheapest_usable_offers(catalog, state)
     prices = {key: offer.price_cents or 0 for key, offer in offers.items()}
     categories = {
-        variant.id: product.category for product in CATALOG.products for variant in product.variants
+        variant.id: product.category for product in catalog.products for variant in product.variants
     }
     current = tuple({slot: item.id for slot, item in look.items.items()} for look in plan.looks)
     for index, look in enumerate(current):
@@ -168,9 +168,18 @@ def _has_valid_replacement(plan: Plan, profile: str, scenario: Scenario) -> bool
                 )
                 if not _within_budget(chosen, prices, scenario.budget):
                     continue
-                if check_complete_plan(_plan(chosen, state), state, CATALOG).passed:
+                if check_complete_plan(_plan(catalog, chosen, state), state, catalog).passed:
                     return True
     return False
+
+
+def _assert_covered(catalog: Catalog, profile: str, scenario: str) -> None:
+    case = SCENARIOS[scenario]
+    plans = list(itertools.islice(_plans(catalog, profile, case), PLANS_TRIED))
+    assert plans, f"No three looks with closed shoes pass for {profile} in {scenario}"
+    plan = next((p for p in plans if _has_valid_replacement(catalog, p, profile, case)), None)
+    assert plan is not None, f"No position in {profile} {scenario} can take a valid replacement"
+    assert all(look.items[Slot.FOOTWEAR].kind is ItemKind.CATALOG for look in plan.looks)
 
 
 @pytest.mark.parametrize("scenario", SCENARIOS)
@@ -178,9 +187,23 @@ def _has_valid_replacement(plan: Plan, profile: str, scenario: Scenario) -> bool
 def test_the_catalog_gives_three_looks_with_closed_shoes_and_a_replacement(
     profile: str, scenario: str
 ) -> None:
-    case = SCENARIOS[scenario]
-    plans = list(itertools.islice(_plans(profile, case), PLANS_TRIED))
-    assert plans, f"No three looks with closed shoes pass for {profile} in {scenario}"
-    plan = next((plan for plan in plans if _has_valid_replacement(plan, profile, case)), None)
-    assert plan is not None, f"No position in {profile} {scenario} can take a valid replacement"
-    assert all(look.items[Slot.FOOTWEAR].kind is ItemKind.CATALOG for look in plan.looks)
+    _assert_covered(CATALOG, profile, scenario)
+
+
+# The women's L cases must hold if this variant sells out: it was once the only women's shoe in
+# EU 40 that passed a wool exclusion (docs/DATA.md#catalog-coverage).
+SOLD_OUT = "tt-sneaker-plateau-pink-40"
+
+
+@pytest.mark.parametrize("scenario", SCENARIOS)
+def test_womens_l_cases_pass_without_the_platform_sneaker_in_eu_40(scenario: str) -> None:
+    assert CATALOG.variant(SOLD_OUT) is not None
+    products = tuple(
+        product.model_copy(
+            update={"variants": tuple(v for v in product.variants if v.id != SOLD_OUT)}
+        )
+        for product in CATALOG.products
+    )
+    catalog = CATALOG.model_copy(update={"products": products})
+    assert catalog.variant(SOLD_OUT) is None
+    _assert_covered(catalog, "women-l", scenario)

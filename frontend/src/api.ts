@@ -13,6 +13,7 @@ import type {
   Slot,
   Source,
   Variant,
+  VariantImage,
 } from "./types";
 
 export class ApiResponseError extends Error {
@@ -86,6 +87,24 @@ function readNormalizedSize(value: unknown): NormalizedSize | null {
   };
 }
 
+function readImage(value: unknown): VariantImage | null {
+  if (value == null) return null; // most variants have no photo FullAura may show
+  if (!isRecord(value)) throw new Error("Invalid product image in catalog response");
+  const url = readString(value.url, "image URL");
+  const width = readNumber(value.width, "image width");
+  const height = readNumber(value.height, "image height");
+  if (!/^https:\/\//i.test(url) || width <= 0 || height <= 0) {
+    throw new Error("Invalid product image in catalog response");
+  }
+  return {
+    url,
+    alt: readString(value.alt, "image description"),
+    width,
+    height,
+    attribution: value.attribution == null ? null : readString(value.attribution, "image attribution"),
+  };
+}
+
 function readOffer(value: unknown): Offer {
   if (!isRecord(value)) throw new Error("Invalid offer in catalog response");
   const stock = value.stock;
@@ -126,6 +145,7 @@ function readVariant(value: unknown): Variant {
     color: readNullableString(value.color, "variant color"),
     size: readNullableString(value.size, "variant size"),
     normalized_size: readNormalizedSize(value.normalized_size),
+    image: readImage(value.image),
     composition: {
       status,
       components,
