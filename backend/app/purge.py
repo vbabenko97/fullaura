@@ -3,12 +3,17 @@
 A scheduled Container Apps job runs this with the app's image: python -m backend.app.purge
 (docs/DEPLOYMENT.md#deleting-the-pilot-records). It deletes nothing before
 FULLAURA_RECORDS_PURGE_AT, which the settings require to come after FULLAURA_PILOT_ENDS_AT, so it
-cannot remove the quotas or the ledger of a pilot that is still running; the app closes the beta
-at that moment, so no record appears afterwards, and the pilot's end keeps model calls closed
-whatever the ledger holds. A run that starts up to five minutes early waits for that moment; an
-earlier one only checks that it may list and delete records. Each run deletes whatever the store
-holds and then checks that nothing is left, so a repeated run is harmless; one that fails exits
-non-zero, and the job retries it. The log holds counts only, never a record's name or contents:
+cannot remove the quotas or the ledger of a pilot that is still running. A run that starts up to
+five minutes early waits for that moment; an earlier one only checks that it may list and delete
+records.
+
+Once due, a run first writes PURGE_MARKER, after which the app refuses every write
+(backend/app/pilot.py, ClosingStore). It then waits PURGE_GRACE_S, longer than any write that
+passed the app's check before the marker existed can take, deletes every record except the
+marker, and checks that none is left. So a write that raced the deletion either was refused or
+landed before it, and nothing written by the app can appear afterwards; the pilot's end keeps
+model calls closed whatever the ledger holds. A repeated run is harmless, and a failed one exits
+non-zero for the job to retry. The log holds counts only, never a record's name or contents:
 only this module's logger writes INFO lines, so the HTTP client's request log, which names each
 blob, stays off.
 """
@@ -24,10 +29,23 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from backend.app.config import Settings
-from backend.app.store import Store, StoreUnavailable, open_store
+from backend.app.pilot import PURGE_MARKER, WRITE_WINDOW_S
+from backend.app.store import (
+    BLOB_SERVER_TIMEOUT_S,
+    STORE_TIMEOUT_S,
+    Store,
+    StoreUnavailable,
+    VersionConflict,
+    open_store,
+)
 
 ATTEMPTS = 4  # per store call, after waits of 1, 2 and 4 seconds
 EARLY_START_S = 300.0  # a run this close to the purge time waits for it; within replicaTimeout
+# A write that found no marker starts within WRITE_WINDOW_S; its connect, write, read and pool
+# phases each end within STORE_TIMEOUT_S, and the Blob service gives up after its own timeout.
+# The rest is room for network delay.
+PURGE_GRACE_S = 120.0
+assert PURGE_GRACE_S > WRITE_WINDOW_S + 4 * STORE_TIMEOUT_S + BLOB_SERVER_TIMEOUT_S + 30
 
 logger = logging.getLogger("backend.app.purge")  # also when run with python -m
 
@@ -45,9 +63,10 @@ def purge(
     purge_at: datetime,
     *,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
-    sleep: Callable[[float], None] = time.sleep,
+    sleep: Callable[[float], None] = lambda seconds: time.sleep(seconds),
 ) -> Purge:
-    """Delete every record once purge_at has passed; before that, delete nothing."""
+    """Close and delete every record once purge_at has passed; before that, delete nothing.
+    The counts leave out the marker, which holds no participant data."""
 
     def attempt[T](call: Callable[[], T]) -> T:
         for number in range(ATTEMPTS):
@@ -59,18 +78,30 @@ def purge(
                 sleep(2.0**number)
         raise AssertionError("unreachable")
 
+    def records() -> list[str]:
+        return [name for name in attempt(store.names) if name != PURGE_MARKER]
+
+    def close() -> None:
+        marker = {"closing_since": now().isoformat(), "purge_at": purge_at.isoformat()}
+        try:
+            store.create(PURGE_MARKER, marker)
+        except VersionConflict:
+            pass  # an earlier run closed the records already
+
     early = (purge_at - now()).total_seconds()
     if 0 < early <= EARLY_START_S:  # the scheduler started this run a little early
         sleep(early)
-    names = attempt(store.names)
     if now() < purge_at:
+        found = len(records())
         # Deleting a name that cannot exist proves the right to delete without deleting.
         attempt(lambda: store.delete(f"purge-check/{uuid.uuid4().hex}.json"))
-        return Purge(due=False, found=len(names), deleted=0, left=len(names))
+        return Purge(due=False, found=found, deleted=0, left=found)
+    attempt(close)
+    sleep(PURGE_GRACE_S)  # every write that passed the app's check before the marker ends
+    names = records()
     for name in names:
         attempt(lambda name=name: store.delete(name))
-    left = len(attempt(store.names))
-    return Purge(due=True, found=len(names), deleted=len(names), left=left)
+    return Purge(due=True, found=len(names), deleted=len(names), left=len(records()))
 
 
 def main() -> int:

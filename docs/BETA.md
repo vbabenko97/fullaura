@@ -18,7 +18,7 @@ You need the invite link you were sent, a phone or computer with a current brows
 
 Each invite has 8 planning requests and 12 try-ons; generating, updating and replacing each use a planning request, and a cancelled try-on still counts. The beta can also pause model requests early when its shared budget is used up. Your plans and shopping lists keep working when that happens.
 
-Planning and try-ons close at the end of the pilot, on 6 November 2026 at 23:59 Vienna time. On 9 November 2026 at 10:00 Vienna time FullAura deletes your invite's records and your feedback, and the beta closes. Plans you saved stay in your browser until you delete them.
+Planning and try-ons close at the end of the pilot, on 6 November 2026 at 23:59 Vienna time. On 9 November 2026 at 10:00 Vienna time the beta closes, and within a few minutes FullAura deletes your invite's records and your feedback. Plans you saved stay in your browser until you delete them.
 
 ## Costs
 
@@ -42,7 +42,7 @@ The operator, the person who deploys the beta and hands out invites, follows the
 3. Check spending and use without personal data, at the latest before the records are deleted: `uv run --frozen python -m scripts.pilot_report --store-url <store URL> --invites data/private/beta/invite-hashes.txt --subscription <subscription ID>`. It needs the Storage Blob Data Reader role or higher on the storage account; the subscription option picks the right tenant when the Azure CLI's default subscription is another one.
 4. To withdraw one invite, deploy again without its digest. To stop the beta at once, set `FULLAURA_BETA_ENABLED=false`, or stop the app (see [DEPLOYMENT.md](DEPLOYMENT.md#stopping-the-beta)).
 
-The store keeps, per invite, the time of the age confirmation and the photo consent, request counts and feedback IDs; the ledger, the record of each model call, and the feedback answers. A scheduled job deletes every record on 2026-11-09 at 10:00 Vienna time (09:00 UTC), and the beta closes at that moment, so no record appears afterwards ([D-49](DECISIONS.md#d-49-a-scheduled-job-deletes-the-pilot-records-and-the-beta-closes-then)); [DEPLOYMENT.md](DEPLOYMENT.md#deleting-the-pilot-records) describes the job. A lifecycle rule that deletes a record 30 days after its last change stays as a backstop. A participant's feedback can be deleted by the participant at any time, and the operator can delete an invite's records earlier with the commands in [DEPLOYMENT.md](DEPLOYMENT.md#stopping-the-beta).
+The store keeps, per invite, the time of the age confirmation and the photo consent, request counts and feedback IDs; the ledger, the record of each model call, and the feedback answers. The beta closes on 2026-11-09 at 10:00 Vienna time (09:00 UTC), and a scheduled job then deletes every record within about three minutes; a closure marker that the job writes first keeps any record from reappearing ([D-49](DECISIONS.md#d-49-a-scheduled-job-deletes-the-pilot-records-and-the-beta-closes-then), [D-50](DECISIONS.md#d-50-a-closure-marker-and-a-grace-period-keep-writes-from-outliving-the-purge)); [DEPLOYMENT.md](DEPLOYMENT.md#deleting-the-pilot-records) describes the job. A lifecycle rule that deletes a record 30 days after its last change stays as a backstop. A participant's feedback can be deleted by the participant at any time, and the operator can delete an invite's records earlier with the commands in [DEPLOYMENT.md](DEPLOYMENT.md#stopping-the-beta).
 
 ## Checks before the beta opened
 

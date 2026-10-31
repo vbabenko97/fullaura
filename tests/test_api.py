@@ -520,6 +520,34 @@ def test_deleted_records_reopen_no_budget_and_the_beta_closes_when_they_go(
     assert store.names() == []  # nothing new was written after the deletion
 
 
+def test_once_the_deletion_has_begun_no_route_writes_a_record(
+    tmp_path: Path, store: MemoryStore
+) -> None:
+    """A host whose clock has not reached the purge time still sees the purge job's marker."""
+    now = datetime.now(UTC)
+    later = settings(
+        tmp_path, pilot_ends_at=now + timedelta(days=1), records_purge_at=now + timedelta(days=2)
+    )
+    with TestClient(create_app(later, spark=ScriptedSpark(VALID), store=store)) as http:
+        join(http)
+        feedback = http.post(
+            "/api/feedback", json={"would_wear": True, "usefulness": 3, "try_on": 2}
+        )
+        feedback_id = feedback.json()["id"]
+        for name in store.names():  # the purge job: marker first, then the deletion
+            store.delete(name)
+        store.create("purge-marker.json", {"closing_since": now.isoformat()})
+        for response in (
+            http.post("/api/session/confirm-age", json={"over_18": True}),
+            http.post("/api/session/photo-consent", json={"consent": True}),
+            http.post("/api/feedback", json={"would_wear": False, "usefulness": 1, "try_on": 1}),
+            http.delete(f"/api/feedback/{feedback_id}"),
+            plan(http),
+        ):
+            assert response.status_code in {403, 404, 503}, response.text  # refused
+    assert store.names() == ["purge-marker.json"]
+
+
 def test_the_image_budget_setting_closes_try_ons(tmp_path: Path, store: MemoryStore) -> None:
     limited = settings(tmp_path, image_budget_usd=0.02)
     app = create_app(limited, image_editor=FakeEditor(), store=store)

@@ -22,9 +22,11 @@
 | Purge job | `fullaura-demo-purge`, a scheduled Container Apps job in the same environment with a system-assigned identity: cron `0 9 9-15 11 *` in UTC, 0.25 vCPU / 0.5 GiB, 600-second replica timeout, 3 retries, the same image as the app ([Deleting the pilot records](#deleting-the-pilot-records)) |
 | Planning model | `meta-models/muse-spark-open-1026` at `https://inference.baseten.co/v1`, key in the secret `baseten-api-key` |
 | Try-on model | `muse-image-1.0` in Standard mode, key in the secret `model-api-key` |
-| Image | `ghcr.io/vbabenko97/fullaura@sha256:4a46e357f6ac485c5655436b0d41dadde4185a54cbcaf908ed08ee5ebbd0ad97` (tag `a7eba24-linux-amd64`; its `linux/amd64` manifest is `sha256:0bdb6def207673530d564ec311b63e4fa17b7fa44076c14a30a619cb72c2769b`), for the app and the purge job |
+| App image | `ghcr.io/vbabenko97/fullaura@sha256:4a46e357f6ac485c5655436b0d41dadde4185a54cbcaf908ed08ee5ebbd0ad97` (tag `a7eba24-linux-amd64`; its `linux/amd64` manifest is `sha256:0bdb6def207673530d564ec311b63e4fa17b7fa44076c14a30a619cb72c2769b`) |
+| Purge job image | the same digest as the app image |
 | Application source | `main` at `a7eba24` |
-| Rollback image | `ghcr.io/vbabenko97/fullaura@sha256:aa797cca7be943806f64299fb8d502ca2096f7bda9a2e4a7dec9780985cc95ed`, the beta built from `00c7e2f`, which served until 2026-10-31. It ignores `FULLAURA_RECORDS_PURGE_AT`, so it would not close the beta at the purge time, although the job still deletes the records then. The anonymous demo of 2026-10-30, `ghcr.io/vbabenko97/fullaura@sha256:9fececb06a258c5074aa3340e054a7d3d723c0153f69381b5ca9301526169fb5` from `e918d07`, keeps planning closed. |
+| App rollback image | `ghcr.io/vbabenko97/fullaura@sha256:aa797cca7be943806f64299fb8d502ca2096f7bda9a2e4a7dec9780985cc95ed`, the beta built from `00c7e2f`, only with `FULLAURA_BETA_ENABLED=false` ([Rolling back](#rolling-back)) |
+| Purge job rollback image | none: no earlier image can run the purge job |
 | ARM deployments | `fullaura-beta-20261030`, `fullaura-beta-budgets-20261030` and `fullaura-beta-fixes-20261031`, from `infra/azure/main.bicep` |
 
 The image is public, and GHCR issues an anonymous pull token for it. The keys, the session secret and the invite digests are encrypted Container Apps secrets, passed to the template as secure parameters; none is in the image or the repository. The resource group and the existing subscription-level budget remain in place.
@@ -57,7 +59,7 @@ On 2026-10-31, after the deployment of `a7eba24`:
 
 URL: <https://fullaura-demo.blackbay-aaeee2c5.francecentral.azurecontainerapps.io>.
 
-To roll back, point the app and the purge job at the rollback image in the table above with `az containerapp update` and `az containerapp job update` (see the deployment procedure).
+To roll back, follow [Rolling back](#rolling-back): the app and the purge job roll back separately.
 
 ## Configuration and cost
 
@@ -94,9 +96,11 @@ The template creates the Container Apps job `fullaura-demo-purge` in the same en
 | Schedule, `recordsPurgeSchedule` | `0 9 9-15 11 *`: 09:00 UTC every day from 9 to 15 November |
 | Retries | each run retries a store call three times within 7 seconds; the job retries a failed run up to three times within 600 seconds; the next day's run repeats it |
 
-A run that starts up to five minutes before the purge time waits for it, so a scheduler that fires a few seconds early does not postpone the deletion by a day. Each run lists the container. Before the purge time it deletes nothing: it deletes a name that cannot exist, which proves the right to delete, logs the number of records and exits 0. From the purge time on it deletes every record, lists the container again and exits 0 only when nothing is left. A repeated run finds nothing and succeeds. A settings error, such as a purge time that is not after the pilot's end, exits 2, and an unreachable store exits 1, so the job retries. The log, in `ContainerAppConsoleLogs_CL`, holds counts only. At the purge time the app closes the beta, so no new record appears after the job runs, and the pilot's end keeps model calls closed although the ledger is gone.
+A run that starts up to five minutes before the purge time waits for it, so a scheduler that fires a few seconds early does not postpone the deletion by a day. Before the purge time a run deletes nothing: it lists the container, deletes a name that cannot exist, which proves the right to delete, logs the number of records and exits 0. From the purge time on it writes the closure marker `purge-marker.json`, waits 120 seconds, deletes every record except the marker, lists the container again and exits 0 only when no record is left ([D-50](DECISIONS.md#d-50-a-closure-marker-and-a-grace-period-keep-writes-from-outliving-the-purge)). So the records are gone about three minutes after the job starts. A repeated run keeps the marker, finds nothing and succeeds. A settings error, such as a purge time that is not after the pilot's end, exits 2, and an unreachable store exits 1, so the job retries. The log, in `ContainerAppConsoleLogs_CL`, holds counts only.
 
-The job deletes only blobs in the `pilot` container. It does not touch the container itself, other storage, the logs or any Azure resource. To check the configuration and the job's runs:
+The app closes the beta at the purge time. Its writes coordinate with the job: right before every create, replace or delete, the app refuses if the purge time has passed or the marker exists, and it trusts a check that found no marker for 5 seconds only. Every Blob request carries the service's own 10-second timeout, and the client gives up on each phase of a request after 10 seconds. A write that passed the check before the marker existed therefore ends well within the job's 120-second wait, and one that checks later is refused. This holds as long as requests end within those timeouts. The marker holds only when the deletion began and the purge time. While it exists, the app refuses every write; the pilot's end keeps model calls closed although the ledger is gone. To reopen writing, delete the marker by hand.
+
+The job deletes only blobs in the `pilot` container and writes only its marker there. It does not touch the container itself, other storage, the logs or any Azure resource. To check the configuration and the job's runs:
 
 ```bash
 az containerapp job show --name fullaura-demo-purge --resource-group rg-fullaura-demo --subscription <subscription ID> \
@@ -118,19 +122,36 @@ The template `infra/azure/main.bicep` describes every resource in `rg-fullaura-d
 
    ```bash
    az deployment group what-if --subscription <subscription ID> --resource-group rg-fullaura-demo \
-     --template-file infra/azure/main.bicep --parameters containerImage=ghcr.io/vbabenko97/fullaura@<digest> \
-     betaEnabled=true pilotEndsAt=<ISO date-time with zone> recordsPurgeAt=<later ISO date-time with zone> \
+     --template-file infra/azure/main.bicep --parameters containerImage=ghcr.io/vbabenko97/fullaura@<app digest> \
+     purgeJobImage=ghcr.io/vbabenko97/fullaura@<job digest> betaEnabled=true pilotEndsAt=<ISO date-time with zone> recordsPurgeAt=<later ISO date-time with zone> \
      recordsPurgeSchedule=<cron in UTC> planningBudgetUsd=<USD> imageBudgetUsd=<USD> \
      basetenApiKey=<key> modelApiKey=<key> \
      sessionSecret=<secret> inviteHashes=<comma-separated digests>
    ```
 
-   `pilotEndsAt` and `recordsPurgeAt` are required while the beta is enabled; the app refuses to start without them or with a purge time that is not after the end. Expect changes only to the app, the purge job, the storage resources and the role assignments. Stop if the preview deletes or recreates the environment, the workspace or the storage account.
+   Both images are required and pinned separately ([D-51](DECISIONS.md#d-51-the-app-and-the-purge-job-have-their-own-images-and-roll-back-apart)). The job's image must contain a `backend.app.purge` that writes the closure marker; no image before this release does. `pilotEndsAt` and `recordsPurgeAt` are required while the beta is enabled; the app refuses to start without them or with a purge time that is not after the end. Expect changes only to the app, the purge job, the storage resources and the role assignments. Stop if the preview deletes or recreates the environment, the workspace or the storage account.
 4. Run the same command with `az deployment group create`. A deployment keeps the session secret only if the same value is passed again; a new secret signs out every participant.
 5. Wait for the role assignment to take effect, which can take a few minutes, then check `/`, `/api/health`, `/api/ready`, `/api/session` and a JSON 404 for an unknown `/api` route with `scripts/smoke_http.py <URL>`, and open the operator's invite to check planning and a try-on.
-6. Record the URL, source commit, resource names, deployed digest and the previous working digest below.
+6. Record the URL, source commit, resource names, both deployed digests and the app's previous working digest above.
 
-To deploy only a new image, run step 1 and then `az containerapp update --name fullaura-demo --resource-group rg-fullaura-demo --subscription <subscription ID> --image ghcr.io/vbabenko97/fullaura@<digest>`, and the same with `az containerapp job update --name fullaura-demo-purge` for the purge job. In single-revision mode this creates a new revision, moves all traffic to it, and keeps the environment variables and secrets. To roll back, run the same command with the previous working digest.
+To deploy only a new app image, run step 1 and then `az containerapp update --name fullaura-demo --resource-group rg-fullaura-demo --subscription <subscription ID> --image ghcr.io/vbabenko97/fullaura@<digest>`. In single-revision mode this creates a new revision, moves all traffic to it, and keeps the environment variables and secrets. Change the purge job's image only to an image that writes the closure marker, with `az containerapp job update --name fullaura-demo-purge --resource-group rg-fullaura-demo --subscription <subscription ID> --image ghcr.io/vbabenko97/fullaura@<digest>`; that keeps the job's schedule and settings.
+
+## Rolling back
+
+The app and the purge job roll back separately, each to the digest recorded for it in the table above ([D-51](DECISIONS.md#d-51-the-app-and-the-purge-job-have-their-own-images-and-roll-back-apart)).
+
+- **App.** Roll back only to the recorded app rollback image, and switch the beta off in the same command, because earlier app images write without checking the closure marker:
+
+  ```bash
+  az containerapp update --name fullaura-demo --resource-group rg-fullaura-demo --subscription <subscription ID> \
+    --image ghcr.io/vbabenko97/fullaura@<app rollback digest> --set-env-vars FULLAURA_BETA_ENABLED=false
+  ```
+
+  One command makes one revision with both changes, so no revision of the earlier image serves the beta. It keeps the other settings, the secrets with the invites, the budgets and the pilot's times. Invited people see that the beta is closed; plans saved in their browsers stay there. Check it with `scripts/smoke_http.py <URL>`, which must report a closed beta. To return, run the same command with the current app digest and `FULLAURA_BETA_ENABLED=true`.
+- **Purge job.** Leave it alone: rolling back the app does not change the job's image, schedule or settings. No earlier image can run the job. The image of `00c7e2f` has no `backend.app.purge`, so every run would fail, and the image of `a7eba24` deletes without the closure marker.
+- **Template.** A deployment of the template always names both images. For a rollback, pass the app rollback digest as `containerImage`, `betaEnabled=false`, and the current job image as `purgeJobImage`, with the same pilot times, schedule and budgets.
+
+On 2026-10-31 the earlier app images, of `a7eba24` and of `00c7e2f`, were run locally as production with the deployed pilot times and budgets, synthetic invite digests and the beta off. Both passed `scripts/smoke_http.py` as a closed beta, answered 404 to the invite, age, consent, feedback and catalog routes, and wrote no file to their store folder. Neither image could import the purge job with its closure marker.
 
 ## Stopping the beta
 
