@@ -539,15 +539,21 @@ class Pilot:
 
     def add_feedback(self, invite_id: str, answers: dict[str, Any]) -> str:
         feedback_id = uuid.uuid4().hex
-        self._store.create(
-            self._feedback_name(invite_id, feedback_id),
-            {"answers": answers, "created_at": self._stamp()},
-        )
+        name = self._feedback_name(invite_id, feedback_id)
+        self._store.create(name, {"answers": answers, "created_at": self._stamp()})
 
         def remember(data: dict[str, Any]) -> None:
             data["feedback"].append(feedback_id)
 
-        self._update(self._invite_name(invite_id), remember, _empty_invite)
+        try:
+            self._update(self._invite_name(invite_id), remember, _empty_invite)
+        except StoreUnavailable:
+            # An entry its invite does not list could never be deleted by the participant.
+            try:
+                self._store.delete(name)
+            except StoreUnavailable as error:
+                logger.warning("unlisted feedback not deleted: %s", type(error).__name__)
+            raise
         return feedback_id
 
     def delete_feedback(self, invite_id: str, feedback_id: str) -> bool:

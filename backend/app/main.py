@@ -19,8 +19,10 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StrictBool, ValidationError, model_validator
+from starlette.datastructures import Headers
 from starlette.requests import Request
 from starlette.responses import Response
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from backend.app.catalog import Catalog, Material, Record
 from backend.app.concepts import RESERVED_HTTP_ATTEMPTS, concept_json, concept_prompt, design_look
@@ -98,6 +100,10 @@ REFUSAL_STATUS = {
     Refusal.ACCOUNTING_UNAVAILABLE: 503,
 }
 IMAGE_ATTEMPTS = 3  # MuseImageClient.max_attempts
+# The largest body the app sends, a restore of a full saved plan, is about 12 KB even when every
+# character of its text needs an escape (docs/DECISIONS.md, D-61).
+MAX_BODY_BYTES = 64 * 1024
+OWN_BODY_LIMIT = "/api/previews"  # reads its upload itself, after its access checks (photos.py)
 
 logger = logging.getLogger(__name__)
 
@@ -189,6 +195,60 @@ def _invalid(error: ValidationError) -> JSONResponse:
     return JSONResponse({"detail": details, "reason": "invalid"}, status_code=422, headers=NO_STORE)
 
 
+class BodyLimit:
+    """Refuses an API request whose body is larger than max_bytes before any route reads it: by
+    its Content-Length, or, for a chunked or understated body, as soon as the bytes received pass
+    the limit. Routes parse a JSON body before their access checks, so this holds the body, at
+    most max_bytes of it, and then hands it to the route. The try-on route has its own limits."""
+
+    def __init__(self, app: ASGIApp, max_bytes: int) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        path = scope["path"] if scope["type"] == "http" else ""
+        if not path.startswith("/api/") or path == OWN_BODY_LIMIT:
+            await self.app(scope, receive, send)
+            return
+        try:
+            declared = int(Headers(scope=scope).get("content-length", "0"))
+        except ValueError:
+            declared = 0  # the bytes received still count
+        if declared > self.max_bytes:
+            await self._refuse(scope, receive, send)
+            return
+        chunks: list[bytes] = []
+        received = 0
+        more_body = True
+        while more_body:
+            message = await receive()
+            if message["type"] != "http.request":
+                return  # the client disconnected, so no one waits for an answer
+            chunk = message.get("body", b"")
+            received += len(chunk)
+            if received > self.max_bytes:
+                await self._refuse(scope, receive, send)
+                return
+            chunks.append(chunk)
+            more_body = message.get("more_body", False)
+        body = b"".join(chunks)
+        replayed = False
+
+        async def replay() -> Message:
+            nonlocal replayed
+            if replayed:
+                return await receive()  # such as a later disconnect
+            replayed = True
+            return {"type": "http.request", "body": body, "more_body": False}
+
+        await self.app(scope, replay, send)
+
+    async def _refuse(self, scope: Scope, receive: Receive, send: Send) -> None:
+        # Closing the connection stops a client that keeps sending the rest of the body.
+        detail = f"The request is larger than {self.max_bytes // 1024} KiB"
+        await _error(detail, 413, "invalid", {"Connection": "close"})(scope, receive, send)
+
+
 def create_app(
     settings: Settings | None = None,
     spark: SparkClient | None = None,
@@ -222,6 +282,7 @@ def create_app(
         redoc_url=None,
         openapi_url="/api/openapi.json" if settings.environment == "development" else None,
     )
+    app.add_middleware(BodyLimit, max_bytes=MAX_BODY_BYTES)
     secret = settings.session_secret.encode() or secrets.token_bytes(32)
     pilot = Pilot(
         store or open_store(settings.store_url),

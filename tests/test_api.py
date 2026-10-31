@@ -15,13 +15,16 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.app.catalog import MATERIALS
 from backend.app.config import Settings
-from backend.app.main import create_app
+from backend.app.main import MAX_BODY_BYTES, create_app
 from backend.app.meta_images import ImageRequestError, ImageResult, InputImage
 from backend.app.pilot import invite_hash, planning_reserve_micro_usd
 from backend.app.planner import MAX_TOKENS, SparkClient
+from backend.app.state import MAX_LOCKS, Slot
 from backend.app.store import Document, MemoryStore, StoreUnavailable
-from tests.test_planner import FIXTURE, LOOK_1, LOOK_2, LOOK_3, VALID, completion, reply
+from tests.test_pilot import InviteWritesFail
+from tests.test_planner import CATALOG, FIXTURE, LOOK_1, LOOK_2, LOOK_3, VALID, completion, reply
 
 CODE = "beta-invite-code-1"
 OTHER_CODE = "beta-invite-code-2"
@@ -347,6 +350,163 @@ def test_after_a_restart_a_saved_plan_is_restored_without_a_model_call(
         assert any(violation["rule"] == "budget" for violation in failed["violations"])
 
 
+def test_the_largest_plan_the_app_saves_is_restored(http: TestClient) -> None:
+    """Every field the browser sends at its limit, each character of the text escaped to six
+    bytes, owned items with IDs of the longest length allowed, and a lock on every position of
+    looks with six positions each."""
+    join(http)
+    owned = [
+        {
+            "id": f"owned-{n}" + "x" * 93,
+            "category": category,
+            "color": "ü" * 40,
+            "description": "ü" * 200,
+        }
+        for n, category in enumerate(("knitwear", "outerwear", "accessory"), start=1)
+    ]
+    layers = {
+        slot: {"kind": "owned", "id": item["id"]}
+        for slot, item in zip(("mid_layer", "outer_layer", "accessory"), owned, strict=True)
+    }
+    looks = [
+        {
+            "id": f"look_{n}",
+            "items": {slot: {"kind": "catalog", "id": i} for slot, i in look.items()} | layers,
+        }
+        for n, look in enumerate((LOOK_1, LOOK_2, LOOK_3), start=1)
+    ]
+    variants = {i["id"] for look in looks for i in look["items"].values() if i["kind"] == "catalog"}
+    offers = {
+        variant.id: variant.offers[0].id
+        for product in CATALOG.products
+        for variant in product.variants
+        if variant.id in variants
+    }
+    used = {"cotton", "elastane", "polyester", "synthetic rubber", "viscose"}  # by these items
+    saved = {
+        "brief": {
+            "style_goal": "ü" * 300,
+            "preferred_colors": ["ü" * 30] * 5,
+            "occasion": "special_event",
+            "season": "autumn",
+        },
+        "state": {
+            "budget": {"amount_cents": 20000, "mode": "per_look"},
+            "material_exclusions": sorted(set(MATERIALS) - used),
+            "fit": {"lines": ["women", "men", "unisex"]},
+            "footwear": "any",
+            "owned_items": owned,
+            "locks": [
+                {"look_id": look["id"], "slot": slot, "item": item}
+                for look in looks
+                for slot, item in look["items"].items()
+            ],
+            "plan": {"looks": looks, "selected_offers": offers},
+        },
+        "catalog_id": CATALOG_ID,
+    }
+    content = json.dumps(saved).encode()  # "ü" is sent as ü
+    response = http.post(
+        "/api/plans/restore", content=content, headers={"Content-Type": "application/json"}
+    )
+    assert response.status_code == 200 and response.json()["outcome"] == "success"
+    assert len(response.json()["plan"]["looks"][0]["items"]) == 6
+
+
+def unread_body() -> Iterator[bytes]:
+    raise AssertionError("the body was read")
+    yield b""
+
+
+def test_an_oversized_body_is_refused_before_any_route_reads_it(
+    http: TestClient, spark: ScriptedSpark
+) -> None:
+    def send(path: str) -> Any:
+        return http.post(
+            path,
+            content=unread_body(),
+            headers={
+                "Content-Type": "application/json",
+                "Content-Length": str(MAX_BODY_BYTES + 1),
+                **operation(),
+            },
+        )
+
+    for path in ("/api/session/invite", "/api/plans", "/api/feedback"):  # without an invite
+        refused = send(path)
+        assert (refused.status_code, refused.json()["reason"]) == (413, "invalid")
+        assert refused.headers["cache-control"] == "no-store"
+    join(http)
+    assert send("/api/plans").status_code == 413
+    assert spark.sent == [] and http.get("/api/session").json()["plan_requests_used"] == 0
+
+
+def test_a_body_without_a_length_is_cut_off_at_the_limit(tmp_path: Path, http: TestClient) -> None:
+    def chunked() -> Iterator[bytes]:  # sent without Content-Length
+        yield b'{"brief": '
+        yield b" " * MAX_BODY_BYTES
+        yield b"}"
+
+    join(http)
+    refused = http.post(
+        "/api/plans",
+        content=chunked(),
+        headers={"Content-Type": "application/json", **operation()},
+    )
+    assert (refused.status_code, refused.json()["reason"]) == (413, "invalid")
+
+    # A body that never ends is read no further than the limit.
+    reads = 0
+    sent: list[dict[str, Any]] = []
+
+    async def receive() -> dict[str, Any]:
+        nonlocal reads
+        reads += 1
+        return {"type": "http.request", "body": b" " * 4096, "more_body": True}
+
+    async def send(message: dict[str, Any]) -> None:
+        sent.append(message)
+
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0"},
+        "http_version": "1.1",
+        "method": "POST",
+        "scheme": "http",
+        "path": "/api/plans",
+        "raw_path": b"/api/plans",
+        "root_path": "",
+        "query_string": b"",
+        "headers": [(b"content-type", b"application/json"), (b"transfer-encoding", b"chunked")],
+        "client": ("127.0.0.1", 50000),
+        "server": ("testserver", 80),
+    }
+    asyncio.run(create_app(settings(tmp_path))(scope, receive, send))
+    assert sent[0]["status"] == 413
+    assert reads == MAX_BODY_BYTES // 4096 + 1
+
+
+def test_overlong_ids_and_too_many_locks_are_refused_before_a_model_call(
+    http: TestClient, spark: ScriptedSpark
+) -> None:
+    join(http)
+    token = plan(http).json()["plan_token"]
+    calls = len(spark.sent)
+    owned = {"id": "o" * 101, "category": "top", "color": "navy", "description": "navy shirt"}
+    long_id = plan(http, state=STATE | {"owned_items": [owned]})
+    positions = [(f"look_{n}", slot) for n in range(1, 5) for slot in Slot][: MAX_LOCKS + 1]
+    locks = [
+        {"look_id": look_id, "slot": slot, "item": {"kind": "catalog", "id": "P01"}}
+        for look_id, slot in positions
+    ]
+    too_many = plan(http, state=STATE | {"locks": locks}, plan_token=token)
+    for response, error in ((long_id, "string_too_long"), (too_many, "too_long")):
+        assert (response.status_code, response.json()["reason"]) == (422, "invalid")
+        assert [detail["type"] for detail in response.json()["detail"]] == [error]
+    assert len(spark.sent) == calls
+    assert http.get("/api/session").json()["plan_requests_used"] == 1
+
+
 def test_a_try_on_is_written_from_the_checked_look(
     http: TestClient, editor: FakeEditor, store: MemoryStore
 ) -> None:
@@ -500,6 +660,17 @@ def test_feedback_is_stored_without_the_plan_and_can_be_deleted(
     assert all("quiet smart casual" not in name for name in store.names())
     assert http.delete(f"/api/feedback/{feedback_id}").status_code == 204
     assert http.delete(f"/api/feedback/{feedback_id}").status_code == 404
+
+
+def test_feedback_that_its_invite_cannot_list_answers_503_and_is_not_kept(tmp_path: Path) -> None:
+    store = InviteWritesFail()
+    with TestClient(create_app(settings(tmp_path), store=store)) as http:
+        join(http)
+        store.failing = True
+        answers = {"would_wear": True, "usefulness": 3, "try_on": 2}
+        response = http.post("/api/feedback", json=answers)
+    assert (response.status_code, response.json()["reason"]) == (503, "accounting")
+    assert [name for name in store.names() if name.startswith("feedback/")] == []
 
 
 @pytest.mark.parametrize(
