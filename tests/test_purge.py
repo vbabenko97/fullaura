@@ -1,5 +1,6 @@
 """The scheduled deletion of the pilot records, against local stores and a scripted Blob API."""
 
+import logging
 import uuid
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -40,9 +41,24 @@ def store(request: pytest.FixtureRequest, tmp_path: Path) -> MemoryStore | Direc
 def test_nothing_is_deleted_before_the_purge_time(store: MemoryStore | DirectoryStore) -> None:
     pilot_records(store, ENDS_AT - timedelta(days=1))
     before = store.names()
-    result = purge(store, PURGE_AT, now=lambda: PURGE_AT - timedelta(seconds=1))
+    waits: list[float] = []
+    result = purge(store, PURGE_AT, now=lambda: PURGE_AT - timedelta(hours=1), sleep=waits.append)
     assert (result.due, result.found, result.deleted) == (False, 4, 0)
-    assert store.names() == before
+    assert store.names() == before and waits == []
+
+
+def test_a_run_that_starts_a_little_early_waits_for_the_purge_time() -> None:
+    store = MemoryStore()
+    pilot_records(store, ENDS_AT - timedelta(days=1))
+    clock = [PURGE_AT - timedelta(seconds=40)]
+    result = purge(store, PURGE_AT, now=lambda: clock[-1], sleep=lambda s: clock.append(PURGE_AT))
+    assert len(clock) == 2 and result.due and store.names() == []
+
+    # Six minutes ahead is too early to wait for, so the run deletes nothing.
+    pilot_records(store, ENDS_AT - timedelta(days=1))
+    waits: list[float] = []
+    ahead = purge(store, PURGE_AT, now=lambda: PURGE_AT - timedelta(minutes=6), sleep=waits.append)
+    assert not ahead.due and waits == [] and len(store.names()) == 4
 
 
 def test_every_record_goes_once_due_and_a_repeat_is_harmless(
@@ -100,6 +116,9 @@ def test_the_job_checks_its_settings_and_its_exit_code_tells_the_scheduler(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     monkeypatch.setattr(purge_module.time, "sleep", lambda seconds: None)
+    root = logging.getLogger()  # as in the job's container: no handlers, level WARNING
+    monkeypatch.setattr(root, "handlers", [])
+    monkeypatch.setattr(root, "level", logging.WARNING)
     folder = tmp_path / "store"
     pilot_records(DirectoryStore(folder), ENDS_AT - timedelta(days=1))
     monkeypatch.setenv("FULLAURA_STORE_URL", f"file://{folder}")
@@ -123,6 +142,10 @@ def test_the_job_checks_its_settings_and_its_exit_code_tells_the_scheduler(
 
     monkeypatch.setenv("FULLAURA_STORE_URL", "memory://")
     assert purge_module.main() == 2  # an in-memory store would delete nothing real
+
+    # Only the job's own logger writes INFO lines; the HTTP client's would name every blob.
+    assert logging.getLogger("backend.app.purge").isEnabledFor(logging.INFO)
+    assert not logging.getLogger("httpx2").isEnabledFor(logging.INFO)
 
 
 def test_blob_listing_follows_every_page_and_reports_errors() -> None:

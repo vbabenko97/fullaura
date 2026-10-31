@@ -299,12 +299,14 @@ export function App() {
     }
   }
 
-  async function setPhotoConsent(consent: boolean) {
+  async function setPhotoConsent(consent: boolean): Promise<boolean> {
     try {
       setSession(parseSession(await postJson("/api/session/photo-consent", { consent })));
+      return true;
     } catch (error) {
       setRequestState("error");
       setRequestMessage(errorMessage(error));
+      return false;
     }
   }
 

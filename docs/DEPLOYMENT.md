@@ -77,7 +77,7 @@ The Free Trial ends about 2026-11-22 18:56 UTC: the subscription was created on 
 
 ## Deleting the pilot records
 
-The template creates the Container Apps job `fullaura-demo-purge` in the same environment when `recordsPurgeAt` is set ([D-49](DECISIONS.md#d-49-a-scheduled-job-deletes-the-pilot-records-and-the-beta-closes-then)). It runs the app's image with `python -m backend.app.purge`, 0.25 vCPU and 0.5 GiB, on the cron schedule `recordsPurgeSchedule`, which Container Apps evaluates in UTC ([Jobs in Azure Container Apps](https://learn.microsoft.com/en-us/azure/container-apps/jobs)). Its system-assigned identity has Storage Blob Data Contributor on the `pilot` container only, through its own role assignment.
+The template creates the Container Apps job `fullaura-demo-purge` in the same environment when `recordsPurgeAt` is set ([D-49](DECISIONS.md#d-49-a-scheduled-job-deletes-the-pilot-records-and-the-beta-closes-then)). It runs the app's image with `python -m backend.app.purge`, 0.25 vCPU and 0.5 GiB, on the cron schedule `recordsPurgeSchedule`, which Container Apps evaluates in UTC ([Jobs in Azure Container Apps](https://learn.microsoft.com/en-us/azure/container-apps/jobs)). Its system-assigned identity has Storage Blob Data Contributor scoped to the `pilot` container, through its own role assignment. That is the narrowest built-in role that can delete blobs; it also allows writing blobs and changing or deleting the container, which the job never does, and it reaches nothing outside the container.
 
 | Setting | Value for this pilot |
 | --- | --- |
@@ -86,7 +86,7 @@ The template creates the Container Apps job `fullaura-demo-purge` in the same en
 | Schedule, `recordsPurgeSchedule` | `0 9 9-15 11 *`: 09:00 UTC every day from 9 to 15 November |
 | Retries | each run retries a store call three times within 7 seconds; the job retries a failed run up to three times within 600 seconds; the next day's run repeats it |
 
-Each run lists the container. Before the purge time it deletes nothing: it deletes a name that cannot exist, which proves the right to delete, logs the number of records and exits 0. From the purge time on it deletes every record, lists the container again and exits 0 only when nothing is left. A repeated run finds nothing and succeeds. A settings error, such as a purge time that is not after the pilot's end, exits 2, and an unreachable store exits 1, so the job retries. The log, in `ContainerAppConsoleLogs_CL`, holds counts only. At the purge time the app closes the beta, so no new record appears after the job runs, and the pilot's end keeps model calls closed although the ledger is gone.
+A run that starts up to five minutes before the purge time waits for it, so a scheduler that fires a few seconds early does not postpone the deletion by a day. Each run lists the container. Before the purge time it deletes nothing: it deletes a name that cannot exist, which proves the right to delete, logs the number of records and exits 0. From the purge time on it deletes every record, lists the container again and exits 0 only when nothing is left. A repeated run finds nothing and succeeds. A settings error, such as a purge time that is not after the pilot's end, exits 2, and an unreachable store exits 1, so the job retries. The log, in `ContainerAppConsoleLogs_CL`, holds counts only. At the purge time the app closes the beta, so no new record appears after the job runs, and the pilot's end keeps model calls closed although the ledger is gone.
 
 The job deletes only blobs in the `pilot` container. It does not touch the container itself, other storage, the logs or any Azure resource. To check the configuration and the job's runs:
 
@@ -96,7 +96,9 @@ az containerapp job show --name fullaura-demo-purge --resource-group rg-fullaura
 az containerapp job execution list --name fullaura-demo-purge --resource-group rg-fullaura-demo --subscription <subscription ID> --output table
 ```
 
-To check access without deleting anything before the purge time, start a run with `az containerapp job start` and read its log line. Moving the pilot's end later needs a later `recordsPurgeAt` and `recordsPurgeSchedule` in the same deployment.
+To check access without deleting anything before the purge time, start a run with `az containerapp job start` and read its log line.
+
+Change the pilot's end only by deploying the template again with a later `pilotEndsAt`, `recordsPurgeAt` and `recordsPurgeSchedule`. The job keeps its own copy of the purge time: changing `FULLAURA_PILOT_ENDS_AT` on the app alone would let the job delete the quotas and the ledger while the pilot still runs, and the empty ledger would reopen the budgets.
 
 ## Deployment procedure
 

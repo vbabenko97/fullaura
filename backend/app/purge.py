@@ -5,10 +5,12 @@ A scheduled Container Apps job runs this with the app's image: python -m backend
 FULLAURA_RECORDS_PURGE_AT, which the settings require to come after FULLAURA_PILOT_ENDS_AT, so it
 cannot remove the quotas or the ledger of a pilot that is still running; the app closes the beta
 at that moment, so no record appears afterwards, and the pilot's end keeps model calls closed
-whatever the ledger holds. A run before that moment only checks that it may list and delete
-records. Each run deletes whatever the store holds and then checks that nothing is left, so a
-repeated run is harmless; one that fails exits non-zero, and the job retries it. The log holds
-counts only, never a record's name or contents.
+whatever the ledger holds. A run that starts up to five minutes early waits for that moment; an
+earlier one only checks that it may list and delete records. Each run deletes whatever the store
+holds and then checks that nothing is left, so a repeated run is harmless; one that fails exits
+non-zero, and the job retries it. The log holds counts only, never a record's name or contents:
+only this module's logger writes INFO lines, so the HTTP client's request log, which names each
+blob, stays off.
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from backend.app.config import Settings
 from backend.app.store import Store, StoreUnavailable, open_store
 
 ATTEMPTS = 4  # per store call, after waits of 1, 2 and 4 seconds
+EARLY_START_S = 300.0  # a run this close to the purge time waits for it; within replicaTimeout
 
 logger = logging.getLogger("backend.app.purge")  # also when run with python -m
 
@@ -56,6 +59,9 @@ def purge(
                 sleep(2.0**number)
         raise AssertionError("unreachable")
 
+    early = (purge_at - now()).total_seconds()
+    if 0 < early <= EARLY_START_S:  # the scheduler started this run a little early
+        sleep(early)
     names = attempt(store.names)
     if now() < purge_at:
         # Deleting a name that cannot exist proves the right to delete without deleting.
@@ -68,7 +74,11 @@ def purge(
 
 
 def main() -> int:
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(name)s: %(message)s")
+    if not logger.handlers:
+        handler = logging.StreamHandler()
+        handler.setFormatter(logging.Formatter("%(levelname)s: %(name)s: %(message)s"))
+        logger.addHandler(handler)
+    logger.setLevel(logging.INFO)
     try:
         settings = Settings.from_env()
         if settings.records_purge_at is None or settings.store_url == "memory://":

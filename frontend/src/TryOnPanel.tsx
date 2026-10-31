@@ -4,6 +4,7 @@ import { ACCEPTED_PHOTO_TYPES, normalizePhoto, PhotoError } from "./photos";
 import type { Session } from "./types";
 
 const META_TERMS = "https://dev.meta.ai/legal/terms-of-service";
+const CLEARED = "Any try-on in progress was stopped, and your photos and result were removed from this page.";
 
 interface TryOnResult {
   url: string;
@@ -17,7 +18,8 @@ interface TryOnPanelProps {
   lookIds: string[];
   lookId: string;
   onSelectLook: (lookId: string) => void;
-  onConsent: (consent: boolean) => Promise<void>;
+  /** Records the consent on the server; false when that failed. */
+  onConsent: (consent: boolean) => Promise<boolean>;
   onRestore: () => Promise<string | null>;
   onFinished: () => void;
 }
@@ -95,10 +97,7 @@ export function TryOnPanel({
     setPhotoError(null);
     setInputsKey((key) => key + 1);
     setState("idle");
-    setMessage(
-      "Consent withdrawn. Any try-on in progress was stopped, and your photos and result were removed from this page. " +
-        "Photos already sent to Meta for a try-on cannot be called back.",
-    );
+    setMessage(CLEARED);
   }
 
   async function changeConsent(consent: boolean) {
@@ -106,7 +105,13 @@ export function TryOnPanel({
     else setMessage(null);
     setConsentBusy(true);
     try {
-      await onConsent(consent);
+      const saved = await onConsent(consent);
+      if (consent) return;
+      setMessage(
+        saved
+          ? `Consent withdrawn. ${CLEARED} Photos already sent to Meta for a try-on cannot be called back.`
+          : `${CLEARED} The withdrawal could not be saved, so select "Withdraw consent" again.`,
+      );
     } finally {
       setConsentBusy(false);
     }
@@ -135,6 +140,7 @@ export function TryOnPanel({
 
   async function generate() {
     if (!portrait || !fullBody || state === "loading") return;
+    const started = epoch.current;
     const abort = new AbortController();
     controller.current = abort;
     setResult(null);
@@ -163,7 +169,9 @@ export function TryOnPanel({
       setMessage(error instanceof ApiResponseError ? errorMessage(error) : error instanceof Error ? error.message : "The try-on failed.");
     } finally {
       if (controller.current === abort) controller.current = null;
-      onFinished();
+      // After a withdrawal, the consent request returns the session; a refresh racing it could
+      // show the withdrawn consent again.
+      if (epoch.current === started) onFinished();
     }
   }
 
