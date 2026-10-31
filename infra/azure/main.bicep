@@ -310,7 +310,9 @@ resource pilotAccess 'Microsoft.Authorization/roleAssignments@2022-04-01' = {
 }
 
 // Deletes the pilot records once recordsPurgeAt has passed (backend/app/purge.py). Its identity
-// may read, write and delete blobs in the pilot container only.
+// gets Storage Blob Data Contributor on the pilot container, the narrowest built-in role that can
+// delete blobs; the role also allows writing blobs and changing or deleting that container, which
+// the job never does.
 resource purgeJob 'Microsoft.App/jobs@2025-07-01' = if (!empty(recordsPurgeAt)) {
   name: purgeJobName
   location: location

@@ -54,8 +54,10 @@ interface Server {
   previewOutcome: "image" | "budget";
   restoreFails: boolean;
   catalogFailures: number;
+  consentFails: boolean;
   /** When set, a try-on answers only once this settles, as a slow provider would. */
   previewGate: Promise<void> | null;
+  previewsAnswered: number;
 }
 
 /** A promise the test settles by hand, for responses that arrive late. */
@@ -96,7 +98,9 @@ function installServer(options: { invited?: boolean; aged?: boolean; plans?: unk
     previewOutcome: "image",
     restoreFails: false,
     catalogFailures: 0,
+    consentFails: false,
     previewGate: null,
+    previewsAnswered: 0,
   };
   const currentToken = () => `token-${server.token}`;
   const success = (plan: unknown) => ({
@@ -127,6 +131,7 @@ function installServer(options: { invited?: boolean; aged?: boolean; plans?: unk
       return json(session);
     }
     if (url === "/api/session/photo-consent") {
+      if (server.consentFails) return json({ detail: "store down", reason: "accounting" }, 503);
       session.photo_consent = object(body).consent;
       return json(session);
     }
@@ -175,6 +180,7 @@ function installServer(options: { invited?: boolean; aged?: boolean; plans?: unk
       if (headers["x-plan-token"] !== currentToken()) return json({ detail: "expired", reason: "plan_expired" }, 409);
       if (server.previewOutcome === "budget") return json({ detail: "budget", reason: "budget" }, 503);
       if (server.previewGate) await server.previewGate;
+      server.previewsAnswered += 1;
       session.preview_requests_used = Number(session.preview_requests_used) + 1;
       return new Response(new TextEncoder().encode("preview"), { status: 200, headers: { "Content-Type": "image/png" } });
     }
@@ -448,8 +454,9 @@ describe(`${FIXTURE_LABEL}: try-on`, () => {
     fireEvent.click(screen.getByRole("button", { name: "Withdraw consent" }));
     const sent = server.requests.find((entry) => entry.url === "/api/previews");
     expect(sent?.signal?.aborted).toBe(true);
-    expect(screen.getByText(/Consent withdrawn/)).toBeTruthy();
+    expect(screen.getByText(/your photos and result were removed from this page/)).toBeTruthy();
     expect((screen.getByLabelText("Portrait photo") as HTMLInputElement).files?.length ?? 0).toBe(0);
+    expect(await screen.findByText(/Consent withdrawn/)).toBeTruthy();
     await screen.findByRole("button", { name: "I agree to this processing of my photos" });
     const consent = server.requests.filter((entry) => entry.url === "/api/session/photo-consent").at(-1);
     expect(object(consent?.body)).toEqual({ consent: false });
@@ -457,9 +464,12 @@ describe(`${FIXTURE_LABEL}: try-on`, () => {
     const sessionReads = () => server.requests.filter((entry) => entry.url === "/api/session").length;
     const before = sessionReads();
     provider.resolve(); // the provider answers after all
-    await waitFor(() => expect(sessionReads()).toBeGreaterThan(before));
+    await waitFor(() => expect(server.previewsAnswered).toBe(1));
+    await act(async () => new Promise((settle) => setTimeout(settle, 50)));
     expect(URL.createObjectURL).not.toHaveBeenCalled();
     expect(screen.queryByRole("img", { name: /Experimental try-on/ })).toBeNull();
+    expect(sessionReads()).toBe(before); // no refresh that could race the withdrawal
+    expect(screen.getByText(/Consent withdrawn/)).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "I agree to this processing of my photos" }));
     await screen.findByText("You agreed to this processing.");
@@ -498,6 +508,16 @@ describe(`${FIXTURE_LABEL}: try-on`, () => {
     await waitFor(() => expect((tryOn as HTMLButtonElement).disabled).toBe(false));
     fireEvent.click(tryOn);
     expect(await screen.findByRole("img", { name: "Experimental try-on of look 1" })).toBeTruthy();
+  });
+
+  it("says so when a withdrawal could not be saved, and still clears the photos", async () => {
+    const server = await prepareTryOn(installServer({ plans: [firstPlan] }));
+    server.consentFails = true;
+    fireEvent.click(screen.getByRole("button", { name: "Withdraw consent" }));
+    expect(await screen.findByText(/The withdrawal could not be saved/)).toBeTruthy();
+    expect(screen.queryByText(/Consent withdrawn/)).toBeNull();
+    expect((screen.getByLabelText("Portrait photo") as HTMLInputElement).files?.length ?? 0).toBe(0);
+    expect(screen.getByText("You agreed to this processing.")).toBeTruthy();
   });
 
   it("withdrawing consent removes a shown try-on and releases its image", async () => {
