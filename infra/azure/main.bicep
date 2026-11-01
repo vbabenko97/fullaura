@@ -327,7 +327,7 @@ resource purgeJob 'Microsoft.App/jobs@2025-07-01' = if (!empty(recordsPurgeAt)) 
     workloadProfileName: 'Consumption'
     configuration: {
       triggerType: 'Schedule'
-      replicaTimeout: 600
+      replicaTimeout: 1800
       replicaRetryLimit: 3
       scheduleTriggerConfig: {
         cronExpression: recordsPurgeSchedule

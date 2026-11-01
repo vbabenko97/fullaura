@@ -71,7 +71,7 @@ docker build -t fullaura:local .
 docker run --rm -p 127.0.0.1:8000:8000 fullaura:local
 ```
 
-Open <http://localhost:8000>. The container serves both the built frontend and API, runs as a non-root user, disables development API docs, and keeps the beta closed. With `FULLAURA_BETA_ENABLED=true` it also needs `FULLAURA_SESSION_SECRET` of 32 or more characters, `FULLAURA_INVITE_HASHES`, a persistent `FULLAURA_STORE_URL`, `FULLAURA_PILOT_ENDS_AT` and a later `FULLAURA_RECORDS_PURGE_AT`, or it refuses to start. The same image deletes the pilot records with `python -m backend.app.purge`, which the deployment runs as a scheduled job ([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#deleting-the-pilot-records)). `GET /api/health` checks the process; `GET /api/ready` also checks that the frontend entry point exists. Neither endpoint verifies a model provider.
+Open <http://localhost:8000>. The container serves both the built frontend and API, runs as a non-root user that cannot change the application files, disables development API docs, and keeps the beta closed. With `FULLAURA_BETA_ENABLED=true` it also needs `FULLAURA_SESSION_SECRET` of 32 or more characters, `FULLAURA_INVITE_HASHES`, a persistent `FULLAURA_STORE_URL`, `FULLAURA_PILOT_ENDS_AT` and a later `FULLAURA_RECORDS_PURGE_AT`, or it refuses to start. The same image deletes the pilot records with `python -m backend.app.purge`, which the deployment runs as a scheduled job ([docs/DEPLOYMENT.md](docs/DEPLOYMENT.md#deleting-the-pilot-records)). `GET /api/health` checks the process; `GET /api/ready` also checks that the frontend entry point exists. Neither endpoint verifies a model provider.
 
 While the container is running, check it from another terminal:
 
