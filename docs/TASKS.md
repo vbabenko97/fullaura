@@ -157,7 +157,7 @@ Done when: the checks in the [README](../README.md#check-a-change) pass, the bro
 
 ## T-18: Form fixes from the author's test
 
-The author used the deployed site on 2026-11-01 and found the form too long and its goal field forced. The goal is now optional, occasion, season and colors sit in a closed section, the button that sends the form stays at the bottom of the screen, and the waist field says how to write a waist and length ([D-72](DECISIONS.md#d-72-a-person-can-leave-the-style-goal-empty-and-the-forms-button-stays-on-screen)).
+The author used the deployed site on 2026-11-01 and found the form too long and its goal field forced. The goal is now optional, occasion, season and colors sit in a closed section, the button that sends the form stays at the bottom of the screen, and the waist field says how to write a waist and length ([D-72](DECISIONS.md#d-72-a-person-can-leave-the-style-goal-empty-and-the-forms-button-stays-on-screen)). A failure on CI also showed that a consent button pressed just after the try-on panel appeared lost the keyboard focus, which is fixed.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check and showing the shorter form.
 
