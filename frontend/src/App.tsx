@@ -160,6 +160,11 @@ export function App() {
   useEffect(() => {
     shownRequestState.current = requestState;
   }, [requestState]);
+  // The plan the page shows now, for a try-on that started with an earlier one.
+  const shownToken = useRef<string | null>(null);
+  useEffect(() => {
+    shownToken.current = current?.token ?? null;
+  }, [current]);
   const [saved, setSaved] = useState<SavedPlan[]>(() => loadSavedPlans());
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [tryOnLook, setTryOnLook] = useState("look_1");
@@ -252,6 +257,14 @@ export function App() {
       }
     }
     return result;
+  }
+
+  /** The new token of the plan a try-on started with, `current` here, once the server has lost it.
+   * While a request runs, or once the page shows another plan, the server's plan may be the newer
+   * one, and restoring would put the old plan back over it. */
+  async function restoreForTryOn(): Promise<string | null> {
+    if (shownRequestState.current === "loading" || shownToken.current !== (current?.token ?? null)) return null;
+    return (await restoreCurrent()).plan?.token ?? null;
   }
 
   /** Load the catalog for an open invite, then bring back this tab's working plan. A failed load
@@ -922,8 +935,9 @@ export function App() {
                             ? tryOnLook
                             : current.plan.looks[0].id,
                           lookIds: current.plan.looks.map((look) => look.id),
-                          onRestore: async () => (await restoreCurrent()).plan?.token ?? null,
+                          onRestore: restoreForTryOn,
                           onSelectLook: setTryOnLook,
+                          planning: loading,
                         }}
                       />
                       <ShoppingList lines={lines} />

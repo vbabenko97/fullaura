@@ -28,6 +28,8 @@ type TryOnTarget =
       lookId: string;
       onSelectLook: (lookId: string) => void;
       onRestore: () => Promise<string | null>;
+      /** A plan request is running, which may replace this plan. */
+      planning: boolean;
     }
   | { kind: "concept"; token: string };
 
@@ -231,6 +233,7 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
   }
 
   const disabled = !session.photo_consent || !session.previews_open || consentBusy || state === "loading";
+  const planning = target.kind === "plan" && target.planning;
 
   return (
     // A printout leaves the device, so it holds the looks and the list, never a try-on.
@@ -327,7 +330,7 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
           ) : (
             <button
               className="secondary-button"
-              disabled={disabled || !portrait || !fullBody || state === "preparing"}
+              disabled={disabled || planning || !portrait || !fullBody || state === "preparing"}
               onClick={() => void generate()}
               ref={actionButton}
               type="button"
@@ -336,6 +339,7 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
             </button>
           )}
           <p className="field-help">
+            {planning && "Try-ons wait until the plan request finishes. "}
             {session.previews_open
               ? `${remaining} of ${session.preview_requests_limit} try-ons left for this invite.`
               : "Try-ons are not available right now. Your plan and shopping list still work."}
