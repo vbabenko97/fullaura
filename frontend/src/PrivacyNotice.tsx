@@ -8,15 +8,25 @@ interface PrivacyNoticeProps {
   recordsPurgeAt: string | null;
   /** Design my look is open for this invite, so the notice says what it sends. */
   designOpen: boolean;
+  /** The shopping agent is open for this invite, so the notice says what it sends. */
+  findOpen: boolean;
 }
 
 /** How the beta handles personal data, in the words a participant needs. */
-export function PrivacyNotice({ recordsPurgeAt, designOpen }: PrivacyNoticeProps) {
+export function PrivacyNotice({ recordsPurgeAt, designOpen, findOpen }: PrivacyNoticeProps) {
   return (
     <footer className="privacy-footer no-print">
       <details>
         <summary>How FullAura handles your data</summary>
         <ul className="gate-facts">
+          {findOpen && (
+            <li>
+              "Find it" sends what you typed, your budget and your clothing line to Meta's Muse Spark model in Standard
+              mode. Your sizes stay on FullAura, which compares them with the shops' pages. FullAura reads those pages
+              itself, so the shops do not learn who asked. It keeps your latest results in memory until a day after you
+              last use FullAura.
+            </li>
+          )}
           <li>
             Planning sends your style goal, colors, occasion, season, budget, sizes, shoe and material choices and
             owned-item descriptions to the Muse Spark model through Baseten's Model APIs. Baseten's{" "}

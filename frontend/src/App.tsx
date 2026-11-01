@@ -34,6 +34,7 @@ import {
 import type { Preferences } from "./plan";
 import { PreferencesForm } from "./PreferencesForm";
 import { PrivacyNotice } from "./PrivacyNotice";
+import { ShopMode } from "./ShopMode";
 import { deleteSavedPlan, keepCurrentPlan, loadCurrentPlan, loadSavedPlans, MAX_SAVED, savedName, savePlan } from "./planStorage";
 import { SavedPlans } from "./SavedPlans";
 import { ShoppingList } from "./ShoppingList";
@@ -170,6 +171,10 @@ export function App() {
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [tryOnLook, setTryOnLook] = useState("look_1");
   const [mode, setMode] = useState<"plan" | "design">("plan");
+  // The shopping agent opens first, unless this tab already has a working plan to come back to. It
+  // stays on the page once seen, so a used-up quota does not take away results already shown.
+  const [catalogMode, setCatalogMode] = useState(() => loadCurrentPlan() !== null);
+  const [findSeen, setFindSeen] = useState(false);
   const [concept, setConcept] = useState<CurrentConcept | null>(null);
   const [designState, setDesignState] = useState<RequestState>("idle");
   const [designMessage, setDesignMessage] = useState<string | null>(null);
@@ -674,6 +679,18 @@ export function App() {
           : !session.planning_open
             ? "Planning is paused because the beta's shared budget is used up, or the model is not configured."
             : null;
+  useEffect(() => {
+    if (session?.find_open) setFindSeen(true);
+  }, [session?.find_open]);
+  const finding = ready && findSeen && !catalogMode;
+  const findClosedText =
+    session && !session.find_open
+      ? session.pilot_ended
+        ? "The beta has ended."
+        : remainingPlans === 0
+          ? "This invite has used all its requests."
+          : "The shopping agent is not available right now."
+      : null;
   const designClosedText =
     closedText ?? (session && !session.design_open ? "Design my look is not available right now." : null);
 
@@ -714,7 +731,37 @@ export function App() {
         </div>
       ) : (
         <div className="workspace">
-          <div className="workspace-heading no-print">
+          {findSeen && (
+            <div className="mode-tabs no-print" role="group" aria-label="How to choose">
+              <button aria-pressed={!catalogMode} className="secondary-button" onClick={() => setCatalogMode(false)} type="button">
+                Find it for me
+              </button>
+              <button aria-pressed={catalogMode} className="secondary-button" onClick={() => setCatalogMode(true)} type="button">
+                Three looks from the catalog
+              </button>
+            </div>
+          )}
+          {findSeen && (
+            <div hidden={!finding}>
+              <ShopMode
+                closedText={findClosedText}
+                onConsent={setPhotoConsent}
+                onFinished={() => void refreshSession()}
+                remaining={remainingPlans}
+                session={session}
+                visible={finding}
+              >
+                {finding && (
+                  <FeedbackForm
+                    feedbackIds={session.feedback_ids}
+                    onChanged={() => void refreshSession()}
+                    recordsPurgeAt={session.records_purge_at}
+                  />
+                )}
+              </ShopMode>
+            </div>
+          )}
+          <div className="workspace-heading no-print" hidden={finding}>
             <div>
               {design ? (
                 <>
@@ -741,7 +788,7 @@ export function App() {
             </p>
           </div>
 
-          <div className="workspace-grid">
+          <div className="workspace-grid" hidden={finding}>
             <section className="preferences-panel no-print" aria-labelledby="preferences-title">
               <div className="panel-heading">
                 <h2 id="preferences-title">Your preferences</h2>
@@ -790,7 +837,7 @@ export function App() {
 
                   {designMessage && (concept || designState !== "error") && (
                     <p
-                      className={`request-message no-print${designState === "error" ? " is-error" : ""}`}
+                      className={`request-message no-print${designState === "error" ? " is-error" : designState === "loading" ? " is-working" : designState === "success" ? " is-success" : ""}`}
                       role={designState === "error" ? "alert" : "status"}
                     >
                       {designMessage}
@@ -823,13 +870,13 @@ export function App() {
                         matchingFailed={concept.matchingFailed}
                         shoppable={concept.shoppable}
                       />
-                      <TryOnPanel
+                      {!finding && <TryOnPanel
                         key="concept-try-on"
                         onConsent={setPhotoConsent}
                         onFinished={() => void refreshSession()}
                         session={session}
                         target={{ kind: "concept", token: concept.token }}
-                      />
+                      />}
                     </>
                   ) : designState === "error" && designMessage ? (
                     <div className="empty-state is-error" role="alert">
@@ -866,7 +913,7 @@ export function App() {
 
                   {requestMessage && (current || requestState !== "error") && (
                     <p
-                      className={`request-message no-print${requestState === "error" ? " is-error" : ""}`}
+                      className={`request-message no-print${requestState === "error" ? " is-error" : requestState === "loading" ? " is-working" : requestState === "success" ? " is-success" : ""}`}
                       role={requestState === "error" ? "alert" : "status"}
                     >
                       {requestMessage}
@@ -923,7 +970,7 @@ export function App() {
                           />
                         ))}
                       </div>
-                      <TryOnPanel
+                      {!finding && <TryOnPanel
                         key="plan-try-on"
                         onConsent={setPhotoConsent}
                         onFinished={() => void refreshSession()}
@@ -939,7 +986,7 @@ export function App() {
                           onSelectLook: setTryOnLook,
                           planning: loading,
                         }}
-                      />
+                      />}
                       <ShoppingList lines={lines} />
                     </>
                   ) : requestState === "error" && requestMessage ? (
@@ -968,16 +1015,18 @@ export function App() {
                   saved={saved}
                 />
               )}
-              <FeedbackForm
-                feedbackIds={session.feedback_ids}
-                onChanged={() => void refreshSession()}
-                recordsPurgeAt={session.records_purge_at}
-              />
+              {!finding && (
+                <FeedbackForm
+                  feedbackIds={session.feedback_ids}
+                  onChanged={() => void refreshSession()}
+                  recordsPurgeAt={session.records_purge_at}
+                />
+              )}
             </section>
           </div>
         </div>
       )}
-      <PrivacyNotice designOpen={session?.design_open ?? false} recordsPurgeAt={session?.records_purge_at ?? null} />
+      <PrivacyNotice designOpen={session?.design_open ?? false} findOpen={session?.find_open ?? false} recordsPurgeAt={session?.records_purge_at ?? null} />
     </main>
   );
 }

@@ -19,7 +19,7 @@ interface TryOnResult {
   lookId: string | null;
 }
 
-/** What a try-on draws: one look of the current plan, or the current Design my look concept. */
+/** What a try-on draws: one look of the current plan, the Design my look concept, or what the agent found. */
 type TryOnTarget =
   | {
       kind: "plan";
@@ -31,7 +31,8 @@ type TryOnTarget =
       /** A plan request is running, which may replace this plan. */
       planning: boolean;
     }
-  | { kind: "concept"; token: string };
+  | { kind: "concept"; token: string }
+  | { kind: "find"; token: string };
 
 interface TryOnPanelProps {
   session: Session;
@@ -88,7 +89,7 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
   }, [result]);
 
   const lookId = target.kind === "plan" ? target.lookId : null;
-  const label = lookId ? lookLabel(lookId) : "the concept";
+  const label = lookId ? lookLabel(lookId) : target.kind === "find" ? "these clothes" : "the concept";
   // A try-on belongs to the plan version and look, or the concept, it was made for; a changed
   // plan or a new concept hides it.
   const shown = result && result.token === target.token && result.lookId === lookId ? result : null;
@@ -167,7 +168,11 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
     form.append("portrait", portrait.blob, "portrait.jpg");
     form.append("full_body", fullBody.blob, "full-body.jpg");
     const subject: Record<string, string> =
-      target.kind === "plan" ? { "X-Plan-Token": token, "X-Look-Id": target.lookId } : { "X-Concept-Token": token };
+      target.kind === "plan"
+        ? { "X-Plan-Token": token, "X-Look-Id": target.lookId }
+        : target.kind === "find"
+          ? { "X-Find-Token": token }
+          : { "X-Concept-Token": token };
     const response = await fetch("/api/previews", {
       method: "POST",
       body: form,

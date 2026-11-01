@@ -103,6 +103,87 @@
   font-size: var(--text-sm);
 }
 
+.mode-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+  margin-bottom: var(--space-lg);
+}
+
+.mode-tabs [aria-pressed="true"] {
+  border-color: var(--color-accent);
+  background: var(--color-accent);
+  color: var(--color-accent-ink);
+}
+
+/* Keep and Replace repeat on every item, so they stay quiet and the main button stands out. */
+.look-item-actions .lock-button:not(.is-locked),
+.look-item-actions .secondary-button {
+  border-color: transparent;
+  color: var(--color-muted);
+  font-weight: 500;
+}
+
+.look-item-actions .lock-button:not(.is-locked):hover:not(:disabled),
+.look-item-actions .secondary-button:hover:not(:disabled) {
+  border-color: var(--color-rule);
+  color: var(--color-ink);
+}
+
+.agent-steps {
+  margin-bottom: var(--space-md);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-inner);
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-sheet);
+  font-size: var(--text-sm);
+}
+
+.agent-working {
+  font-weight: 600;
+}
+
+.agent-steps ol {
+  margin: var(--space-xs) 0 0;
+  padding-left: var(--space-lg);
+  color: var(--color-muted);
+}
+
+.find-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: var(--space-sm);
+  margin: 0 0 var(--space-lg);
+  padding: 0;
+  list-style: none;
+}
+
+.find-card {
+  display: grid;
+  align-content: start;
+  gap: var(--space-2xs);
+  border: 1px solid var(--color-rule);
+  border-radius: var(--radius-card);
+  padding: var(--space-md);
+  background: var(--color-sheet);
+}
+
+.find-card h3 {
+  font-size: var(--text-md);
+}
+
+.find-slot {
+  color: var(--color-muted);
+  font-size: var(--text-xs);
+}
+
+.find-price {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-sm);
+}
+
 /* A column of flex items, because a grid item could stick only inside its own row. */
 .preferences-form {
   display: flex;
@@ -639,14 +720,42 @@
   margin-top: var(--space-2xs);
 }
 
+/* Each kind of message has its own color, so a person can tell what needs them: working is neutral,
+   done is green, something to check is amber, and an error is red. */
 .request-message {
   margin-bottom: var(--space-md);
-  border: 1px solid var(--color-success);
+  border: 1px solid var(--color-rule);
   border-radius: var(--radius-inner);
   padding: var(--space-sm);
-  background: var(--color-paper-2);
+  background: var(--color-sheet);
   color: var(--color-ink);
   font-size: var(--text-sm);
+}
+
+.request-message.is-success {
+  border-color: var(--color-success);
+  background: var(--color-success-soft);
+}
+
+.request-message.is-working::before,
+.primary-button.is-loading::before,
+.spinner {
+  content: "";
+  display: inline-block;
+  width: 1em;
+  height: 1em;
+  margin-right: var(--space-xs);
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  vertical-align: -0.15em;
+  animation: spin 800ms linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .request-message.is-error,
@@ -660,10 +769,10 @@
 
 .plan-unchecked {
   margin-bottom: var(--space-md);
-  border: 1px solid var(--color-rule);
+  border: 1px solid var(--color-attention);
   border-radius: var(--radius-inner);
   padding: var(--space-sm);
-  background: var(--color-paper-2);
+  background: var(--color-attention-soft);
   color: var(--color-ink);
   font-size: var(--text-sm);
 }

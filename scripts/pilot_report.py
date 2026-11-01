@@ -44,6 +44,8 @@ OUTCOME_CATEGORY = {
     "success": "succeeded",  # planning
     "succeeded": "succeeded",  # try-on
     "generation_failed": "failed",
+    "no_match": "failed",  # the shopping agent's choice did not pass, or nothing suited
+    "failed": "failed",
     "provider_timeout": "failed",
     "provider_error": "failed",
     "error": "failed",
