@@ -419,6 +419,8 @@ test("the budget and feedback controls work from the keyboard, and product photo
   });
   await expect(page.getByText("Thank you. Your feedback is saved.")).toBeFocused();
   const remove = feedback.getByRole("button", { name: /^Delete answer/ }).first();
+  // The button comes with the session's next answer, after the message has taken the focus.
+  await expect(remove).toBeEnabled();
   await page.keyboard.press("Tab");
   await expect(remove).toBeFocused();
   await page.keyboard.press("Enter");
