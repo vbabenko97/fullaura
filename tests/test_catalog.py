@@ -71,15 +71,26 @@ def test_only_shoes_with_complete_wool_free_compositions_pass_a_wool_exclusion()
         for variant in product.variants
     ]
     passing = {v.id for v in shoes if not item_violations(v, v.offers[0], {"wool"})}
-    # Giesswein's wool shoes contain wool; GEA's and Tchibo's compositions are partial.
+    # Giesswein's wool shoes contain wool; GEA's, Tchibo's and the Tom Tailor snow boot's
+    # compositions are partial.
     assert passing == {
         "gw-beach-hellgrau-42",
+        "tt-sneaker-elastischer-schaft-blue-41",
         "tt-sneaker-elastischer-schaft-blue-42",
         "tt-sneaker-elastischer-schaft-blue-43",
+        "tt-sneaker-elastischer-schaft-blue-44",
+        "tt-sneaker-erhoehte-sohle-sky-white-37",
         "tt-sneaker-erhoehte-sohle-sky-white-38",
+        "tt-sneaker-lederimitat-khaki-41",
         "tt-sneaker-lederimitat-khaki-42",
         "tt-sneaker-lederimitat-khaki-43",
+        "tt-sneaker-lederimitat-khaki-44",
+        "tt-sneaker-mesh-einsatz-white-36",
+        "tt-sneaker-mesh-einsatz-white-39",
         "tt-sneaker-mesh-einsatz-white-40",
+        "tt-sneaker-plateau-black-39",
+        "tt-sneaker-plateau-pink-36",
+        "tt-sneaker-plateau-pink-37",
         "tt-sneaker-plateau-pink-38",
         "tt-sneaker-plateau-pink-40",
     }

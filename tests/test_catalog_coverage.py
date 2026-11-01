@@ -15,7 +15,7 @@ from dataclasses import dataclass
 
 import pytest
 
-from backend.app.catalog import Catalog, Category, Line, Size, SizeSystem
+from backend.app.catalog import Catalog, Category, GarmentType, Line, Product, Size, SizeSystem
 from backend.app.config import Settings
 from backend.app.constraints import cheapest_usable_offers
 from backend.app.planner import check_complete_plan
@@ -54,8 +54,28 @@ PROFILES = {
         (SizeSystem.WAIST_LENGTH, "34/32"),
         (SizeSystem.EU_SHOE, "43"),
     ),
+    "men-s": _fit(
+        Line.MEN,
+        (SizeSystem.LETTER, "S"),
+        (SizeSystem.WAIST_LENGTH, "30/32"),
+        (SizeSystem.EU_SHOE, "41"),
+    ),
+    "men-xl": _fit(
+        Line.MEN,
+        (SizeSystem.LETTER, "XL"),
+        (SizeSystem.WAIST_LENGTH, "36/32"),
+        (SizeSystem.EU_SHOE, "44"),
+    ),
+    "women-xs": _fit(Line.WOMEN, (SizeSystem.LETTER, "XS"), (SizeSystem.EU_SHOE, "36")),
     "women-s": _fit(Line.WOMEN, (SizeSystem.LETTER, "S"), (SizeSystem.EU_SHOE, "38")),
+    "women-m": _fit(Line.WOMEN, (SizeSystem.LETTER, "M"), (SizeSystem.EU_SHOE, "39")),
     "women-l": _fit(Line.WOMEN, (SizeSystem.LETTER, "L"), (SizeSystem.EU_SHOE, "40")),
+    "women-xl": _fit(Line.WOMEN, (SizeSystem.LETTER, "XL"), (SizeSystem.EU_SHOE, "37")),
+}
+# Every women's shoe on sale in EU 41 has a sole material outside the checked list, so its
+# composition is partial and fails any exclusion (docs/DATA.md#catalog-coverage).
+PROFILES_WITHOUT_AN_EXCLUSION = {
+    "women-m-eu-41": _fit(Line.WOMEN, (SizeSystem.LETTER, "M"), (SizeSystem.EU_SHOE, "41")),
 }
 
 
@@ -78,7 +98,7 @@ def _state(profile: str, scenario: Scenario, plan: Plan | None = None) -> State:
     return State(
         budget=scenario.budget,
         material_exclusions=scenario.exclusions,
-        fit=PROFILES[profile],
+        fit=(PROFILES | PROFILES_WITHOUT_AN_EXCLUSION)[profile],
         footwear=FootwearChoice.CLOSED,
         plan=plan,
     )
@@ -188,6 +208,39 @@ def test_the_catalog_gives_three_looks_with_closed_shoes_and_a_replacement(
     profile: str, scenario: str
 ) -> None:
     _assert_covered(CATALOG, profile, scenario)
+
+
+@pytest.mark.parametrize("profile", PROFILES_WITHOUT_AN_EXCLUSION)
+def test_the_catalog_gives_three_looks_without_an_exclusion(profile: str) -> None:
+    _assert_covered(CATALOG, profile, "casual")
+
+
+def _usable_products(letter: str, category: Category) -> list[Product]:
+    """Women's products in this category that have a usable variant in this letter size."""
+    state = State(
+        budget=Budget(amount_cents=100000),
+        fit=_fit(Line.WOMEN, (SizeSystem.LETTER, letter)),
+    )
+    offers = cheapest_usable_offers(CATALOG, state)
+    return [
+        product
+        for product in CATALOG.products
+        if product.category is category and any(v.id in offers for v in product.variants)
+    ]
+
+
+def test_womens_m_has_tops_of_three_kinds_and_long_bottoms() -> None:
+    titles = [product.title.lower() for product in _usable_products("M", Category.TOP)]
+    for kind in ("t-shirt", "langarm", "bluse"):
+        assert any(kind in title for title in titles), f"No women's M top is a {kind}"
+    garments = {product.garment_type for product in _usable_products("M", Category.BOTTOM)}
+    assert GarmentType.TROUSERS in garments
+
+
+@pytest.mark.parametrize("letter", ["S", "M", "L"])
+def test_womens_sizes_have_knitwear_and_outerwear(letter: str) -> None:
+    assert len(_usable_products(letter, Category.KNITWEAR)) >= 2
+    assert _usable_products(letter, Category.OUTERWEAR)
 
 
 # The women's L cases must hold if this variant sells out: it was once the only women's shoe in
