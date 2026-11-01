@@ -22,9 +22,10 @@ export function PrivacyNotice({ recordsPurgeAt, designOpen, findOpen }: PrivacyN
           {findOpen && (
             <li>
               "Find it" sends what you typed, your budget and your clothing line to Meta's Muse Spark model in Standard
-              mode. Your sizes stay on FullAura, which compares them with the shops' pages. FullAura reads those pages
-              itself, so the shops do not learn who asked. It keeps your latest results in memory until a day after you
-              last use FullAura.
+              mode, which keeps your content out of Meta's model training, though Meta may still retain it under its{" "}
+              <a href={META_TERMS} rel="noreferrer" target="_blank">terms</a>. Your sizes stay on FullAura, which compares
+              them with the shops' pages. FullAura reads those pages itself, so the shops do not learn who asked. It keeps
+              your latest results in memory until a day after you last use FullAura.
             </li>
           )}
           <li>

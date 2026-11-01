@@ -26,6 +26,8 @@ FullAura opens on "Find it for me". Say what you need, choose a whole outfit, th
 
 Every model call first reserves its largest possible cost in a shared ledger, at the providers' list prices checked on 2026-10-30: Muse Spark Open on Baseten at $1.25 per million input tokens and $4.25 per million output tokens ([Baseten pricing](https://www.baseten.co/pricing/)), and Muse Image on Meta at $0.01 per image ([Meta pricing](https://dev.meta.ai/docs/pricing-rate-limits)). A planning request can make four HTTP attempts, each counted at 24,000 input tokens and the 6,000-token output cap, so it reserves about $0.22. A try-on can make three attempts and reserves $0.03. After the call, the ledger records the cost from the tokens the provider reported, plus the full maximum for each attempt that reported nothing; a try-on counts $0.01 for each attempt. A call whose outcome is unknown, such as a timeout or a lost connection, keeps its whole reservation.
 
+A search by the shopping agent reserves about $0.39, every HTTP attempt of every turn at a generous input and the output cap, and live searches cost about $0.01. A search that needed a second HTTP attempt, or whose answer reported no usage, keeps its whole reservation, because an earlier attempt may have been billed.
+
 | Budget | Limit | Covers |
 | --- | ---: | --- |
 | Planning | $8 | Muse Spark calls, including development and live checks after the ledger was created |

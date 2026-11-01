@@ -9,6 +9,9 @@ import httpx2
 import pytest
 
 from backend.app.shopper import (
+    ATTEMPTS_KEY,
+    FIND_RESERVE_MICRO_USD,
+    HTTP_ATTEMPTS,
     Find,
     FindOutcome,
     FindRequest,
@@ -20,7 +23,7 @@ from backend.app.shopper import (
     ShopModelError,
     find_prompt,
 )
-from backend.app.shops import ShopProduct
+from backend.app.shops import ShopProduct, ShopSearch
 
 SHIRT = ShopProduct("https://shop.example/p/hemd", "Shop", "Hemd", 4000, "blau", None, False)
 SWEATER = ShopProduct("https://shop.example/p/pullover", "Shop", "Pullover", 6000, None, None, True)
@@ -33,16 +36,17 @@ class FakeIndex:
     def __init__(self) -> None:
         self.searches: list[list[str]] = []
 
-    def load(self) -> int:
+    def load(self, wait_s: float = 0) -> int:
         return len(ALL)
 
-    def search(self, words: Any, line: Any, sizes: Any, budget_cents: int) -> list[ShopProduct]:
+    def search(self, words: Any, line: Any, sizes: Any, budget_cents: int) -> ShopSearch:
         self.searches.append(list(words))
-        return [
+        found = [
             product
             for word, product in ALL.items()
             if word in words and product.price_cents <= budget_cents
         ]
+        return ShopSearch(found, len(found))
 
 
 def call(*words: str) -> dict[str, Any]:
@@ -262,7 +266,7 @@ def client_answering(*statuses: int) -> tuple[httpx2.Client, list[int]]:
 
 def test_a_passing_failure_is_retried_once() -> None:
     client, calls = client_answering(503, 200)
-    assert MetaResponses("key", client).respond({}) == {"id": "r"}
+    assert MetaResponses("key", client).respond({}) == {"id": "r", ATTEMPTS_KEY: 2}
     assert calls == [503, 200]
 
 
@@ -278,3 +282,135 @@ def test_retries_are_bounded() -> None:
     with pytest.raises(ShopModelError):
         MetaResponses("key", client).respond({})
     assert calls == [500, 500]
+
+
+class DownIndex(FakeIndex):
+    def search(self, words: Any, line: Any, sizes: Any, budget_cents: int) -> ShopSearch:
+        self.searches.append(list(words))
+        return ShopSearch([], 0, 6)
+
+
+class NoListIndex(FakeIndex):
+    def load(self, wait_s: float = 0) -> int:
+        return 0
+
+
+def test_shops_that_cannot_be_read_are_not_called_nothing_on_sale() -> None:
+    model = FakeModel(call("hemd"), answer(why_not="Nothing is on sale."))
+    steps: list[str] = []
+    result = ShopAgent(model, DownIndex())(request(), steps.append)  # type: ignore[arg-type]
+    assert result.outcome is FindOutcome.FAILED
+    assert "could not be read" in str(result.message)
+    assert len(model.payloads) == 1  # no more paid calls
+    assert not any("on sale within your budget" in step for step in steps)
+
+
+def test_no_shop_list_means_no_model_call() -> None:
+    model = FakeModel()
+    agent = ShopAgent(model, NoListIndex())  # type: ignore[arg-type]
+    assert agent.ready() is False
+    result = agent(request(), lambda _: None)
+    assert result.outcome is FindOutcome.FAILED
+    assert model.payloads == []
+
+
+def test_the_request_keeps_the_persons_words_in_any_script() -> None:
+    wanted = FindRequest(
+        request="  Тёплая   куртка\x07 на зиму ", scope=Scope.ITEM, budget_cents=100
+    )
+    assert wanted.request == "Тёплая куртка на зиму"
+    model = FakeModel(answer(why_not="Nothing."))
+    ShopAgent(model, FakeIndex())(wanted, lambda _: None)  # type: ignore[arg-type]
+    assert "Тёплая куртка на зиму" in model.payloads[0]["input"]
+
+
+@pytest.mark.parametrize("text", ["   ", "\x07\x08"])
+def test_a_request_of_nothing_is_refused(text: str) -> None:
+    with pytest.raises(ValueError):
+        FindRequest(request=text, scope=Scope.ITEM, budget_cents=100)
+
+
+@pytest.mark.parametrize(
+    ("product", "slot"),
+    [(TROUSERS, "top"), (SHOES, "outer_layer"), (SHIRT, "top")],
+)
+def test_a_slot_that_contradicts_the_title_is_refused(product: ShopProduct, slot: str) -> None:
+    model = FakeModel(
+        call("hemd", "hose", "sneaker"), answer([item(product, slot)]), answer([item(SHIRT, "top")])
+    )
+    result, _, _ = run(model)
+    assert result.outcome is FindOutcome.SUCCESS
+    if product is not SHIRT:
+        assert "not" in model.payloads[-1]["input"]
+    else:
+        assert len(model.payloads) == 2
+
+
+def test_the_same_product_twice_is_refused() -> None:
+    model = FakeModel(
+        call("hemd"),
+        answer([item(SHIRT, "top"), item(SHIRT, "mid_layer")]),
+        answer([item(SHIRT, "top")]),
+    )
+    wanted = request(Scope.UPPER_BODY)
+    run(model, wanted)
+    assert "chosen twice" in model.payloads[-1]["input"]
+
+
+@pytest.mark.parametrize("arguments", ["[1, 2]", '{"words": 5}', "not json", None])
+def test_malformed_arguments_search_for_nothing(arguments: str | None) -> None:
+    bad = call("hemd")
+    bad["output"][0]["arguments"] = arguments
+    result, _, index = run(FakeModel(bad, answer(why_not="Nothing.")))
+    assert index.searches == [[]]
+    assert result.outcome is FindOutcome.NO_MATCH
+
+
+def test_items_that_are_not_a_list_go_to_repair() -> None:
+    model = FakeModel(call("hemd"), answer(), answer([item(SHIRT, "top")]))
+    model.answers[1] = {
+        **answer(),
+        "output": [
+            {"type": "message", "content": [{"type": "output_text", "text": '{"items": 5}'}]}
+        ],
+    }
+    result, _, _ = run(model)
+    assert "must be a list" in model.payloads[-1]["input"]
+    assert result.outcome is FindOutcome.SUCCESS
+
+
+def test_what_the_model_or_the_person_wrote_stays_out_of_the_log(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    secret = {"url": "Anna, size 38, a dress for her wedding", "slot": "top", "why": ""}
+    caplog.set_level("INFO")
+    run(FakeModel(call("hemd"), answer([secret]), answer([secret])))
+    assert "Anna" not in caplog.text
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        {**answer([item(SHIRT, "top")]), "usage": None},
+        {**answer([item(SHIRT, "top")]), ATTEMPTS_KEY: 2},
+    ],
+)
+def test_a_cost_the_usage_does_not_prove_is_kept_unknown(reply: dict[str, Any]) -> None:
+    result, _, _ = run(FakeModel(call("hemd"), reply))
+    assert result.outcome is FindOutcome.SUCCESS
+    assert result.cost_known is False
+
+
+def test_the_reserve_covers_every_attempt_of_every_turn() -> None:
+    assert FIND_RESERVE_MICRO_USD == round(HTTP_ATTEMPTS * 7 * (12_000 * 1.25 + 3000 * 4.25))
+
+
+def test_the_try_on_of_a_scarf_draws_the_scarf_and_a_dress_keeps_the_shoes() -> None:
+    scarf = ShopProduct("u", "Shop", "Schal", 100, "rot", None, False)
+    prompt = find_prompt([Find(scarf, FindSlot.ACCESSORY, "")])
+    assert 'accessory: described as "rot, Schal"' in prompt
+    dress = ShopProduct("u", "Shop", "Kleid", 100, None, None, False)
+    assert "the clothes they wear" in find_prompt([Find(dress, FindSlot.ONE_PIECE, "")])
+    assert "the clothes they wear" not in find_prompt(
+        [Find(dress, FindSlot.ONE_PIECE, ""), Find(SHOES, FindSlot.FOOTWEAR, "")]
+    )

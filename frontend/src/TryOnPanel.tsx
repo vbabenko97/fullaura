@@ -40,12 +40,14 @@ interface TryOnPanelProps {
   /** Records the consent on the server; why that failed, or null once it is saved. */
   onConsent: (consent: boolean) => Promise<string | null>;
   onFinished: () => void;
+  /** Starts this panel's element ids, for a page that holds more than one panel. */
+  idPrefix?: string;
 }
 
 type Photo = { blob: Blob; name: string } | null;
 type PhotoInput = "portrait" | "full_body";
 
-export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPanelProps) {
+export function TryOnPanel({ session, target, onConsent, onFinished, idPrefix = "tryon" }: TryOnPanelProps) {
   const [portrait, setPortrait] = useState<Photo>(null);
   const [fullBody, setFullBody] = useState<Photo>(null);
   const [photoError, setPhotoError] = useState<string | null>(null);
@@ -247,10 +249,10 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
 
   return (
     // A printout leaves the device, so it holds the looks and the list, never a try-on.
-    <section className="tryon-panel no-print" aria-labelledby="tryon-title">
+    <section className="tryon-panel no-print" aria-labelledby={`${idPrefix}-title`}>
       <div className="panel-heading">
-        <h2 aria-describedby="tryon-description" id="tryon-title" tabIndex={-1}>Try a look on</h2>
-        <p id="tryon-description">
+        <h2 aria-describedby={`${idPrefix}-description`} id={`${idPrefix}-title`} tabIndex={-1}>Try a look on</h2>
+        <p id={`${idPrefix}-description`}>
           An experimental drawing of you in {label}, made from your photos and the look's colors and garment kinds.
         </p>
       </div>
@@ -295,22 +297,22 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
 
       <div className="tryon-form">
         <div className="form-field">
-          <label htmlFor="tryon-portrait">Portrait photo</label>
+          <label htmlFor={`${idPrefix}-portrait`}>Portrait photo</label>
           <input
             accept={ACCEPTED_PHOTO_TYPES.join(",")}
             disabled={disabled}
-            id="tryon-portrait"
+            id={`${idPrefix}-portrait`}
             key={`portrait-${inputsKey}`}
             onChange={(event) => void choosePhoto("portrait", event.currentTarget.files?.[0])}
             type="file"
           />
         </div>
         <div className="form-field">
-          <label htmlFor="tryon-full-body">Full-body photo</label>
+          <label htmlFor={`${idPrefix}-full-body`}>Full-body photo</label>
           <input
             accept={ACCEPTED_PHOTO_TYPES.join(",")}
             disabled={disabled}
-            id="tryon-full-body"
+            id={`${idPrefix}-full-body`}
             key={`full-body-${inputsKey}`}
             onChange={(event) => void choosePhoto("full_body", event.currentTarget.files?.[0])}
             type="file"
@@ -324,7 +326,7 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
                 <input
                   checked={lookId === id}
                   disabled={state === "loading"}
-                  name="tryon-look"
+                  name={`${idPrefix}-look`}
                   onChange={() => target.onSelectLook(id)}
                   type="radio"
                 />

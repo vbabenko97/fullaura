@@ -56,7 +56,7 @@ function fill(budget = "150") {
 function show(session: Session = SESSION, closedText: string | null = null) {
   const onFinished = vi.fn();
   render(
-    <ShopMode closedText={closedText} onConsent={async () => null} onFinished={onFinished} remaining={8} session={session} visible>
+    <ShopMode closedText={closedText} onConsent={async () => null} onFinished={onFinished} remaining={8} session={session}>
       <p>Feedback here</p>
     </ShopMode>,
   );
@@ -138,6 +138,22 @@ describe("the shopping agent's page", () => {
     await screen.findByRole("heading", { name: "Winterjacke" });
     expect(screen.queryByText(/Working\. This usually takes/)).toBeNull();
     expect(screen.queryByText("Looking in the shops for: jacke")).toBeNull();
+  });
+
+  it("keeps the results and their try-on when the server refuses a new search", async () => {
+    const answers = [
+      () => stream({ result: RESULT }),
+      () => new Response(JSON.stringify({ detail: "Busy", reason: "busy" }), { status: 409 }),
+    ];
+    vi.stubGlobal("fetch", async () => (answers.shift() as () => Response)());
+    show();
+    fill();
+    fireEvent.click(screen.getByRole("button", { name: "Find it" }));
+    await screen.findByRole("heading", { name: "Winterjacke" });
+    fireEvent.click(screen.getByRole("button", { name: "Find it" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("still running");
+    expect(screen.getByRole("heading", { name: "Winterjacke" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Try a look on" })).toBeTruthy();
   });
 
   it("says why when nothing suits, and that the request counts", async () => {

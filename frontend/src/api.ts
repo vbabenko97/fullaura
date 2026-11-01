@@ -429,6 +429,7 @@ const REASON_MESSAGES: Record<string, string> = {
   plan_expired: "This plan is no longer current on the server.",
   concept_expired: "This concept was replaced. Try on the current one.",
   find_expired: "A newer search replaced these products. Try on the current ones.",
+  shops_unavailable: "The shops cannot be read right now, so nothing was counted. Try again later.",
   not_configured: "This feature is not configured on the server.",
   closed: "The beta is closed.",
   invalid: "This request is not valid. Check what you entered and try again.",

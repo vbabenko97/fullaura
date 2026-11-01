@@ -64,11 +64,11 @@ export function AccessGate({ session, busy, message, onInvite, onConfirmAge }: A
     <section className="gate-panel no-print" aria-labelledby="gate-title">
       <h1 id="gate-title">Before you start</h1>
       <p>
-        FullAura proposes three outfits from real products that ship to Austria, checks your budget,
-        sizes and materials in code, and can draw an experimental try-on on your own photos.
+        FullAura finds real products that ship to Austria, checks what it can in code, and can draw an
+        experimental try-on on your own photos.
       </p>
       <ul className="gate-facts">
-        <li>Your preferences and owned-item descriptions go to the Muse Spark model on Baseten to plan looks.</li>
+        <li>What you type goes to the Muse Spark model, on Meta's API to find products and on Baseten to plan looks.</li>
         <li>Photos are used only for a try-on you start, after a separate consent.</li>
         <li>Plans you save stay on this device. Feedback is stored without your plan or photos.</li>
       </ul>

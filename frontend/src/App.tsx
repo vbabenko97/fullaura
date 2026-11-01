@@ -680,7 +680,10 @@ export function App() {
             ? "Planning is paused because the beta's shared budget is used up, or the model is not configured."
             : null;
   useEffect(() => {
-    if (session?.find_open) setFindSeen(true);
+    if (!session?.find_open) return;
+    // First seen with work already on the catalog's page, the mode must not take the page away.
+    if (!findSeen && (current || requestState === "loading")) setCatalogMode(true);
+    setFindSeen(true);
   }, [session?.find_open]);
   const finding = ready && findSeen && !catalogMode;
   const findClosedText =
@@ -749,7 +752,6 @@ export function App() {
                 onFinished={() => void refreshSession()}
                 remaining={remainingPlans}
                 session={session}
-                visible={finding}
               >
                 {finding && (
                   <FeedbackForm
@@ -870,13 +872,13 @@ export function App() {
                         matchingFailed={concept.matchingFailed}
                         shoppable={concept.shoppable}
                       />
-                      {!finding && <TryOnPanel
+                      <TryOnPanel
                         key="concept-try-on"
                         onConsent={setPhotoConsent}
                         onFinished={() => void refreshSession()}
                         session={session}
                         target={{ kind: "concept", token: concept.token }}
-                      />}
+                      />
                     </>
                   ) : designState === "error" && designMessage ? (
                     <div className="empty-state is-error" role="alert">
@@ -970,7 +972,7 @@ export function App() {
                           />
                         ))}
                       </div>
-                      {!finding && <TryOnPanel
+                      <TryOnPanel
                         key="plan-try-on"
                         onConsent={setPhotoConsent}
                         onFinished={() => void refreshSession()}
@@ -986,7 +988,7 @@ export function App() {
                           onSelectLook: setTryOnLook,
                           planning: loading,
                         }}
-                      />}
+                      />
                       <ShoppingList lines={lines} />
                     </>
                   ) : requestState === "error" && requestMessage ? (
@@ -1026,7 +1028,7 @@ export function App() {
           </div>
         </div>
       )}
-      <PrivacyNotice designOpen={session?.design_open ?? false} findOpen={session?.find_open ?? false} recordsPurgeAt={session?.records_purge_at ?? null} />
+      <PrivacyNotice designOpen={session?.design_open ?? false} findOpen={findSeen} recordsPurgeAt={session?.records_purge_at ?? null} />
     </main>
   );
 }
