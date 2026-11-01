@@ -17,7 +17,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-13](#t-13-fixes-from-the-test-pass) Fixes from the test pass | done | 2026-11-01 |
 | [T-14](#t-14-fixes-from-the-second-test-pass) Fixes from the second test pass | done | 2026-11-01 |
 | [T-15](#t-15-fixes-before-the-human-test) Fixes before the human test | done | 2026-11-01 |
-| [T-16](#t-16-fixes-from-the-repository-audit) Fixes from the repository audit | next | |
+| [T-16](#t-16-fixes-from-the-repository-audit) Fixes from the repository audit | done | 2026-11-01 |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -137,7 +137,7 @@ An agent audited the whole repository on 2026-11-01, with two more agents review
 
 For operations, `.dockerignore` keeps `.env` files, `tmp/`, logs and private data out of the image at any depth, not only at the root. The store and the pilot report send a storage token only to an `https://<account>.blob.core.windows.net/<container>` URL, the report ignores spaces around invite digests as the app does, also reads two joined digest files, and refuses any other file, and `pilot_invites` never replaces an earlier batch's digests and creates the codes file readable by the operator alone. CI keeps a result for every commit on `main` and keeps a container that stopped at startup until its logs are read. A test covers an invite removed from the configured digests.
 
-The changes were checked with the README's checks and the browser flows on a local server with scripted providers. The container could not be built in the audit's environment, so its HTTP check ran against the app started in production mode instead.
+The changes were checked with the README's checks and the browser flows on a local server with scripted providers. The container could not be built in the audit's environment, so CI ran its first build and HTTP check. The work was deployed on 2026-11-01 as `87fd7a2` and passed the HTTP smoke check on the deployed site, where no plan or try-on ran ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)).
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, including CI's container build and HTTP check, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check.
 
