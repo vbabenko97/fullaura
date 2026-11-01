@@ -48,24 +48,29 @@ Add public demo assets only after completing this register:
 
 | Asset or dataset | Source URL | Permission or license | Allowed image use | Attribution | Retrieved |
 | --- | --- | --- | --- | --- | --- |
-| Product facts for 16 Armedangels variants in `backend/data/catalog.json` | <https://www.armedangels.com/de-at/> | Facts only. The [terms of use](https://www.armedangels.com/at-de/agb), checked on 2026-10-28, have no clause on using site content, and robots.txt allows crawlers on product pages. Clothing lines come from the product pages' department tags, checked on 2026-10-30. | None; no images are used | None required | 2026-10-28; size L variants 2026-10-30 |
+| Product facts for 22 Armedangels variants in `backend/data/catalog.json` | <https://www.armedangels.com/de-at/> | Facts only. The [terms of use](https://www.armedangels.com/at-de/agb), checked on 2026-10-28, have no clause on using site content, and robots.txt allows crawlers on product pages. Clothing lines come from the product pages' department tags, checked on 2026-10-30. The tags of LENOVAA and REHMAA name no department, so their line comes from the product name on the page, "für Damen", checked on 2026-11-01. | None; no images are used | None required | 2026-10-28; size L variants 2026-10-30; sizes S and XL 2026-11-01 |
 | Product facts for 4 Giesswein footwear variants in `backend/data/catalog.json` | <https://www.giesswein.com/> | Facts only. The [terms of use](https://www.giesswein.com/pages/agb) and the [imprint](https://www.giesswein.com/pages/impressum), checked on 2026-10-28, have no clause on using site content, and robots.txt allows crawlers on product pages. Clothing lines come from the product pages' tags, checked on 2026-10-30. | None; no images are used | None required | 2026-10-28 |
 | Product facts for 2 GEA Waldviertler footwear variants in `backend/data/catalog.json` | <https://gea-waldviertler.at/> | Facts only. The [terms for Austria](https://gea-waldviertler.at/bestellung-versand-agb/agb-at/) and the [imprint](https://gea-waldviertler.at/impressum/), checked on 2026-10-30, have no clause on using site content, and robots.txt disallows only URLs with parameters, search, checkout, customer and admin paths. Both product pages say "für Damen und Herren". | None; no images are used | None required | 2026-10-30 |
-| Product facts for 24 Tom Tailor variants in `backend/data/catalog.json`: men's chinos and closed sneakers, women's tops, trousers, leggings and closed sneakers | <https://www.tom-tailor.at/de/> | Facts only. The [terms](https://www.tom-tailor.at/de/agb) and the [imprint](https://www.tom-tailor.at/de/impressum), checked on 2026-10-30 and again on 2026-10-31, have no clause on using site content; robots.txt allows product pages under `/de/p/`. AGB 3.1: "Lieferungen sind nur innerhalb Österreichs möglich." Lines come from the breadcrumb ("Herren", "Damen"); every shoe is under "Schuhe > Sneaker", so it is closed. Compositions come from the page's material data, which names Obermaterial, Innenfutter, Sohle and Innensohle for shoes. | None; no images are used | None required | 2026-10-30; Sneaker mit Mesh-Einsatz 2026-10-31 |
-| Product facts for 2 Tom Tailor sneaker variants sold by Tchibo in `backend/data/catalog.json` | <https://www.tchibo.at/> | Facts only. The [terms](https://www.tchibo.at/c/service-agb), "Stand: Oktober 2026", and the [imprint](https://www.tchibo.at/c/service-impressum), checked on 2026-10-30, have no clause on using site content; robots.txt allows product pages. AGB 1 and 8: "Eine Lieferung erfolgt nur innerhalb Österreichs." The line comes from the women's shoe category. The composition names no parts, so it is partial. | None; no images are used | None required | 2026-10-30 |
+| Product facts for 71 Tom Tailor variants in `backend/data/catalog.json`: men's chinos and closed sneakers, women's tops, a blouse, knitwear, a jacket, trousers, leggings, closed sneakers and boots | <https://www.tom-tailor.at/de/> | Facts only. The [terms](https://www.tom-tailor.at/de/agb) and the [imprint](https://www.tom-tailor.at/de/impressum), checked on 2026-10-30 and again on 2026-10-31, have no clause on using site content; robots.txt allows product pages under `/de/p/`. AGB 3.1: "Lieferungen sind nur innerhalb Österreichs möglich." Lines come from the breadcrumb ("Herren", "Damen"); every shoe is under "Schuhe > Sneaker" or "Schuhe > Boots", so it is closed. Compositions come from the page's material data, which names Obermaterial, Innenfutter, Sohle and Innensohle for shoes. A size counts as on sale when its button on the page is enabled. Many blouses are sold only in sizes 34 to 46, which fit no size system here, so the catalog records a blouse sold in letter sizes. | None; no images are used | None required | 2026-10-30; Sneaker mit Mesh-Einsatz 2026-10-31; added sizes and products 2026-11-01 |
+| Product facts for 5 Tom Tailor sneaker variants sold by Tchibo in `backend/data/catalog.json` | <https://www.tchibo.at/> | Facts only. The [terms](https://www.tchibo.at/c/service-agb), "Stand: Oktober 2026", and the [imprint](https://www.tchibo.at/c/service-impressum), checked on 2026-10-30, have no clause on using site content; robots.txt allows product pages. AGB 1 and 8: "Eine Lieferung erfolgt nur innerhalb Österreichs." The line comes from the women's shoe category. The composition names no parts, so it is partial. | None; no images are used | None required | 2026-10-30; EU 37, 39 and 41 2026-11-01 |
 
 Model output shown in a recording should include enough run metadata to reproduce the process without exposing a person's original photographs or credentials. Label cached examples and fixtures in the UI and demo.
 
 ## Catalog coverage
 
-The closed beta needs the catalog to serve a few typical wearers, so `tests/test_catalog_coverage.py` checks four example profiles in three scenarios. The profiles are examples, not any person's sizes:
+The closed beta needs the catalog to serve a few typical wearers, so `tests/test_catalog_coverage.py` checks nine example profiles in three scenarios. The profiles are examples, not any person's sizes:
 
 | Profile | Line | Sizes |
 | --- | --- | --- |
-| Men's M | men's | M, waist and length 32/32, EU shoe 42 |
+| Men's S | men's | S, waist and length 30/32, EU shoe 41 |
+| Men's M | men's | M, 32/32, EU shoe 42 |
 | Men's L | men's | L, 34/32, EU shoe 43 |
+| Men's XL | men's | XL, 36/32, EU shoe 44 |
+| Women's XS | women's | XS, EU shoe 36 |
 | Women's S | women's | S, EU shoe 38 |
+| Women's M | women's | M, EU shoe 39 |
 | Women's L | women's | L, EU shoe 40 |
+| Women's XL | women's | XL, EU shoe 37 |
 
 | Scenario | Budget | Exclusion |
 | --- | --- | --- |
@@ -73,14 +78,19 @@ The closed beta needs the catalog to serve a few typical wearers, so `tests/test
 | Casual | €150 per look | none |
 | Casual capsule | €300 for the whole plan | wool |
 
-For each of the twelve cases, code must find three different complete looks with closed shoes in every look that pass every hard constraint, from catalog items alone, and at least one position that a different catalog item can fill while the plan still passes. A case that fails is a catalog gap, to be closed with sourced records and never by relaxing a constraint or inventing data. The search combines the 60 cheapest looks of each case.
+For each of the 27 cases, code must find three different complete looks with closed shoes in every look that pass every hard constraint, from catalog items alone, and at least one position that a different catalog item can fill while the plan still passes. A case that fails is a catalog gap, to be closed with sourced records and never by relaxing a constraint or inventing data. The search combines the 60 cheapest looks of each case.
 
-On 2026-10-31 all twelve cases pass, and a script that removed each product in turn, with all its variants, found every case still passing. Women's L under a wool exclusion has two Tom Tailor shoes in EU 40, the platform sneaker and the mesh sneaker, and a test checks that its three cases pass without the platform sneaker in EU 40 ([D-55](DECISIONS.md#d-55-a-second-closed-shoe-in-eu-40-keeps-womens-l-from-depending-on-one-pair)). Known risks:
+Women's M with EU shoe 41 is a 28th case, in the casual scenario only, because no women's shoe in EU 41 can pass a material exclusion. Of the 152 pages in Tom Tailor's sitemap on 2026-11-01 whose addresses name women's shoes, the 40 with EU 41 on sale all have a sole of thermoplastic elastomers or polyvinyl chloride. Neither is on the material list, so those compositions are partial, and the composition of the Tchibo sneaker names no parts.
 
-- Every women's item that serves these cases comes from Tom Tailor, and the men's cases need both Armedangels and Tom Tailor, so losing either store breaks those cases.
+Tests also check that women's M has a T-shirt, a long-sleeved top, a blouse and trousers, and that women's S, M and L each have two knitwear products and one outerwear product.
+
+On 2026-11-01 all 28 cases pass, and a script that removed each product in turn, with all its variants, found every case still passing. Women's L under a wool exclusion has two Tom Tailor shoes in EU 40, the platform sneaker and the mesh sneaker, and a test checks that its three cases pass without the platform sneaker in EU 40 ([D-55](DECISIONS.md#d-55-a-second-closed-shoe-in-eu-40-keeps-womens-l-from-depending-on-one-pair)). Known risks:
+
+- Every case needs Tom Tailor, and the men's cases also need Armedangels, which sells every men's top in the catalog, so losing either store breaks those cases.
 - The men's casual cases fail if any two of their six cheapest products are gone: two Armedangels tops, two Tom Tailor chinos and two Tom Tailor sneakers. The office and capsule cases fail if both of their shoes are gone.
-- Five shoe prices are sale prices, although the cases still pass at the regular prices. A sale size can sell out.
-- Men's looks use the Armedangels tops.
+- Six shoe prices, one pullover's and two Armedangels women's bottoms' are sale prices, although the cases still pass at the regular prices. A sale size can sell out: on 2026-11-01 the page's stock data showed fewer than five pairs of the Sneaker mit elastischem Schaft in EU 41 and 44, the black Sneaker mit Plateau in EU 39 and the Sneaker mit Mesh-Einsatz in EU 36.
+- Men's looks use the Armedangels tops. Only two of them fit a look at €150, so the men's casual looks repeat a top and differ in their chinos or shoes.
+- On 2026-11-01 no plan with closed shoes exists for women's XXL, men's XS and XXL, women's EU 42 and 44 to 46, or men's EU 36 to 40, 45 and 46. Women's EU 43 has only the two GEA shoes, at €175 and €235.
 
 The stores checked and rejected on the way are summarized in [D-47](DECISIONS.md#d-47-tom-tailor-and-tchibo-supply-affordable-basics-and-closed-shoes).
 

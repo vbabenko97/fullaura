@@ -1,5 +1,5 @@
 {
-  "id": "fullaura-catalog-2026-10-31",
+  "id": "fullaura-catalog-2026-11-01",
   "synthetic": false,
   "products": [
     {
@@ -10,6 +10,53 @@
       "line": "men",
       "garment_type": null,
       "variants": [
+        {
+          "id": "ae-maarkos-moonshadow-s",
+          "sku": "30008307000055",
+          "color": "moonshadow",
+          "size": "S",
+          "normalized_size": {
+            "system": "letter",
+            "value": "S"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 50,
+                "part": "main fabric"
+              },
+              {
+                "material": "cotton",
+                "percent": 50,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Hauptmaterial: 50% Baumwolle (bio), 50% Baumwolle (recycelt)"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/maarkos-heavy-weight-t-shirt-moonshadow",
+            "checked_at": "2026-11-01T11:58:49Z"
+          },
+          "offers": [
+            {
+              "id": "ae-maarkos-moonshadow-s-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/maarkos-heavy-weight-t-shirt-moonshadow",
+              "price_cents": 4990,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/maarkos-heavy-weight-t-shirt-moonshadow",
+                "checked_at": "2026-11-01T11:58:49Z"
+              }
+            }
+          ]
+        },
         {
           "id": "ae-maarkos-moonshadow-m",
           "sku": null,
@@ -103,6 +150,53 @@
               }
             }
           ]
+        },
+        {
+          "id": "ae-maarkos-moonshadow-xl",
+          "sku": "30008307000059",
+          "color": "moonshadow",
+          "size": "XL",
+          "normalized_size": {
+            "system": "letter",
+            "value": "XL"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 50,
+                "part": "main fabric"
+              },
+              {
+                "material": "cotton",
+                "percent": 50,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Hauptmaterial: 50% Baumwolle (bio), 50% Baumwolle (recycelt)"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/maarkos-heavy-weight-t-shirt-moonshadow",
+            "checked_at": "2026-11-01T11:58:49Z"
+          },
+          "offers": [
+            {
+              "id": "ae-maarkos-moonshadow-xl-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/maarkos-heavy-weight-t-shirt-moonshadow",
+              "price_cents": 4990,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/maarkos-heavy-weight-t-shirt-moonshadow",
+                "checked_at": "2026-11-01T11:58:49Z"
+              }
+            }
+          ]
         }
       ]
     },
@@ -114,6 +208,48 @@
       "line": "men",
       "garment_type": null,
       "variants": [
+        {
+          "id": "ae-jaames-black-s",
+          "sku": "30008309000005",
+          "color": "black",
+          "size": "S",
+          "normalized_size": {
+            "system": "letter",
+            "value": "S"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 100,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Hauptmaterial: 100% Baumwolle (bio)"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/jaames-langarmhemd-black",
+            "checked_at": "2026-11-01T11:58:50Z"
+          },
+          "offers": [
+            {
+              "id": "ae-jaames-black-s-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/jaames-langarmhemd-black",
+              "price_cents": 3990,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/jaames-langarmhemd-black",
+                "checked_at": "2026-11-01T11:58:50Z"
+              }
+            }
+          ]
+        },
         {
           "id": "ae-jaames-black-m",
           "sku": null,
@@ -197,6 +333,48 @@
               }
             }
           ]
+        },
+        {
+          "id": "ae-jaames-black-xl",
+          "sku": "30008309000007",
+          "color": "black",
+          "size": "XL",
+          "normalized_size": {
+            "system": "letter",
+            "value": "XL"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 100,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Hauptmaterial: 100% Baumwolle (bio)"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/jaames-langarmhemd-black",
+            "checked_at": "2026-11-01T11:58:50Z"
+          },
+          "offers": [
+            {
+              "id": "ae-jaames-black-xl-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/jaames-langarmhemd-black",
+              "price_cents": 3990,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/jaames-langarmhemd-black",
+                "checked_at": "2026-11-01T11:58:50Z"
+              }
+            }
+          ]
         }
       ]
     },
@@ -208,6 +386,48 @@
       "line": "men",
       "garment_type": null,
       "variants": [
+        {
+          "id": "ae-loukaa-dark-earth-s",
+          "sku": "30007473000059",
+          "color": "dark earth",
+          "size": "S",
+          "normalized_size": {
+            "system": "letter",
+            "value": "S"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 100,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Hauptmaterial: 100% Baumwolle (bio)"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/loukaa-knit-sweater-dark-earth",
+            "checked_at": "2026-11-01T11:58:51Z"
+          },
+          "offers": [
+            {
+              "id": "ae-loukaa-dark-earth-s-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/loukaa-knit-sweater-dark-earth",
+              "price_cents": 7990,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/loukaa-knit-sweater-dark-earth",
+                "checked_at": "2026-11-01T11:58:51Z"
+              }
+            }
+          ]
+        },
         {
           "id": "ae-loukaa-dark-earth-m",
           "sku": null,
@@ -288,6 +508,48 @@
               "source": {
                 "url": "https://www.armedangels.com/de-at/products/loukaa-knit-sweater-dark-earth",
                 "checked_at": "2026-10-30T09:55:00Z"
+              }
+            }
+          ]
+        },
+        {
+          "id": "ae-loukaa-dark-earth-xl",
+          "sku": "30007473000062",
+          "color": "dark earth",
+          "size": "XL",
+          "normalized_size": {
+            "system": "letter",
+            "value": "XL"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 100,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Hauptmaterial: 100% Baumwolle (bio)"
+          },
+          "source": {
+            "url": "https://www.armedangels.com/de-at/products/loukaa-knit-sweater-dark-earth",
+            "checked_at": "2026-11-01T11:58:51Z"
+          },
+          "offers": [
+            {
+              "id": "ae-loukaa-dark-earth-xl-offer",
+              "retailer": "Armedangels",
+              "url": "https://www.armedangels.com/de-at/products/loukaa-knit-sweater-dark-earth",
+              "price_cents": 7990,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.armedangels.com/de-at/products/loukaa-knit-sweater-dark-earth",
+                "checked_at": "2026-11-01T11:58:51Z"
               }
             }
           ]
@@ -678,7 +940,7 @@
       "title": "LENOVAA SATIN-ROCK",
       "brand": "Armedangels",
       "category": "bottom",
-      "line": null,
+      "line": "women",
       "garment_type": "skirt",
       "variants": [
         {
@@ -708,7 +970,7 @@
           },
           "source": {
             "url": "https://www.armedangels.com/de-at/products/lenovaa-satin-rock-dark-steel",
-            "checked_at": "2026-10-28T11:45:21Z"
+            "checked_at": "2026-11-01T11:58:52Z"
           },
           "offers": [
             {
@@ -723,7 +985,7 @@
               "stock": "in_stock",
               "source": {
                 "url": "https://www.armedangels.com/de-at/products/lenovaa-satin-rock-dark-steel",
-                "checked_at": "2026-10-28T11:45:21Z"
+                "checked_at": "2026-11-01T11:58:52Z"
               }
             }
           ]
@@ -735,7 +997,7 @@
       "title": "REHMAA LEGGINGS",
       "brand": "Armedangels",
       "category": "bottom",
-      "line": null,
+      "line": "women",
       "garment_type": "leggings",
       "variants": [
         {
@@ -765,7 +1027,7 @@
           },
           "source": {
             "url": "https://www.armedangels.com/de-at/products/rehmaa-leggings-velvet-red",
-            "checked_at": "2026-10-28T11:45:21Z"
+            "checked_at": "2026-11-01T11:58:53Z"
           },
           "offers": [
             {
@@ -780,7 +1042,7 @@
               "stock": "in_stock",
               "source": {
                 "url": "https://www.armedangels.com/de-at/products/rehmaa-leggings-velvet-red",
-                "checked_at": "2026-10-28T11:45:21Z"
+                "checked_at": "2026-11-01T11:58:53Z"
               }
             }
           ]
@@ -1291,6 +1553,53 @@
       "garment_type": "trousers",
       "variants": [
         {
+          "id": "tt-travis-slim-chino-black-30-32",
+          "sku": null,
+          "color": "black",
+          "size": "30/32",
+          "normalized_size": {
+            "system": "waist_length",
+            "value": "30/32"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 98,
+                "part": "main fabric"
+              },
+              {
+                "material": "elastane",
+                "percent": 2,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 98% Baumwolle, 2% Elasthan"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/tttravis-slim-chino-hose-maenner-1050738_29999",
+            "checked_at": "2026-11-01T11:58:48Z"
+          },
+          "offers": [
+            {
+              "id": "tt-travis-slim-chino-black-30-32-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/tttravis-slim-chino-hose-maenner-1050738_29999",
+              "price_cents": 3999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/tttravis-slim-chino-hose-maenner-1050738_29999",
+                "checked_at": "2026-11-01T11:58:48Z"
+              }
+            }
+          ]
+        },
+        {
           "id": "tt-travis-slim-chino-black-32-32",
           "sku": null,
           "color": "black",
@@ -1383,6 +1692,53 @@
               }
             }
           ]
+        },
+        {
+          "id": "tt-travis-slim-chino-black-36-32",
+          "sku": null,
+          "color": "black",
+          "size": "36/32",
+          "normalized_size": {
+            "system": "waist_length",
+            "value": "36/32"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 98,
+                "part": "main fabric"
+              },
+              {
+                "material": "elastane",
+                "percent": 2,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 98% Baumwolle, 2% Elasthan"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/tttravis-slim-chino-hose-maenner-1050738_29999",
+            "checked_at": "2026-11-01T11:58:48Z"
+          },
+          "offers": [
+            {
+              "id": "tt-travis-slim-chino-black-36-32-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/tttravis-slim-chino-hose-maenner-1050738_29999",
+              "price_cents": 3999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/tttravis-slim-chino-hose-maenner-1050738_29999",
+                "checked_at": "2026-11-01T11:58:48Z"
+              }
+            }
+          ]
         }
       ]
     },
@@ -1394,6 +1750,53 @@
       "line": "men",
       "garment_type": "trousers",
       "variants": [
+        {
+          "id": "tt-relaxed-chino-sky-captain-blue-30-32",
+          "sku": null,
+          "color": "sky captain blue",
+          "size": "30/32",
+          "normalized_size": {
+            "system": "waist_length",
+            "value": "30/32"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 97,
+                "part": "main fabric"
+              },
+              {
+                "material": "elastane",
+                "percent": 3,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 97% Baumwolle, 3% Elasthan"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/relaxed-chino-hose-maenner-1054195_10668",
+            "checked_at": "2026-11-01T11:58:48Z"
+          },
+          "offers": [
+            {
+              "id": "tt-relaxed-chino-sky-captain-blue-30-32-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/relaxed-chino-hose-maenner-1054195_10668",
+              "price_cents": 4999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/relaxed-chino-hose-maenner-1054195_10668",
+                "checked_at": "2026-11-01T11:58:48Z"
+              }
+            }
+          ]
+        },
         {
           "id": "tt-relaxed-chino-sky-captain-blue-32-32",
           "sku": null,
@@ -1487,6 +1890,53 @@
               }
             }
           ]
+        },
+        {
+          "id": "tt-relaxed-chino-sky-captain-blue-36-32",
+          "sku": null,
+          "color": "sky captain blue",
+          "size": "36/32",
+          "normalized_size": {
+            "system": "waist_length",
+            "value": "36/32"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 97,
+                "part": "main fabric"
+              },
+              {
+                "material": "elastane",
+                "percent": 3,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 97% Baumwolle, 3% Elasthan"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/relaxed-chino-hose-maenner-1054195_10668",
+            "checked_at": "2026-11-01T11:58:48Z"
+          },
+          "offers": [
+            {
+              "id": "tt-relaxed-chino-sky-captain-blue-36-32-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/relaxed-chino-hose-maenner-1054195_10668",
+              "price_cents": 4999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/relaxed-chino-hose-maenner-1054195_10668",
+                "checked_at": "2026-11-01T11:58:48Z"
+              }
+            }
+          ]
         }
       ]
     },
@@ -1499,6 +1949,68 @@
       "garment_type": null,
       "footwear_closure": "closed",
       "variants": [
+        {
+          "id": "tt-sneaker-elastischer-schaft-blue-41",
+          "sku": null,
+          "color": "blue",
+          "size": "41",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "41"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 10,
+                "part": "upper"
+              },
+              {
+                "material": "polyurethane",
+                "percent": 90,
+                "part": "upper"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "lining"
+              },
+              {
+                "material": "ethylene-vinyl acetate",
+                "percent": 100,
+                "part": "sole"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "insole"
+              }
+            ],
+            "source_text": "Obermaterial: 10% Polyester, 90% Polyurethan / Innenfutter: 100% Polyester / Sohle: 100% Ethylenvinylacetat / Innensohle: 100% Polyester"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/sneaker-mit-elastischem-schaft-maenner-2680050005_O558",
+            "checked_at": "2026-11-01T11:58:47Z"
+          },
+          "offers": [
+            {
+              "id": "tt-sneaker-elastischer-schaft-blue-41-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/sneaker-mit-elastischem-schaft-maenner-2680050005_O558",
+              "price_cents": 4499,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/sneaker-mit-elastischem-schaft-maenner-2680050005_O558",
+                "checked_at": "2026-11-01T11:58:47Z"
+              }
+            }
+          ]
+        },
         {
           "id": "tt-sneaker-elastischer-schaft-blue-42",
           "sku": null,
@@ -1622,6 +2134,68 @@
               }
             }
           ]
+        },
+        {
+          "id": "tt-sneaker-elastischer-schaft-blue-44",
+          "sku": null,
+          "color": "blue",
+          "size": "44",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "44"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 10,
+                "part": "upper"
+              },
+              {
+                "material": "polyurethane",
+                "percent": 90,
+                "part": "upper"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "lining"
+              },
+              {
+                "material": "ethylene-vinyl acetate",
+                "percent": 100,
+                "part": "sole"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "insole"
+              }
+            ],
+            "source_text": "Obermaterial: 10% Polyester, 90% Polyurethan / Innenfutter: 100% Polyester / Sohle: 100% Ethylenvinylacetat / Innensohle: 100% Polyester"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/sneaker-mit-elastischem-schaft-maenner-2680050005_O558",
+            "checked_at": "2026-11-01T11:58:47Z"
+          },
+          "offers": [
+            {
+              "id": "tt-sneaker-elastischer-schaft-blue-44-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/sneaker-mit-elastischem-schaft-maenner-2680050005_O558",
+              "price_cents": 4499,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/sneaker-mit-elastischem-schaft-maenner-2680050005_O558",
+                "checked_at": "2026-11-01T11:58:47Z"
+              }
+            }
+          ]
         }
       ]
     },
@@ -1634,6 +2208,63 @@
       "garment_type": null,
       "footwear_closure": "closed",
       "variants": [
+        {
+          "id": "tt-sneaker-lederimitat-khaki-41",
+          "sku": null,
+          "color": "khaki",
+          "size": "41",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "41"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyurethane",
+                "percent": 100,
+                "part": "upper"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "lining"
+              },
+              {
+                "material": "ethylene-vinyl acetate",
+                "percent": 100,
+                "part": "sole"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "insole"
+              }
+            ],
+            "source_text": "Obermaterial: 100% Polyurethan / Innenfutter: 100% Polyester / Sohle: 100% Ethylenvinylacetat / Innensohle: 100% Polyester"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/sneaker-aus-lederimitat-maenner-5380990008_O550",
+            "checked_at": "2026-11-01T11:58:47Z"
+          },
+          "offers": [
+            {
+              "id": "tt-sneaker-lederimitat-khaki-41-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/sneaker-aus-lederimitat-maenner-5380990008_O550",
+              "price_cents": 4999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/sneaker-aus-lederimitat-maenner-5380990008_O550",
+                "checked_at": "2026-11-01T11:58:47Z"
+              }
+            }
+          ]
+        },
         {
           "id": "tt-sneaker-lederimitat-khaki-42",
           "sku": null,
@@ -1747,6 +2378,63 @@
               }
             }
           ]
+        },
+        {
+          "id": "tt-sneaker-lederimitat-khaki-44",
+          "sku": null,
+          "color": "khaki",
+          "size": "44",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "44"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyurethane",
+                "percent": 100,
+                "part": "upper"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "lining"
+              },
+              {
+                "material": "ethylene-vinyl acetate",
+                "percent": 100,
+                "part": "sole"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "insole"
+              }
+            ],
+            "source_text": "Obermaterial: 100% Polyurethan / Innenfutter: 100% Polyester / Sohle: 100% Ethylenvinylacetat / Innensohle: 100% Polyester"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/sneaker-aus-lederimitat-maenner-5380990008_O550",
+            "checked_at": "2026-11-01T11:58:47Z"
+          },
+          "offers": [
+            {
+              "id": "tt-sneaker-lederimitat-khaki-44-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/sneaker-aus-lederimitat-maenner-5380990008_O550",
+              "price_cents": 4999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/sneaker-aus-lederimitat-maenner-5380990008_O550",
+                "checked_at": "2026-11-01T11:58:47Z"
+              }
+            }
+          ]
         }
       ]
     },
@@ -1806,6 +2494,53 @@
           ]
         },
         {
+          "id": "tt-basic-t-shirt-deep-black-m",
+          "sku": null,
+          "color": "deep black",
+          "size": "M",
+          "normalized_size": {
+            "system": "letter",
+            "value": "M"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 95,
+                "part": "main fabric"
+              },
+              {
+                "material": "elastane",
+                "percent": 5,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 95% Baumwolle, 5% Elasthan"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/basic-t-shirt-mit-rundhalsausschnitt-frauen-1051232_14482",
+            "checked_at": "2026-11-01T11:58:45Z"
+          },
+          "offers": [
+            {
+              "id": "tt-basic-t-shirt-deep-black-m-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/basic-t-shirt-mit-rundhalsausschnitt-frauen-1051232_14482",
+              "price_cents": 1999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/basic-t-shirt-mit-rundhalsausschnitt-frauen-1051232_14482",
+                "checked_at": "2026-11-01T11:58:45Z"
+              }
+            }
+          ]
+        },
+        {
           "id": "tt-basic-t-shirt-deep-black-l",
           "sku": null,
           "color": "deep black",
@@ -1851,6 +2586,53 @@
               }
             }
           ]
+        },
+        {
+          "id": "tt-basic-t-shirt-deep-black-xl",
+          "sku": null,
+          "color": "deep black",
+          "size": "XL",
+          "normalized_size": {
+            "system": "letter",
+            "value": "XL"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 95,
+                "part": "main fabric"
+              },
+              {
+                "material": "elastane",
+                "percent": 5,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 95% Baumwolle, 5% Elasthan"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/basic-t-shirt-mit-rundhalsausschnitt-frauen-1051232_14482",
+            "checked_at": "2026-11-01T11:58:45Z"
+          },
+          "offers": [
+            {
+              "id": "tt-basic-t-shirt-deep-black-xl-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/basic-t-shirt-mit-rundhalsausschnitt-frauen-1051232_14482",
+              "price_cents": 1999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/basic-t-shirt-mit-rundhalsausschnitt-frauen-1051232_14482",
+                "checked_at": "2026-11-01T11:58:45Z"
+              }
+            }
+          ]
         }
       ]
     },
@@ -1862,6 +2644,48 @@
       "line": "women",
       "garment_type": null,
       "variants": [
+        {
+          "id": "tt-basic-langarmshirt-preppy-plum-xs",
+          "sku": null,
+          "color": "preppy plum",
+          "size": "XS",
+          "normalized_size": {
+            "system": "letter",
+            "value": "XS"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 100,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 100% Baumwolle (Bio)"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/basic-langarmshirt-aus-baumwolle-frauen-1053466_10342",
+            "checked_at": "2026-11-01T11:58:45Z"
+          },
+          "offers": [
+            {
+              "id": "tt-basic-langarmshirt-preppy-plum-xs-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/basic-langarmshirt-aus-baumwolle-frauen-1053466_10342",
+              "price_cents": 2599,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/basic-langarmshirt-aus-baumwolle-frauen-1053466_10342",
+                "checked_at": "2026-11-01T11:58:45Z"
+              }
+            }
+          ]
+        },
         {
           "id": "tt-basic-langarmshirt-preppy-plum-s",
           "sku": null,
@@ -1905,6 +2729,48 @@
           ]
         },
         {
+          "id": "tt-basic-langarmshirt-preppy-plum-m",
+          "sku": null,
+          "color": "preppy plum",
+          "size": "M",
+          "normalized_size": {
+            "system": "letter",
+            "value": "M"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 100,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 100% Baumwolle (Bio)"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/basic-langarmshirt-aus-baumwolle-frauen-1053466_10342",
+            "checked_at": "2026-11-01T11:58:45Z"
+          },
+          "offers": [
+            {
+              "id": "tt-basic-langarmshirt-preppy-plum-m-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/basic-langarmshirt-aus-baumwolle-frauen-1053466_10342",
+              "price_cents": 2599,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/basic-langarmshirt-aus-baumwolle-frauen-1053466_10342",
+                "checked_at": "2026-11-01T11:58:45Z"
+              }
+            }
+          ]
+        },
+        {
           "id": "tt-basic-langarmshirt-preppy-plum-l",
           "sku": null,
           "color": "preppy plum",
@@ -1942,6 +2808,48 @@
               "source": {
                 "url": "https://www.tom-tailor.at/de/p/basic-langarmshirt-aus-baumwolle-frauen-1053466_10342",
                 "checked_at": "2026-10-30T20:34:00Z"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tt-basic-langarmshirt-preppy-plum-xl",
+          "sku": null,
+          "color": "preppy plum",
+          "size": "XL",
+          "normalized_size": {
+            "system": "letter",
+            "value": "XL"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 100,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 100% Baumwolle (Bio)"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/basic-langarmshirt-aus-baumwolle-frauen-1053466_10342",
+            "checked_at": "2026-11-01T11:58:45Z"
+          },
+          "offers": [
+            {
+              "id": "tt-basic-langarmshirt-preppy-plum-xl-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/basic-langarmshirt-aus-baumwolle-frauen-1053466_10342",
+              "price_cents": 2599,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/basic-langarmshirt-aus-baumwolle-frauen-1053466_10342",
+                "checked_at": "2026-11-01T11:58:45Z"
               }
             }
           ]
@@ -2004,6 +2912,53 @@
           ]
         },
         {
+          "id": "tt-basic-t-shirt-baumwolle-white-m",
+          "sku": null,
+          "color": "white",
+          "size": "M",
+          "normalized_size": {
+            "system": "letter",
+            "value": "M"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 50,
+                "part": "main fabric"
+              },
+              {
+                "material": "cotton",
+                "percent": 50,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 50% Baumwolle, 50% Baumwolle (Bio)"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/basic-t-shirt-aus-baumwolle-frauen-1050424_20000",
+            "checked_at": "2026-11-01T11:58:46Z"
+          },
+          "offers": [
+            {
+              "id": "tt-basic-t-shirt-baumwolle-white-m-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/basic-t-shirt-aus-baumwolle-frauen-1050424_20000",
+              "price_cents": 1999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/basic-t-shirt-aus-baumwolle-frauen-1050424_20000",
+                "checked_at": "2026-11-01T11:58:46Z"
+              }
+            }
+          ]
+        },
+        {
           "id": "tt-basic-t-shirt-baumwolle-white-l",
           "sku": null,
           "color": "white",
@@ -2049,6 +3004,53 @@
               }
             }
           ]
+        },
+        {
+          "id": "tt-basic-t-shirt-baumwolle-white-xl",
+          "sku": null,
+          "color": "white",
+          "size": "XL",
+          "normalized_size": {
+            "system": "letter",
+            "value": "XL"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 50,
+                "part": "main fabric"
+              },
+              {
+                "material": "cotton",
+                "percent": 50,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 50% Baumwolle, 50% Baumwolle (Bio)"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/basic-t-shirt-aus-baumwolle-frauen-1050424_20000",
+            "checked_at": "2026-11-01T11:58:46Z"
+          },
+          "offers": [
+            {
+              "id": "tt-basic-t-shirt-baumwolle-white-xl-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/basic-t-shirt-aus-baumwolle-frauen-1050424_20000",
+              "price_cents": 1999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/basic-t-shirt-aus-baumwolle-frauen-1050424_20000",
+                "checked_at": "2026-11-01T11:58:46Z"
+              }
+            }
+          ]
         }
       ]
     },
@@ -2060,6 +3062,53 @@
       "line": "women",
       "garment_type": "trousers",
       "variants": [
+        {
+          "id": "tt-wide-leg-sporthose-cool-dark-brown-xs",
+          "sku": null,
+          "color": "cool dark brown",
+          "size": "XS",
+          "normalized_size": {
+            "system": "letter",
+            "value": "XS"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "elastane",
+                "percent": 25,
+                "part": "main fabric"
+              },
+              {
+                "material": "polyamide",
+                "percent": 75,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 25% Elasthan, 75% Polyamid"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/wide-leg-sporthose-frauen-1053013_40514",
+            "checked_at": "2026-11-01T11:58:46Z"
+          },
+          "offers": [
+            {
+              "id": "tt-wide-leg-sporthose-cool-dark-brown-xs-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/wide-leg-sporthose-frauen-1053013_40514",
+              "price_cents": 4999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/wide-leg-sporthose-frauen-1053013_40514",
+                "checked_at": "2026-11-01T11:58:46Z"
+              }
+            }
+          ]
+        },
         {
           "id": "tt-wide-leg-sporthose-cool-dark-brown-s",
           "sku": null,
@@ -2103,6 +3152,53 @@
               "source": {
                 "url": "https://www.tom-tailor.at/de/p/wide-leg-sporthose-frauen-1053013_40514",
                 "checked_at": "2026-10-30T20:40:33Z"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tt-wide-leg-sporthose-cool-dark-brown-m",
+          "sku": null,
+          "color": "cool dark brown",
+          "size": "M",
+          "normalized_size": {
+            "system": "letter",
+            "value": "M"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "elastane",
+                "percent": 25,
+                "part": "main fabric"
+              },
+              {
+                "material": "polyamide",
+                "percent": 75,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 25% Elasthan, 75% Polyamid"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/wide-leg-sporthose-frauen-1053013_40514",
+            "checked_at": "2026-11-01T11:58:46Z"
+          },
+          "offers": [
+            {
+              "id": "tt-wide-leg-sporthose-cool-dark-brown-m-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/wide-leg-sporthose-frauen-1053013_40514",
+              "price_cents": 4999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/wide-leg-sporthose-frauen-1053013_40514",
+                "checked_at": "2026-11-01T11:58:46Z"
               }
             }
           ]
@@ -2153,6 +3249,53 @@
               }
             }
           ]
+        },
+        {
+          "id": "tt-wide-leg-sporthose-cool-dark-brown-xl",
+          "sku": null,
+          "color": "cool dark brown",
+          "size": "XL",
+          "normalized_size": {
+            "system": "letter",
+            "value": "XL"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "elastane",
+                "percent": 25,
+                "part": "main fabric"
+              },
+              {
+                "material": "polyamide",
+                "percent": 75,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 25% Elasthan, 75% Polyamid"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/wide-leg-sporthose-frauen-1053013_40514",
+            "checked_at": "2026-11-01T11:58:46Z"
+          },
+          "offers": [
+            {
+              "id": "tt-wide-leg-sporthose-cool-dark-brown-xl-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/wide-leg-sporthose-frauen-1053013_40514",
+              "price_cents": 4999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/wide-leg-sporthose-frauen-1053013_40514",
+                "checked_at": "2026-11-01T11:58:46Z"
+              }
+            }
+          ]
         }
       ]
     },
@@ -2164,6 +3307,58 @@
       "line": "women",
       "garment_type": "trousers",
       "variants": [
+        {
+          "id": "tt-relaxed-fit-hose-deep-black-xs",
+          "sku": null,
+          "color": "deep black",
+          "size": "XS",
+          "normalized_size": {
+            "system": "letter",
+            "value": "XS"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 74,
+                "part": "main fabric"
+              },
+              {
+                "material": "elastane",
+                "percent": 4,
+                "part": "main fabric"
+              },
+              {
+                "material": "viscose",
+                "percent": 22,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 74% Polyester, 4% Elasthan, 22% Viskose"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/relaxed-fit-hose-mit-elastischem-bund-frauen-1021175_14482",
+            "checked_at": "2026-11-01T11:58:46Z"
+          },
+          "offers": [
+            {
+              "id": "tt-relaxed-fit-hose-deep-black-xs-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/relaxed-fit-hose-mit-elastischem-bund-frauen-1021175_14482",
+              "price_cents": 3999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/relaxed-fit-hose-mit-elastischem-bund-frauen-1021175_14482",
+                "checked_at": "2026-11-01T11:58:46Z"
+              }
+            }
+          ]
+        },
         {
           "id": "tt-relaxed-fit-hose-deep-black-s",
           "sku": null,
@@ -2212,6 +3407,58 @@
               "source": {
                 "url": "https://www.tom-tailor.at/de/p/relaxed-fit-hose-mit-elastischem-bund-frauen-1021175_14482",
                 "checked_at": "2026-10-30T20:34:00Z"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tt-relaxed-fit-hose-deep-black-m",
+          "sku": null,
+          "color": "deep black",
+          "size": "M",
+          "normalized_size": {
+            "system": "letter",
+            "value": "M"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 74,
+                "part": "main fabric"
+              },
+              {
+                "material": "elastane",
+                "percent": 4,
+                "part": "main fabric"
+              },
+              {
+                "material": "viscose",
+                "percent": 22,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 74% Polyester, 4% Elasthan, 22% Viskose"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/relaxed-fit-hose-mit-elastischem-bund-frauen-1021175_14482",
+            "checked_at": "2026-11-01T11:58:46Z"
+          },
+          "offers": [
+            {
+              "id": "tt-relaxed-fit-hose-deep-black-m-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/relaxed-fit-hose-mit-elastischem-bund-frauen-1021175_14482",
+              "price_cents": 3999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/relaxed-fit-hose-mit-elastischem-bund-frauen-1021175_14482",
+                "checked_at": "2026-11-01T11:58:46Z"
               }
             }
           ]
@@ -2267,6 +3514,58 @@
               }
             }
           ]
+        },
+        {
+          "id": "tt-relaxed-fit-hose-deep-black-xl",
+          "sku": null,
+          "color": "deep black",
+          "size": "XL",
+          "normalized_size": {
+            "system": "letter",
+            "value": "XL"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 74,
+                "part": "main fabric"
+              },
+              {
+                "material": "elastane",
+                "percent": 4,
+                "part": "main fabric"
+              },
+              {
+                "material": "viscose",
+                "percent": 22,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 74% Polyester, 4% Elasthan, 22% Viskose"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/relaxed-fit-hose-mit-elastischem-bund-frauen-1021175_14482",
+            "checked_at": "2026-11-01T11:58:46Z"
+          },
+          "offers": [
+            {
+              "id": "tt-relaxed-fit-hose-deep-black-xl-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/relaxed-fit-hose-mit-elastischem-bund-frauen-1021175_14482",
+              "price_cents": 3999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/relaxed-fit-hose-mit-elastischem-bund-frauen-1021175_14482",
+                "checked_at": "2026-11-01T11:58:46Z"
+              }
+            }
+          ]
         }
       ]
     },
@@ -2278,6 +3577,53 @@
       "line": "women",
       "garment_type": "leggings",
       "variants": [
+        {
+          "id": "tt-leggings-lederoptik-deep-black-xs",
+          "sku": null,
+          "color": "deep black",
+          "size": "XS",
+          "normalized_size": {
+            "system": "letter",
+            "value": "XS"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 88,
+                "part": "main fabric"
+              },
+              {
+                "material": "elastane",
+                "percent": 12,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 88% Polyester, 12% Elasthan"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/leggings-in-lederoptik-frauen-1027557_14482",
+            "checked_at": "2026-11-01T11:58:46Z"
+          },
+          "offers": [
+            {
+              "id": "tt-leggings-lederoptik-deep-black-xs-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/leggings-in-lederoptik-frauen-1027557_14482",
+              "price_cents": 3999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/leggings-in-lederoptik-frauen-1027557_14482",
+                "checked_at": "2026-11-01T11:58:46Z"
+              }
+            }
+          ]
+        },
         {
           "id": "tt-leggings-lederoptik-deep-black-s",
           "sku": null,
@@ -2321,6 +3667,53 @@
               "source": {
                 "url": "https://www.tom-tailor.at/de/p/leggings-in-lederoptik-frauen-1027557_14482",
                 "checked_at": "2026-10-30T20:34:00Z"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tt-leggings-lederoptik-deep-black-m",
+          "sku": null,
+          "color": "deep black",
+          "size": "M",
+          "normalized_size": {
+            "system": "letter",
+            "value": "M"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 88,
+                "part": "main fabric"
+              },
+              {
+                "material": "elastane",
+                "percent": 12,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 88% Polyester, 12% Elasthan"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/leggings-in-lederoptik-frauen-1027557_14482",
+            "checked_at": "2026-11-01T11:58:46Z"
+          },
+          "offers": [
+            {
+              "id": "tt-leggings-lederoptik-deep-black-m-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/leggings-in-lederoptik-frauen-1027557_14482",
+              "price_cents": 3999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/leggings-in-lederoptik-frauen-1027557_14482",
+                "checked_at": "2026-11-01T11:58:46Z"
               }
             }
           ]
@@ -2371,6 +3764,53 @@
               }
             }
           ]
+        },
+        {
+          "id": "tt-leggings-lederoptik-deep-black-xl",
+          "sku": null,
+          "color": "deep black",
+          "size": "XL",
+          "normalized_size": {
+            "system": "letter",
+            "value": "XL"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 88,
+                "part": "main fabric"
+              },
+              {
+                "material": "elastane",
+                "percent": 12,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 88% Polyester, 12% Elasthan"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/leggings-in-lederoptik-frauen-1027557_14482",
+            "checked_at": "2026-11-01T11:58:46Z"
+          },
+          "offers": [
+            {
+              "id": "tt-leggings-lederoptik-deep-black-xl-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/leggings-in-lederoptik-frauen-1027557_14482",
+              "price_cents": 3999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/leggings-in-lederoptik-frauen-1027557_14482",
+                "checked_at": "2026-11-01T11:58:46Z"
+              }
+            }
+          ]
         }
       ]
     },
@@ -2383,6 +3823,130 @@
       "garment_type": null,
       "footwear_closure": "closed",
       "variants": [
+        {
+          "id": "tt-sneaker-plateau-pink-36",
+          "sku": null,
+          "color": "pink",
+          "size": "36",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "36"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "upper"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "lining"
+              },
+              {
+                "material": "polyurethane",
+                "percent": 100,
+                "part": "sole"
+              },
+              {
+                "material": "ethylene-vinyl acetate",
+                "percent": 50,
+                "part": "insole"
+              },
+              {
+                "material": "polyester",
+                "percent": 50,
+                "part": "insole"
+              }
+            ],
+            "source_text": "Obermaterial: 100% Polyester / Innenfutter: 100% Polyester / Sohle: 100% Polyurethan / Innensohle: 50% Ethylenvinylacetat, 50% Polyester"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/sneaker-mit-plateau-frauen-9590400003_O544",
+            "checked_at": "2026-11-01T11:58:47Z"
+          },
+          "offers": [
+            {
+              "id": "tt-sneaker-plateau-pink-36-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/sneaker-mit-plateau-frauen-9590400003_O544",
+              "price_cents": 4299,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/sneaker-mit-plateau-frauen-9590400003_O544",
+                "checked_at": "2026-11-01T11:58:47Z"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tt-sneaker-plateau-pink-37",
+          "sku": null,
+          "color": "pink",
+          "size": "37",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "37"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "upper"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "lining"
+              },
+              {
+                "material": "polyurethane",
+                "percent": 100,
+                "part": "sole"
+              },
+              {
+                "material": "ethylene-vinyl acetate",
+                "percent": 50,
+                "part": "insole"
+              },
+              {
+                "material": "polyester",
+                "percent": 50,
+                "part": "insole"
+              }
+            ],
+            "source_text": "Obermaterial: 100% Polyester / Innenfutter: 100% Polyester / Sohle: 100% Polyurethan / Innensohle: 50% Ethylenvinylacetat, 50% Polyester"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/sneaker-mit-plateau-frauen-9590400003_O544",
+            "checked_at": "2026-11-01T11:58:47Z"
+          },
+          "offers": [
+            {
+              "id": "tt-sneaker-plateau-pink-37-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/sneaker-mit-plateau-frauen-9590400003_O544",
+              "price_cents": 4299,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/sneaker-mit-plateau-frauen-9590400003_O544",
+                "checked_at": "2026-11-01T11:58:47Z"
+              }
+            }
+          ]
+        },
         {
           "id": "tt-sneaker-plateau-pink-38",
           "sku": null,
@@ -2519,6 +4083,68 @@
       "footwear_closure": "closed",
       "variants": [
         {
+          "id": "tt-sneaker-erhoehte-sohle-sky-white-37",
+          "sku": null,
+          "color": "sky-white",
+          "size": "37",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "37"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 40,
+                "part": "upper"
+              },
+              {
+                "material": "polyurethane",
+                "percent": 60,
+                "part": "upper"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "lining"
+              },
+              {
+                "material": "rubber",
+                "percent": 100,
+                "part": "sole"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "insole"
+              }
+            ],
+            "source_text": "Obermaterial: 40% Polyester, 60% Polyurethan / Innenfutter: 100% Polyester / Sohle: 100% Rubber (Gummi) / Innensohle: 100% Polyester"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/sneaker-mit-erhoehter-sohle-frauen-5397304_O1147",
+            "checked_at": "2026-11-01T11:58:47Z"
+          },
+          "offers": [
+            {
+              "id": "tt-sneaker-erhoehte-sohle-sky-white-37-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/sneaker-mit-erhoehter-sohle-frauen-5397304_O1147",
+              "price_cents": 3899,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/sneaker-mit-erhoehter-sohle-frauen-5397304_O1147",
+                "checked_at": "2026-11-01T11:58:47Z"
+              }
+            }
+          ]
+        },
+        {
           "id": "tt-sneaker-erhoehte-sohle-sky-white-38",
           "sku": null,
           "color": "sky-white",
@@ -2592,6 +4218,140 @@
       "footwear_closure": "closed",
       "variants": [
         {
+          "id": "tt-sneaker-mesh-einsatz-white-36",
+          "sku": null,
+          "color": "white",
+          "size": "36",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "36"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 80,
+                "part": "upper"
+              },
+              {
+                "material": "polyurethane",
+                "percent": 20,
+                "part": "upper"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "lining"
+              },
+              {
+                "material": "polyurethane",
+                "percent": 95,
+                "part": "sole"
+              },
+              {
+                "material": "polyurethane",
+                "percent": 5,
+                "part": "sole"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "insole"
+              }
+            ],
+            "source_text": "Obermaterial: 80% Polyester, 20% Polyurethan / Innenfutter: 100% Polyester / Sohle: 95% Polyurethan, 5% Polyurethan / Innensohle: 100% Polyester"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/sneaker-mit-mesh-einsatz-frauen-2690170001_O500",
+            "checked_at": "2026-11-01T11:58:47Z"
+          },
+          "offers": [
+            {
+              "id": "tt-sneaker-mesh-einsatz-white-36-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/sneaker-mit-mesh-einsatz-frauen-2690170001_O500",
+              "price_cents": 4499,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/sneaker-mit-mesh-einsatz-frauen-2690170001_O500",
+                "checked_at": "2026-11-01T11:58:47Z"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tt-sneaker-mesh-einsatz-white-39",
+          "sku": null,
+          "color": "white",
+          "size": "39",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "39"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 80,
+                "part": "upper"
+              },
+              {
+                "material": "polyurethane",
+                "percent": 20,
+                "part": "upper"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "lining"
+              },
+              {
+                "material": "polyurethane",
+                "percent": 95,
+                "part": "sole"
+              },
+              {
+                "material": "polyurethane",
+                "percent": 5,
+                "part": "sole"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "insole"
+              }
+            ],
+            "source_text": "Obermaterial: 80% Polyester, 20% Polyurethan / Innenfutter: 100% Polyester / Sohle: 95% Polyurethan, 5% Polyurethan / Innensohle: 100% Polyester"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/sneaker-mit-mesh-einsatz-frauen-2690170001_O500",
+            "checked_at": "2026-11-01T11:58:47Z"
+          },
+          "offers": [
+            {
+              "id": "tt-sneaker-mesh-einsatz-white-39-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/sneaker-mit-mesh-einsatz-frauen-2690170001_O500",
+              "price_cents": 4499,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/sneaker-mit-mesh-einsatz-frauen-2690170001_O500",
+                "checked_at": "2026-11-01T11:58:47Z"
+              }
+            }
+          ]
+        },
+        {
           "id": "tt-sneaker-mesh-einsatz-white-40",
           "sku": null,
           "color": "white",
@@ -2661,6 +4421,974 @@
       ]
     },
     {
+      "id": "tt-hemdbluse-gepunktet-white-s-product",
+      "title": "Hemdbluse mit gepunkteter Struktur",
+      "brand": "Tom Tailor",
+      "category": "top",
+      "line": "women",
+      "garment_type": null,
+      "variants": [
+        {
+          "id": "tt-hemdbluse-gepunktet-white-xs",
+          "sku": null,
+          "color": "white",
+          "size": "XS",
+          "normalized_size": {
+            "system": "letter",
+            "value": "XS"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 100,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 100% Baumwolle"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/hemdbluse-mit-gepunkteter-struktur-frauen-1043137_20000",
+            "checked_at": "2026-11-01T11:58:48Z"
+          },
+          "offers": [
+            {
+              "id": "tt-hemdbluse-gepunktet-white-xs-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/hemdbluse-mit-gepunkteter-struktur-frauen-1043137_20000",
+              "price_cents": 4999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/hemdbluse-mit-gepunkteter-struktur-frauen-1043137_20000",
+                "checked_at": "2026-11-01T11:58:48Z"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tt-hemdbluse-gepunktet-white-s",
+          "sku": null,
+          "color": "white",
+          "size": "S",
+          "normalized_size": {
+            "system": "letter",
+            "value": "S"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 100,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 100% Baumwolle"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/hemdbluse-mit-gepunkteter-struktur-frauen-1043137_20000",
+            "checked_at": "2026-11-01T11:58:48Z"
+          },
+          "offers": [
+            {
+              "id": "tt-hemdbluse-gepunktet-white-s-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/hemdbluse-mit-gepunkteter-struktur-frauen-1043137_20000",
+              "price_cents": 4999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/hemdbluse-mit-gepunkteter-struktur-frauen-1043137_20000",
+                "checked_at": "2026-11-01T11:58:48Z"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tt-hemdbluse-gepunktet-white-m",
+          "sku": null,
+          "color": "white",
+          "size": "M",
+          "normalized_size": {
+            "system": "letter",
+            "value": "M"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 100,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 100% Baumwolle"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/hemdbluse-mit-gepunkteter-struktur-frauen-1043137_20000",
+            "checked_at": "2026-11-01T11:58:48Z"
+          },
+          "offers": [
+            {
+              "id": "tt-hemdbluse-gepunktet-white-m-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/hemdbluse-mit-gepunkteter-struktur-frauen-1043137_20000",
+              "price_cents": 4999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/hemdbluse-mit-gepunkteter-struktur-frauen-1043137_20000",
+                "checked_at": "2026-11-01T11:58:48Z"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tt-hemdbluse-gepunktet-white-l",
+          "sku": null,
+          "color": "white",
+          "size": "L",
+          "normalized_size": {
+            "system": "letter",
+            "value": "L"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 100,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 100% Baumwolle"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/hemdbluse-mit-gepunkteter-struktur-frauen-1043137_20000",
+            "checked_at": "2026-11-01T11:58:48Z"
+          },
+          "offers": [
+            {
+              "id": "tt-hemdbluse-gepunktet-white-l-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/hemdbluse-mit-gepunkteter-struktur-frauen-1043137_20000",
+              "price_cents": 4999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/hemdbluse-mit-gepunkteter-struktur-frauen-1043137_20000",
+                "checked_at": "2026-11-01T11:58:48Z"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tt-hemdbluse-gepunktet-white-xl",
+          "sku": null,
+          "color": "white",
+          "size": "XL",
+          "normalized_size": {
+            "system": "letter",
+            "value": "XL"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 100,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Obermaterial: 100% Baumwolle"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/hemdbluse-mit-gepunkteter-struktur-frauen-1043137_20000",
+            "checked_at": "2026-11-01T11:58:48Z"
+          },
+          "offers": [
+            {
+              "id": "tt-hemdbluse-gepunktet-white-xl-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/hemdbluse-mit-gepunkteter-struktur-frauen-1043137_20000",
+              "price_cents": 4999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/hemdbluse-mit-gepunkteter-struktur-frauen-1043137_20000",
+                "checked_at": "2026-11-01T11:58:48Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tt-strickpullover-v-blue-haze-s-product",
+      "title": "Strickpullover mit V-Ausschnitt",
+      "brand": "Tom Tailor",
+      "category": "knitwear",
+      "line": "women",
+      "garment_type": null,
+      "variants": [
+        {
+          "id": "tt-strickpullover-v-blue-haze-xs",
+          "sku": null,
+          "color": "blue haze",
+          "size": "XS",
+          "normalized_size": {
+            "system": "letter",
+            "value": "XS"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 60,
+                "part": "main fabric"
+              },
+              {
+                "material": "viscose",
+                "percent": 40,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Basisgarn: 60% Baumwolle, 40% Viskose"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-v-ausschnitt-frauen-1012976_38784",
+            "checked_at": "2026-11-01T11:58:48Z"
+          },
+          "offers": [
+            {
+              "id": "tt-strickpullover-v-blue-haze-xs-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-v-ausschnitt-frauen-1012976_38784",
+              "price_cents": 2299,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-v-ausschnitt-frauen-1012976_38784",
+                "checked_at": "2026-11-01T11:58:48Z"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tt-strickpullover-v-blue-haze-s",
+          "sku": null,
+          "color": "blue haze",
+          "size": "S",
+          "normalized_size": {
+            "system": "letter",
+            "value": "S"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 60,
+                "part": "main fabric"
+              },
+              {
+                "material": "viscose",
+                "percent": 40,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Basisgarn: 60% Baumwolle, 40% Viskose"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-v-ausschnitt-frauen-1012976_38784",
+            "checked_at": "2026-11-01T11:58:48Z"
+          },
+          "offers": [
+            {
+              "id": "tt-strickpullover-v-blue-haze-s-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-v-ausschnitt-frauen-1012976_38784",
+              "price_cents": 2299,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-v-ausschnitt-frauen-1012976_38784",
+                "checked_at": "2026-11-01T11:58:48Z"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tt-strickpullover-v-blue-haze-m",
+          "sku": null,
+          "color": "blue haze",
+          "size": "M",
+          "normalized_size": {
+            "system": "letter",
+            "value": "M"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 60,
+                "part": "main fabric"
+              },
+              {
+                "material": "viscose",
+                "percent": 40,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Basisgarn: 60% Baumwolle, 40% Viskose"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-v-ausschnitt-frauen-1012976_38784",
+            "checked_at": "2026-11-01T11:58:48Z"
+          },
+          "offers": [
+            {
+              "id": "tt-strickpullover-v-blue-haze-m-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-v-ausschnitt-frauen-1012976_38784",
+              "price_cents": 2299,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-v-ausschnitt-frauen-1012976_38784",
+                "checked_at": "2026-11-01T11:58:48Z"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tt-strickpullover-v-blue-haze-l",
+          "sku": null,
+          "color": "blue haze",
+          "size": "L",
+          "normalized_size": {
+            "system": "letter",
+            "value": "L"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 60,
+                "part": "main fabric"
+              },
+              {
+                "material": "viscose",
+                "percent": 40,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Basisgarn: 60% Baumwolle, 40% Viskose"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-v-ausschnitt-frauen-1012976_38784",
+            "checked_at": "2026-11-01T11:58:48Z"
+          },
+          "offers": [
+            {
+              "id": "tt-strickpullover-v-blue-haze-l-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-v-ausschnitt-frauen-1012976_38784",
+              "price_cents": 2299,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-v-ausschnitt-frauen-1012976_38784",
+                "checked_at": "2026-11-01T11:58:48Z"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tt-strickpullover-v-blue-haze-xl",
+          "sku": null,
+          "color": "blue haze",
+          "size": "XL",
+          "normalized_size": {
+            "system": "letter",
+            "value": "XL"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "cotton",
+                "percent": 60,
+                "part": "main fabric"
+              },
+              {
+                "material": "viscose",
+                "percent": 40,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Basisgarn: 60% Baumwolle, 40% Viskose"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-v-ausschnitt-frauen-1012976_38784",
+            "checked_at": "2026-11-01T11:58:48Z"
+          },
+          "offers": [
+            {
+              "id": "tt-strickpullover-v-blue-haze-xl-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-v-ausschnitt-frauen-1012976_38784",
+              "price_cents": 2299,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-v-ausschnitt-frauen-1012976_38784",
+                "checked_at": "2026-11-01T11:58:48Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tt-strickpullover-wolle-beige-melange-s-product",
+      "title": "Strickpullover mit Wollanteil",
+      "brand": "Tom Tailor",
+      "category": "knitwear",
+      "line": "women",
+      "garment_type": null,
+      "variants": [
+        {
+          "id": "tt-strickpullover-wolle-beige-melange-s",
+          "sku": null,
+          "color": "atmosphere beige melange",
+          "size": "S",
+          "normalized_size": {
+            "system": "letter",
+            "value": "S"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "acrylic",
+                "percent": 25,
+                "part": "main fabric"
+              },
+              {
+                "material": "elastane",
+                "percent": 4,
+                "part": "main fabric"
+              },
+              {
+                "material": "polyester",
+                "percent": 56,
+                "part": "main fabric"
+              },
+              {
+                "material": "wool",
+                "percent": 15,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Basisgarn: 25% Polyacryl, 4% Elasthan, 56% Polyester (recycelt), 15% Wolle (RWS-zertifiziert)"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-wollanteil-frauen-1052011_41087",
+            "checked_at": "2026-11-01T11:58:48Z"
+          },
+          "offers": [
+            {
+              "id": "tt-strickpullover-wolle-beige-melange-s-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-wollanteil-frauen-1052011_41087",
+              "price_cents": 4999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-wollanteil-frauen-1052011_41087",
+                "checked_at": "2026-11-01T11:58:48Z"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tt-strickpullover-wolle-beige-melange-m",
+          "sku": null,
+          "color": "atmosphere beige melange",
+          "size": "M",
+          "normalized_size": {
+            "system": "letter",
+            "value": "M"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "acrylic",
+                "percent": 25,
+                "part": "main fabric"
+              },
+              {
+                "material": "elastane",
+                "percent": 4,
+                "part": "main fabric"
+              },
+              {
+                "material": "polyester",
+                "percent": 56,
+                "part": "main fabric"
+              },
+              {
+                "material": "wool",
+                "percent": 15,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Basisgarn: 25% Polyacryl, 4% Elasthan, 56% Polyester (recycelt), 15% Wolle (RWS-zertifiziert)"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-wollanteil-frauen-1052011_41087",
+            "checked_at": "2026-11-01T11:58:48Z"
+          },
+          "offers": [
+            {
+              "id": "tt-strickpullover-wolle-beige-melange-m-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-wollanteil-frauen-1052011_41087",
+              "price_cents": 4999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-wollanteil-frauen-1052011_41087",
+                "checked_at": "2026-11-01T11:58:48Z"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tt-strickpullover-wolle-beige-melange-l",
+          "sku": null,
+          "color": "atmosphere beige melange",
+          "size": "L",
+          "normalized_size": {
+            "system": "letter",
+            "value": "L"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "acrylic",
+                "percent": 25,
+                "part": "main fabric"
+              },
+              {
+                "material": "elastane",
+                "percent": 4,
+                "part": "main fabric"
+              },
+              {
+                "material": "polyester",
+                "percent": 56,
+                "part": "main fabric"
+              },
+              {
+                "material": "wool",
+                "percent": 15,
+                "part": "main fabric"
+              }
+            ],
+            "source_text": "Basisgarn: 25% Polyacryl, 4% Elasthan, 56% Polyester (recycelt), 15% Wolle (RWS-zertifiziert)"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-wollanteil-frauen-1052011_41087",
+            "checked_at": "2026-11-01T11:58:48Z"
+          },
+          "offers": [
+            {
+              "id": "tt-strickpullover-wolle-beige-melange-l-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-wollanteil-frauen-1052011_41087",
+              "price_cents": 4999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/strickpullover-mit-wollanteil-frauen-1052011_41087",
+                "checked_at": "2026-11-01T11:58:48Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tt-puffer-jacke-deep-black-s-product",
+      "title": "Puffer-Jacke aus wasserabweisendem Material",
+      "brand": "Tom Tailor",
+      "category": "outerwear",
+      "line": "women",
+      "garment_type": null,
+      "variants": [
+        {
+          "id": "tt-puffer-jacke-deep-black-s",
+          "sku": null,
+          "color": "deep black",
+          "size": "S",
+          "normalized_size": {
+            "system": "letter",
+            "value": "S"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "main fabric"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "lining"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "hood lining"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "filling"
+              }
+            ],
+            "source_text": "Obermaterial: 100% Polyester / Futter: 100% Polyester / Kapuzenfutter: 100% Polyester / Füllung: 100% Polyester (recycelt, REPREVE®)"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/puffer-jacke-aus-wasserabweisendem-material-frauen-1051153_14482",
+            "checked_at": "2026-11-01T11:58:49Z"
+          },
+          "offers": [
+            {
+              "id": "tt-puffer-jacke-deep-black-s-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/puffer-jacke-aus-wasserabweisendem-material-frauen-1051153_14482",
+              "price_cents": 9999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/puffer-jacke-aus-wasserabweisendem-material-frauen-1051153_14482",
+                "checked_at": "2026-11-01T11:58:49Z"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tt-puffer-jacke-deep-black-m",
+          "sku": null,
+          "color": "deep black",
+          "size": "M",
+          "normalized_size": {
+            "system": "letter",
+            "value": "M"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "main fabric"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "lining"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "hood lining"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "filling"
+              }
+            ],
+            "source_text": "Obermaterial: 100% Polyester / Futter: 100% Polyester / Kapuzenfutter: 100% Polyester / Füllung: 100% Polyester (recycelt, REPREVE®)"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/puffer-jacke-aus-wasserabweisendem-material-frauen-1051153_14482",
+            "checked_at": "2026-11-01T11:58:49Z"
+          },
+          "offers": [
+            {
+              "id": "tt-puffer-jacke-deep-black-m-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/puffer-jacke-aus-wasserabweisendem-material-frauen-1051153_14482",
+              "price_cents": 9999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/puffer-jacke-aus-wasserabweisendem-material-frauen-1051153_14482",
+                "checked_at": "2026-11-01T11:58:49Z"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tt-puffer-jacke-deep-black-l",
+          "sku": null,
+          "color": "deep black",
+          "size": "L",
+          "normalized_size": {
+            "system": "letter",
+            "value": "L"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "main fabric"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "lining"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "hood lining"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "filling"
+              }
+            ],
+            "source_text": "Obermaterial: 100% Polyester / Futter: 100% Polyester / Kapuzenfutter: 100% Polyester / Füllung: 100% Polyester (recycelt, REPREVE®)"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/puffer-jacke-aus-wasserabweisendem-material-frauen-1051153_14482",
+            "checked_at": "2026-11-01T11:58:49Z"
+          },
+          "offers": [
+            {
+              "id": "tt-puffer-jacke-deep-black-l-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/puffer-jacke-aus-wasserabweisendem-material-frauen-1051153_14482",
+              "price_cents": 9999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/puffer-jacke-aus-wasserabweisendem-material-frauen-1051153_14482",
+                "checked_at": "2026-11-01T11:58:49Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tt-sneaker-plateau-black-39-product",
+      "title": "Sneaker mit Plateau",
+      "brand": "Tom Tailor",
+      "category": "footwear",
+      "line": "women",
+      "garment_type": null,
+      "footwear_closure": "closed",
+      "variants": [
+        {
+          "id": "tt-sneaker-plateau-black-39",
+          "sku": null,
+          "color": "black",
+          "size": "39",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "39"
+          },
+          "composition": {
+            "status": "complete",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "upper"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "lining"
+              },
+              {
+                "material": "polyurethane",
+                "percent": 100,
+                "part": "sole"
+              },
+              {
+                "material": "ethylene-vinyl acetate",
+                "percent": 50,
+                "part": "insole"
+              },
+              {
+                "material": "polyester",
+                "percent": 50,
+                "part": "insole"
+              }
+            ],
+            "source_text": "Obermaterial: 100% Polyester / Innenfutter: 100% Polyester / Sohle: 100% Polyurethan / Innensohle: 50% Ethylenvinylacetat, 50% Polyester"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/sneaker-mit-plateau-frauen-9590400003_O590",
+            "checked_at": "2026-11-01T11:58:49Z"
+          },
+          "offers": [
+            {
+              "id": "tt-sneaker-plateau-black-39-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/sneaker-mit-plateau-frauen-9590400003_O590",
+              "price_cents": 4299,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/sneaker-mit-plateau-frauen-9590400003_O590",
+                "checked_at": "2026-11-01T11:58:49Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "tt-schneestiefeletten-stickerei-black-41-product",
+      "title": "Schneestiefeletten mit Stickerei",
+      "brand": "Tom Tailor",
+      "category": "footwear",
+      "line": "women",
+      "garment_type": null,
+      "footwear_closure": "closed",
+      "variants": [
+        {
+          "id": "tt-schneestiefeletten-stickerei-black-41",
+          "sku": null,
+          "color": "black",
+          "size": "41",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "41"
+          },
+          "composition": {
+            "status": "partial",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "upper"
+              },
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": "lining"
+              },
+              {
+                "material": "ethylene-vinyl acetate",
+                "percent": 50,
+                "part": "insole"
+              },
+              {
+                "material": "polyester",
+                "percent": 50,
+                "part": "insole"
+              }
+            ],
+            "source_text": "Obermaterial: 100% Polyester / Innenfutter: 100% Polyester / Sohle: 100% Polyvinylchlorid / Innensohle: 50% Ethylenvinylacetat, 50% Polyester"
+          },
+          "source": {
+            "url": "https://www.tom-tailor.at/de/p/schneestiefeletten-mit-stickerei-frauen-8490220011_O590",
+            "checked_at": "2026-11-01T11:58:49Z"
+          },
+          "offers": [
+            {
+              "id": "tt-schneestiefeletten-stickerei-black-41-offer",
+              "retailer": "Tom Tailor",
+              "url": "https://www.tom-tailor.at/de/p/schneestiefeletten-mit-stickerei-frauen-8490220011_O590",
+              "price_cents": 3999,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tom-tailor.at/de/p/schneestiefeletten-mit-stickerei-frauen-8490220011_O590",
+                "checked_at": "2026-11-01T11:58:49Z"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
       "id": "tch-tom-tailor-sneaker-beige-38-product",
       "title": "Tom Tailor Sneaker",
       "brand": "Tom Tailor",
@@ -2669,6 +5397,48 @@
       "garment_type": null,
       "footwear_closure": "closed",
       "variants": [
+        {
+          "id": "tch-tom-tailor-sneaker-beige-37",
+          "sku": null,
+          "color": "Beige",
+          "size": "37",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "37"
+          },
+          "composition": {
+            "status": "partial",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": null
+              }
+            ],
+            "source_text": "Material: 100% Polyester"
+          },
+          "source": {
+            "url": "https://www.tchibo.at/products/175222389018/tom-tailor-sneaker?article_id=112821059799",
+            "checked_at": "2026-11-01T11:58:55Z"
+          },
+          "offers": [
+            {
+              "id": "tch-tom-tailor-sneaker-beige-37-offer",
+              "retailer": "Tchibo",
+              "url": "https://www.tchibo.at/products/175222389018/tom-tailor-sneaker?article_id=112821059799",
+              "price_cents": 3500,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tchibo.at/products/175222389018/tom-tailor-sneaker?article_id=112821059799",
+                "checked_at": "2026-11-01T11:58:55Z"
+              }
+            }
+          ]
+        },
         {
           "id": "tch-tom-tailor-sneaker-beige-38",
           "sku": null,
@@ -2712,6 +5482,48 @@
           ]
         },
         {
+          "id": "tch-tom-tailor-sneaker-beige-39",
+          "sku": null,
+          "color": "Beige",
+          "size": "39",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "39"
+          },
+          "composition": {
+            "status": "partial",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": null
+              }
+            ],
+            "source_text": "Material: 100% Polyester"
+          },
+          "source": {
+            "url": "https://www.tchibo.at/products/175222389018/tom-tailor-sneaker?article_id=116572531385",
+            "checked_at": "2026-11-01T11:58:55Z"
+          },
+          "offers": [
+            {
+              "id": "tch-tom-tailor-sneaker-beige-39-offer",
+              "retailer": "Tchibo",
+              "url": "https://www.tchibo.at/products/175222389018/tom-tailor-sneaker?article_id=116572531385",
+              "price_cents": 3500,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tchibo.at/products/175222389018/tom-tailor-sneaker?article_id=116572531385",
+                "checked_at": "2026-11-01T11:58:55Z"
+              }
+            }
+          ]
+        },
+        {
           "id": "tch-tom-tailor-sneaker-beige-40",
           "sku": null,
           "color": "Beige",
@@ -2749,6 +5561,48 @@
               "source": {
                 "url": "https://www.tchibo.at/products/175222389018/tom-tailor-sneaker?article_id=118448267178",
                 "checked_at": "2026-10-30T20:34:12Z"
+              }
+            }
+          ]
+        },
+        {
+          "id": "tch-tom-tailor-sneaker-beige-41",
+          "sku": null,
+          "color": "Beige",
+          "size": "41",
+          "normalized_size": {
+            "system": "eu_shoe",
+            "value": "41"
+          },
+          "composition": {
+            "status": "partial",
+            "components": [
+              {
+                "material": "polyester",
+                "percent": 100,
+                "part": null
+              }
+            ],
+            "source_text": "Material: 100% Polyester"
+          },
+          "source": {
+            "url": "https://www.tchibo.at/products/175222389018/tom-tailor-sneaker?article_id=120324002971",
+            "checked_at": "2026-11-01T11:58:56Z"
+          },
+          "offers": [
+            {
+              "id": "tch-tom-tailor-sneaker-beige-41-offer",
+              "retailer": "Tchibo",
+              "url": "https://www.tchibo.at/products/175222389018/tom-tailor-sneaker?article_id=120324002971",
+              "price_cents": 3500,
+              "currency": "EUR",
+              "delivery_confirmed_to": [
+                "AT"
+              ],
+              "stock": "in_stock",
+              "source": {
+                "url": "https://www.tchibo.at/products/175222389018/tom-tailor-sneaker?article_id=120324002971",
+                "checked_at": "2026-11-01T11:58:56Z"
               }
             }
           ]
