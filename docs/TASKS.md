@@ -15,7 +15,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-11](#t-11-product-photos) Product photos | planned | |
 | [T-12](#t-12-design-my-look) Design My Look (experimental) | done | 2026-10-31 |
 | [T-13](#t-13-fixes-from-the-test-pass) Fixes from the test pass | done | 2026-11-01 |
-| [T-14](#t-14-fixes-from-the-second-test-pass) Fixes from the second test pass | next | |
+| [T-14](#t-14-fixes-from-the-second-test-pass) Fixes from the second test pass | done | 2026-11-01 |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -116,6 +116,8 @@ A test pass of the whole product on 2026-11-01 found no critical failure, but wh
 When the store fails, the plan stays on the screen instead of turning into the age question, as [SPEC.md](SPEC.md#closed-beta-access) already said. A kept item survives a reload, saving and restoring. Saved plans can be read and deleted after the beta closes, as [BETA.md](BETA.md#for-participants) already said. A failure names products and looks instead of catalog IDs, and the Keep and Replace buttons stay inside their card at every width.
 
 The catalog now holds 104 variants of 37 products: women's M has tops and trousers, women have knitwear and outerwear, and shoes reach women's EU 36, 37 and 41 and men's EU 41 and 44, with XL, men's S and women's XS ([D-67](DECISIONS.md#d-67-the-catalog-grows-by-sizes-without-converting-any)). [DATA.md](DATA.md#catalog-coverage) lists the sizes that stay uncovered.
+
+The work was deployed on 2026-11-01 as `33e4fe3` and checked on the deployed site ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)).
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, live runs with the real providers and synthetic personas show the refused budgets using no planning request and the two descriptions above drawn as plain garments, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check.
 
