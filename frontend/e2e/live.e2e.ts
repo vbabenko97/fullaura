@@ -177,7 +177,7 @@ test("live: the whole flow on one persona", async ({ page }) => {
   await page.reload();
   await expect(page.getByRole("heading", { name: "look 1" })).toBeVisible({ timeout: 60_000 });
   await page.getByRole("button", { name: "Restore" }).first().click();
-  await expect(page.getByText(/The saved plan still passes every check/)).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText(/The saved plan still passes the catalog checks/)).toBeVisible({ timeout: 60_000 });
   await page.getByRole("button", { name: "Copy list" }).click();
   await page.getByRole("button", { name: "Print" }).click();
   await expect(page.locator("body")).toHaveAttribute("data-printed", "yes");

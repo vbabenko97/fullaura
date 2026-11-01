@@ -20,11 +20,14 @@ import {
   isExactReplacement,
   locksForReplacement,
   parseFit,
+  passedChecksText,
   preferenceKey,
   readableDetail,
   sameItem,
+  sameLooks,
   shoppingList,
   shoppingTotal,
+  uncheckedText,
 } from "./plan";
 import type { Preferences } from "./plan";
 import { PreferencesForm } from "./PreferencesForm";
@@ -465,17 +468,20 @@ export function App() {
         adopt(result, request.brief, replacement ? { ...request.state, locks } : request.state, key);
         revealResults();
         setRequestState("success");
+        // The plan changed, so an earlier "Saved" no longer describes what the page shows.
+        setSavedMessage(null);
         setRequestMessage(
           replacement
             ? "The item was replaced. All three looks passed the catalog checks."
-            : "The three looks passed the catalog checks: budget, sizes, shoes, materials, delivery and stock.",
+            : passedChecksText(result.plan, catalog, request.state.fit),
         );
       } else {
         setRequestState("error");
+        // Only a request no plan can meet is refused before it is counted.
         setRequestMessage(
           failureMessage(result, replacement !== null, request.state.locks.length > 0, (check) =>
             readableDetail(check, catalog, request.state.owned_items),
-          ),
+          ) + (result.outcome === "infeasible" ? "" : " This request still counts against your invite."),
         );
       }
     } catch (error) {
@@ -547,6 +553,7 @@ export function App() {
   async function restoreSaved(entry: SavedPlan) {
     setRequestState("loading");
     setRequestMessage(`Checking "${entry.name}" against today's catalog.`);
+    setSavedMessage(`Checking "${entry.name}" against today's catalog.`);
     const result = await restore(entry);
     if (result.plan) {
       setPreferences(preferencesFrom(entry));
@@ -554,20 +561,27 @@ export function App() {
       setRequestState("success");
       setRequestMessage(
         result.response?.catalog_changed
-          ? "The saved plan still passes every check. The catalog changed since you saved it, so prices and offers were checked again."
-          : "The saved plan still passes every check.",
+          ? "The saved plan still passes the catalog checks. The catalog changed since you saved it, so prices and offers were checked again."
+          : "The saved plan still passes the catalog checks.",
       );
-      return;
-    }
-    setRequestState("error");
-    setRequestMessage(
-      result.response
-        ? `The saved plan no longer passes today's checks: ${result.response.violations
+      setSavedMessage(`Restored "${entry.name}". Its looks are now under "Three looks" above.`);
+    } else {
+      const reason = result.response
+        ? result.response.violations
             .slice(0, 3)
             .map((violation) => readableDetail(violation, catalog, entry.state.owned_items))
-            .join(" ")} Its saved shopping list is still available below.`
-        : errorMessage(result.error),
-    );
+            .join(" ")
+        : errorMessage(result.error);
+      setRequestState("error");
+      setRequestMessage(
+        result.response
+          ? `The saved plan no longer passes today's checks: ${reason} Its saved shopping list is still available below.`
+          : reason,
+      );
+      setSavedMessage(`"${entry.name}" was not restored: ${reason}`);
+    }
+    // The buttons that started this are disabled or gone, so the answer takes the focus.
+    if (document.activeElement === document.body) document.getElementById("saved-message")?.focus();
   }
 
   function deleteSaved(id: string) {
@@ -586,7 +600,8 @@ export function App() {
   // One model request at a time per invite, so neither mode submits while the other runs.
   const canSubmit = ready && catalogState === "ready" && !loading && !designLoading && session.planning_open;
   const canDesign = canSubmit && session.design_open;
-  const lines = current && catalog ? shoppingList(current.plan, catalog, current.state.owned_items) : [];
+  const lines = current && catalog ? shoppingList(current.plan, catalog, current.state.owned_items, current.state.fit) : [];
+  const unchecked = current && catalog ? uncheckedText(current.plan, catalog, current.state.fit) : null;
   const remainingPlans = session ? Math.max(0, session.plan_requests_limit - session.plan_requests_used) : 0;
   const closedText = !session
     ? null
@@ -795,7 +810,6 @@ export function App() {
                       role={requestState === "error" ? "alert" : "status"}
                     >
                       {requestMessage}
-                      {requestState === "success" && current && !planCurrent && " Preferences changed since; update to apply them."}
                       {requestState === "error" && current && " The looks below are from the last successful request."}
                     </p>
                   )}
@@ -821,6 +835,7 @@ export function App() {
                     </div>
                   ) : current && catalog ? (
                     <>
+                      {unchecked && <p className="plan-unchecked">{unchecked}</p>}
                       <div className="look-grid">
                         {current.plan.looks.map((look) => (
                           <LookCard
@@ -835,11 +850,14 @@ export function App() {
                             onToggleLock={toggleLock}
                             onTryOn={(lookId) => {
                               setTryOnLook(lookId);
-                              document.getElementById("tryon-title")?.scrollIntoView?.({ block: "start" });
+                              const heading = document.getElementById("tryon-title");
+                              heading?.scrollIntoView?.({ block: "start" });
+                              heading?.focus({ preventScroll: true });
                             }}
                             ownedItems={current.state.owned_items}
                             ownedNotices={current.notices}
                             plan={current.plan}
+                            preferencesChanged={!planCurrent && !loading}
                             replaceDisabled={!planCurrent || !canSubmit}
                           />
                         ))}
@@ -884,6 +902,7 @@ export function App() {
                   onDelete={deleteSaved}
                   onRestore={(entry) => void restoreSaved(entry)}
                   onSave={saveCurrent}
+                  replacesUnsaved={current !== null && !saved.some((entry) => sameLooks(entry.state.plan, current.plan))}
                   saved={saved}
                 />
               )}
@@ -972,6 +991,6 @@ function savedFrom(plan: CurrentPlan, catalog: Catalog, locks: LockedPlacement[]
     brief: plan.brief,
     state: { ...plan.state, locks, plan: plan.plan },
     catalog_id: plan.catalogId,
-    shopping_list: shoppingList(plan.plan, catalog, plan.state.owned_items),
+    shopping_list: shoppingList(plan.plan, catalog, plan.state.owned_items, plan.state.fit),
   };
 }

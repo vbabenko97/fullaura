@@ -60,6 +60,76 @@ function fitsCatalogVariant(product: Product, variant: Variant, fit: Fit | undef
   return wanted.length === 0 || wanted.some((candidate) => sizeMatches(candidate, size));
 }
 
+/** Whether this variant's size was compared with a size the person gave. Sizes are compared only
+ * within one sizing system, and FullAura does not convert between systems, so a stated waist says
+ * nothing about a skirt sold in letter sizes. An accessory without a size has nothing to compare. */
+export function sizeCompared(product: Product, variant: Variant, fit: Fit | undefined): boolean {
+  const size = variant.normalized_size;
+  if (size === null) return product.category === "accessory";
+  return (fit?.sizes ?? []).some((given) => given.system === size.system);
+}
+
+const SIZE_SYSTEM_NAMES: Record<NormalizedSize["system"], string> = {
+  letter: "letter sizes",
+  waist_length: "waist and length",
+  eu_shoe: "EU shoe sizes",
+};
+
+function joined(parts: string[]): string {
+  return parts.length < 2 ? parts.join("") : `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}`;
+}
+
+function itemCount(count: number): string {
+  return `${count} item${count === 1 ? "" : "s"}`;
+}
+
+/** For each distinct catalog variant of the plan: the sizes not compared, by sizing system, and how
+ * many selected offers report no stock. */
+function uncheckedFacts(plan: Plan, catalog: Catalog, fit: Fit | undefined) {
+  const ids = new Set(
+    plan.looks.flatMap((look) => Object.values(look.items).flatMap((item) => (item?.kind === "catalog" ? [item.id] : []))),
+  );
+  const sizes = new Map<string, number>();
+  let stock = 0;
+  for (const id of ids) {
+    const entry = catalogItem(catalog, id);
+    if (!entry) continue;
+    if (!sizeCompared(entry.product, entry.variant, fit)) {
+      const system = entry.variant.normalized_size?.system;
+      const name = system ? SIZE_SYSTEM_NAMES[system] : "sizes the catalog cannot compare";
+      sizes.set(name, (sizes.get(name) ?? 0) + 1);
+    }
+    if (selectedOffer(plan, entry.variant)?.stock === null) stock += 1;
+  }
+  return { sizes, stock };
+}
+
+/** The checks a plan passed, leaving out sizes and stock when some could not be checked. */
+export function passedChecksText(plan: Plan, catalog: Catalog, fit: Fit | undefined): string {
+  const { sizes, stock } = uncheckedFacts(plan, catalog, fit);
+  const checks = ["budget", ...(sizes.size ? [] : ["sizes"]), "shoes", "materials", "delivery", ...(stock ? [] : ["stock"])];
+  return `The three looks passed the catalog checks: ${joined(checks)}.`;
+}
+
+/** What the plan's checks could not confirm, for the person to check in the shop; null if nothing. */
+export function uncheckedText(plan: Plan, catalog: Catalog, fit: Fit | undefined): string | null {
+  const { sizes, stock } = uncheckedFacts(plan, catalog, fit);
+  const parts = [];
+  if (sizes.size) {
+    const list = joined([...sizes].map(([name, count]) => `${name} on ${itemCount(count)}`));
+    parts.push(
+      `Sizes not checked: ${list}. FullAura compares a size only with one you gave in the same system and does not convert between systems.`,
+    );
+  }
+  if (stock) parts.push(`Stock not reported for ${itemCount(stock)}.`);
+  return parts.length ? `${parts.join(" ")} Check these on the shop's page before you buy.` : null;
+}
+
+/** Whether two plans hold the same items in the same positions. */
+export function sameLooks(left: Plan, right: Plan): boolean {
+  return JSON.stringify(left.looks) === JSON.stringify(right.looks);
+}
+
 /** The footwear choice from SPEC.md: with closed or open, a shoe of the other kind or with no
  * recorded closure fails. */
 function meetsFootwearChoice(product: Product, footwear: FootwearChoice): boolean {
@@ -268,7 +338,12 @@ export function preferenceKey(preferences: Preferences): string {
 
 /** One line per distinct catalog variant and owned item: a variant used in several looks is
  * bought once, and an owned item costs nothing. */
-export function shoppingList(plan: Plan, catalog: Catalog, ownedItems: OwnedItem[]): ShoppingLine[] {
+export function shoppingList(
+  plan: Plan,
+  catalog: Catalog,
+  ownedItems: OwnedItem[],
+  fit: Fit | undefined,
+): ShoppingLine[] {
   const lines = new Map<string, ShoppingLine>();
   for (const look of plan.looks) {
     for (const slot of SLOTS) {
@@ -303,7 +378,12 @@ export function shoppingList(plan: Plan, catalog: Catalog, ownedItems: OwnedItem
         kind: "catalog",
         name: entry?.product.title ?? item.id,
         details: entry
-          ? [entry.product.brand, entry.variant.color, entry.variant.size && `Size ${entry.variant.size}`]
+          ? [
+              entry.product.brand,
+              entry.variant.color,
+              entry.variant.size && `Size ${entry.variant.size}`,
+              sizeCompared(entry.product, entry.variant, fit) ? null : "size not checked",
+            ]
               .filter((value): value is string => Boolean(value))
               .join(", ")
           : "Catalog item unavailable",

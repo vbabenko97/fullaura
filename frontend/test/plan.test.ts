@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { hasReplacementAlternative, readableDetail } from "../src/plan";
-import type { Catalog, ItemRef, OwnedItem } from "../src/types";
+import { hasReplacementAlternative, passedChecksText, readableDetail, shoppingList, uncheckedText } from "../src/plan";
+import type { Catalog, Fit, ItemRef, OwnedItem, Plan } from "../src/types";
 
 /* A hand-made catalog: one shirt in two sizes and two colors, and a pair of shoes. */
 const variant = (id: string, color: string) => ({ id, color, normalized_size: null, offers: [{ id: `${id}-offer` }] });
@@ -49,6 +49,85 @@ describe("hasReplacementAlternative", () => {
 
   it("counts an owned item", () => {
     expect(hasReplacementAlternative(catalog, owned, shirt, "top", undefined, "any")).toBe(true);
+  });
+});
+
+describe("what a plan's checks could not confirm", () => {
+  /* A hand-made plan: the top is in two looks, the bag has no size, and the skirt's shop reports no stock. */
+  const sized = (id: string, system: string | null, value: string | null, stock: string | null = "in_stock") => ({
+    id,
+    color: "black",
+    size: value,
+    normalized_size: system && value ? { system, value } : null,
+    offers: [{ id: `${id}-offer`, stock, price_cents: 1000, url: "https://shop.example/", retailer: "Shop", source: { checked_at: "2026-11-01T10:00:00Z" } }],
+  });
+  const fitCatalog = {
+    products: [
+      { id: "t", title: "TOP", brand: "B", category: "top", variants: [sized("top-m", "letter", "M")] },
+      { id: "s", title: "SKIRT", brand: "B", category: "bottom", variants: [sized("skirt-m", "letter", "M", null)] },
+      { id: "c", title: "CHINO", brand: "B", category: "bottom", variants: [sized("chino-32", "waist_length", "32/32")] },
+      { id: "f", title: "SHOE", brand: "B", category: "footwear", variants: [sized("shoe-39", "eu_shoe", "39")] },
+      { id: "b", title: "BAG", brand: "B", category: "accessory", variants: [sized("bag", null, null)] },
+    ],
+  } as unknown as Catalog;
+  const refs = (id: string): ItemRef => ({ kind: "catalog", id });
+  const offers = ["top-m", "skirt-m", "chino-32", "shoe-39", "bag"].map((id) => [id, `${id}-offer`]);
+  const plan = {
+    looks: [
+      {
+        id: "look_1",
+        items: { top: refs("top-m"), bottom: refs("skirt-m"), footwear: refs("shoe-39"), accessory: refs("bag") },
+      },
+      {
+        id: "look_2",
+        items: { top: refs("top-m"), bottom: refs("chino-32"), footwear: refs("shoe-39"), outer_layer: { kind: "owned", id: "owned-1" } },
+      },
+    ],
+    selected_offers: Object.fromEntries(offers),
+  } as unknown as Plan;
+  const stocked = {
+    ...plan,
+    looks: [{ id: "look_1", items: { top: refs("top-m"), bottom: refs("chino-32"), footwear: refs("shoe-39") } }],
+  } as unknown as Plan;
+  const waistOnly: Fit = { sizes: [{ system: "waist_length", value: "50" }] };
+  const everySystem: Fit = {
+    sizes: [
+      { system: "letter", value: "M" },
+      { system: "waist_length", value: "32" },
+      { system: "eu_shoe", value: "39" },
+    ],
+  };
+
+  it("names the size systems the person gave no size in, counting each product once", () => {
+    const text = uncheckedText(plan, fitCatalog, waistOnly) ?? "";
+    expect(text).toContain("letter sizes on 2 items");
+    expect(text).toContain("EU shoe sizes on 1 item");
+    expect(text).not.toContain("waist and length on");
+  });
+
+  it("names stock the shop does not report, and no sizes once every system was given", () => {
+    const text = uncheckedText(plan, fitCatalog, everySystem) ?? "";
+    expect(text).toContain("Stock not reported for 1 item");
+    expect(text).not.toContain("Sizes not checked");
+  });
+
+  it("has nothing to say when every size was compared and every stock reported", () => {
+    expect(uncheckedText(stocked, fitCatalog, everySystem)).toBeNull();
+  });
+
+  it("claims sizes and stock only when they were checked", () => {
+    expect(passedChecksText(stocked, fitCatalog, everySystem)).toContain(
+      "budget, sizes, shoes, materials, delivery and stock.",
+    );
+    expect(passedChecksText(plan, fitCatalog, waistOnly)).toContain("budget, shoes, materials and delivery.");
+  });
+
+  it("marks a product's size in the shopping list when it was not compared", () => {
+    const details = Object.fromEntries(
+      shoppingList(plan, fitCatalog, [], waistOnly).map((line) => [line.name, line.details]),
+    );
+    expect(details.SKIRT).toContain("size not checked");
+    expect(details.CHINO).not.toContain("size not checked");
   });
 });
 
