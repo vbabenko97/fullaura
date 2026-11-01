@@ -27,7 +27,7 @@ export function AccessGate({ session, busy, message, onInvite, onConfirmAge }: A
 
   if (!session.beta) {
     return (
-      <section className="gate-panel" aria-labelledby="gate-title">
+      <section className="gate-panel no-print" aria-labelledby="gate-title">
         <h1 id="gate-title">The FullAura beta is closed</h1>
         <p>Planning and try-ons are available only while the closed beta runs.</p>
       </section>
@@ -36,7 +36,7 @@ export function AccessGate({ session, busy, message, onInvite, onConfirmAge }: A
 
   if (!session.invited) {
     return (
-      <section className="gate-panel" aria-labelledby="gate-title">
+      <section className="gate-panel no-print" aria-labelledby="gate-title">
         <h1 id="gate-title">Open your invite</h1>
         <p>FullAura is in a closed beta. Open the link you were sent, or paste its code here.</p>
         <form className="gate-form" onSubmit={submitInvite}>
@@ -61,7 +61,7 @@ export function AccessGate({ session, busy, message, onInvite, onConfirmAge }: A
   }
 
   return (
-    <section className="gate-panel" aria-labelledby="gate-title">
+    <section className="gate-panel no-print" aria-labelledby="gate-title">
       <h1 id="gate-title">Before you start</h1>
       <p>
         FullAura proposes three outfits from real products that ship to Austria, checks your budget,

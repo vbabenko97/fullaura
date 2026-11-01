@@ -1,3 +1,4 @@
+import { useEffect, useRef } from "react";
 import { labelCategory } from "./format";
 import { CATEGORIES } from "./types";
 import type { OwnedItem } from "./types";
@@ -15,6 +16,15 @@ export function OwnedItemsFields({
   onUpdateItem,
   onRemoveItem,
 }: OwnedItemsFieldsProps) {
+  // A removed item takes its Remove button with it, so the keyboard goes on from "Add item".
+  const addButton = useRef<HTMLButtonElement>(null);
+  const removed = useRef(false);
+  useEffect(() => {
+    if (!removed.current) return;
+    removed.current = false;
+    if (document.activeElement === document.body || document.activeElement === null) addButton.current?.focus();
+  }, [ownedItems.length]);
+
   return (
     <section className="owned-items" aria-labelledby="owned-title">
       <div className="owned-heading">
@@ -26,6 +36,7 @@ export function OwnedItemsFields({
           className="secondary-button"
           disabled={ownedItems.length >= 3}
           onClick={onAddItem}
+          ref={addButton}
           type="button"
         >
           Add item
@@ -38,7 +49,10 @@ export function OwnedItemsFields({
           <button
             aria-label={`Remove item ${index + 1}`}
             className="remove-button"
-            onClick={() => onRemoveItem(item.id)}
+            onClick={() => {
+              removed.current = true;
+              onRemoveItem(item.id);
+            }}
             type="button"
           >
             Remove

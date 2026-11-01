@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState } from "react";
 import { formatCheckedDate, formatMoney, stockText } from "./format";
 import { shoppingListText, shoppingTotal } from "./plan";
 import type { ShoppingLine } from "./types";
@@ -10,6 +10,8 @@ interface ShoppingListProps {
 
 export function ShoppingList({ lines, title = "Shopping list" }: ShoppingListProps) {
   const [copyState, setCopyState] = useState<string | null>(null);
+  // The plan's list and an opened saved list can be on the page together.
+  const titleId = useId();
   const total = shoppingTotal(lines);
 
   async function copy() {
@@ -22,10 +24,10 @@ export function ShoppingList({ lines, title = "Shopping list" }: ShoppingListPro
   }
 
   return (
-    <section className="shopping-panel" aria-labelledby="shopping-title">
+    <section className="shopping-panel" aria-labelledby={titleId}>
       <div className="results-heading">
         <div>
-          <h2 id="shopping-title">{title}</h2>
+          <h2 id={titleId}>{title}</h2>
           <p>Each product once, however many looks use it. Your own items cost nothing.</p>
         </div>
         <p className="plan-total">

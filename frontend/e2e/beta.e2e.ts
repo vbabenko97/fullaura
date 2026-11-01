@@ -167,8 +167,16 @@ test("an invited person plans, tries on, edits, saves, restores, exports and giv
   await expect(page.locator("body")).toHaveAttribute("data-printed", "yes");
   await page.emulateMedia({ media: "print" });
   await expect(page.getByRole("heading", { name: "Your preferences" })).toBeHidden();
+  await expect(page.getByRole("heading", { name: "Try a look on" })).toBeHidden();
   await shot(page, project, "06-print");
   await page.emulateMedia({ media: "screen" });
+  // An opened saved list prints from its own Print button, without the saved plans' controls.
+  await page.getByRole("button", { name: "Show list" }).first().click();
+  await page.emulateMedia({ media: "print" });
+  await expect(page.getByRole("heading", { name: /^Saved list: / })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Restore" }).first()).toBeHidden();
+  await page.emulateMedia({ media: "screen" });
+  await page.getByRole("button", { name: "Hide list" }).first().click();
 
   const feedback = page.locator("section", { has: page.getByRole("heading", { name: "Tell us how it went" }) });
   await feedback.getByRole("radio", { name: "Yes", exact: true }).check();
