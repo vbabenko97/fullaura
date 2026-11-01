@@ -550,13 +550,12 @@ describe(`${FIXTURE_LABEL}: access`, () => {
     installServer();
     render(<App />);
     await screen.findByText(/products\. Prices checked/);
-    fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "250" } });
     fireEvent.click(screen.getByRole("button", { name: "Add item" }));
-    const goal = screen.getByLabelText("What should the looks work for?");
-    goal.focus();
+    const budget = screen.getByLabelText("Budget in EUR");
+    budget.focus();
     fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
     await act(async () => new Promise((resolve) => setTimeout(resolve)));
-    expect(document.activeElement).toBe(goal);
+    expect(document.activeElement).toBe(budget);
   });
 
   it("keeps an accepted invite when the catalog fails once, and loads it again on request", async () => {
@@ -854,15 +853,32 @@ describe(`${FIXTURE_LABEL}: planning`, () => {
     expect(message.textContent).not.toMatch(/ae-maarkos|look_1|removed-product/);
   });
 
-  it("asks for a style goal made of more than spaces before sending a request", async () => {
+  it("plans for everyday wear when the goal is left empty or holds only spaces", async () => {
     const server = installServer({ plans: [firstPlan] });
     render(<App />);
     await screen.findByText(/products\. Prices checked/);
     fireEvent.change(screen.getByLabelText("What should the looks work for?"), { target: { value: "   " } });
     fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "250" } });
     fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
-    expect(await screen.findAllByText("Describe what the looks should work for.")).not.toHaveLength(0);
-    expect(planRequests(server)).toHaveLength(0);
+    await screen.findByText(/The three looks passed the catalog checks/);
+    expect(object(planRequests(server)[0].brief).style_goal).toBe("Everyday outfits");
+  });
+
+  it("takes an empty goal from the occasion and season, and counts those wishes", async () => {
+    const server = installServer({ plans: [firstPlan] });
+    render(<App />);
+    await screen.findByText(/products\. Prices checked/);
+    expect(screen.getByText("0 set")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Occasion"), { target: { value: "travel" } });
+    fireEvent.change(screen.getByLabelText("Season"), { target: { value: "winter" } });
+    expect(screen.getByText("2 set")).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "250" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+    await screen.findByText(/The three looks passed the catalog checks/);
+    expect(object(planRequests(server)[0].brief).style_goal).toBe("Travel outfits for winter");
+    // The plan answers this form, so Replace stays on with the goal still empty.
+    const replace = screen.getAllByRole("button", { name: /^Replace .* in look 1$/ })[0] as HTMLButtonElement;
+    expect(replace.disabled).toBe(false);
   });
 
   it("moves the keyboard to Add item when an owned item is removed", async () => {

@@ -19,6 +19,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-15](#t-15-fixes-before-the-human-test) Fixes before the human test | done | 2026-11-01 |
 | [T-16](#t-16-fixes-from-the-repository-audit) Fixes from the repository audit | done | 2026-11-01 |
 | [T-17](#t-17-items-left-open-by-the-audit) Items left open by the audit | done | 2026-11-01 |
+| [T-18](#t-18-form-fixes-from-the-authors-test) Form fixes from the author's test | next | |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -153,6 +154,12 @@ CI still does not publish the image it builds; the operator builds the deployed 
 The work was deployed on 2026-11-01 as `8ba7fac`, and the purge job's timeout was raised on the live job. The deployed site passed the HTTP smoke check and a check of the changed behavior with one real try-on ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). No plan ran there, so a try-on that finds its plan replaced by an update ran only in unit tests.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, the browser flow also passes in Firefox and WebKit, the purge job runs with the new timeout and otherwise unchanged settings, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check and a check of the changed behavior.
+
+## T-18: Form fixes from the author's test
+
+The author used the deployed site on 2026-11-01 and found the form too long and its goal field forced. The goal is now optional, occasion, season and colors sit in a closed section, the button that sends the form stays at the bottom of the screen, and the waist field says how to write a waist and length ([D-72](DECISIONS.md#d-72-a-person-can-leave-the-style-goal-empty-and-the-forms-button-stays-on-screen)).
+
+Done when: the checks in the [README](../README.md#check-a-change) pass, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check and showing the shorter form.
 
 ## T-06: Evaluation and submission
 

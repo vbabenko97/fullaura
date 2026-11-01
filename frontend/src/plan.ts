@@ -340,6 +340,21 @@ export interface Preferences {
   ownedItems: OwnedItem[];
 }
 
+const OCCASION_OUTFITS: Record<string, string> = {
+  office: "Office outfits",
+  casual: "Everyday outfits",
+  evening: "Evening outfits",
+  travel: "Travel outfits",
+  special_event: "Special event outfits",
+};
+
+/** What the looks should work for, as a request sends it. The person can leave it empty; the
+ * occasion and season then say it, or everyday wear when neither is set. */
+export function styleGoalOf({ styleGoal, occasion, season }: Preferences): string {
+  const outfits = OCCASION_OUTFITS[occasion] ?? "Everyday outfits";
+  return styleGoal.trim() || (season ? `${outfits} for ${season}` : outfits);
+}
+
 /** Changes whenever a preference that a plan request sends changes, and only then: the budget
  * counts in cents and the fit as parsed, so "249.90" and "249.9", or "39,40" and "39, 40", are the
  * same request, as they are after a restore writes the form back from the saved plan. */
@@ -349,7 +364,7 @@ export function preferenceKey(preferences: Preferences): string {
   return JSON.stringify({
     ...rest,
     colors: preferences.colors.map((color) => color.trim()).filter(Boolean),
-    styleGoal: preferences.styleGoal.trim(),
+    styleGoal: styleGoalOf(preferences),
     amount_cents: budgetAmount.trim() ? Math.round(Number(budgetAmount) * 100) : null,
     fit: parsedFit.ok ? (parsedFit.fit ?? null) : fit,
     exclusions: [...preferences.exclusions].sort(),

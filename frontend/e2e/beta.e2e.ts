@@ -92,6 +92,7 @@ test("an invited person plans, tries on, edits, saves, restores, exports and giv
     await expect(page.getByRole("button", { name: "Design my look" })).toHaveCount(0);
   }
 
+  await page.locator("summary", { hasText: "Occasion, season and colors" }).click();
   await page.getByLabel("Occasion").selectOption("office");
   await page.getByLabel("Season").selectOption("autumn");
   await page.getByLabel("What should the looks work for?").fill("Smart casual for autumn office days");
@@ -194,6 +195,26 @@ test("an invited person plans, tries on, edits, saves, restores, exports and giv
   );
   expect(horizontalOverflow).toBe(false);
   expect(refusedByPolicy).toEqual([]);
+});
+
+test("the button that sends the form stays on screen, and hides no field that has the focus", async ({ page }) => {
+  await openWorkspace(page);
+  const send = page.getByRole("button", { name: /three looks$/ });
+  const goal = page.getByLabel("What should the looks work for?");
+  await goal.focus();
+  await goal.scrollIntoViewIfNeeded();
+  await expect(goal).toBeInViewport();
+  await expect(send).toBeInViewport();
+  for (const label of ["Budget in EUR", "Waist sizes", "EU shoe sizes"]) {
+    const field = page.getByLabel(label);
+    await field.focus();
+    await expect(send).toBeInViewport();
+    const hidden = await field.evaluate((element) => {
+      const button = document.querySelector(".form-submit")?.getBoundingClientRect();
+      return button ? element.getBoundingClientRect().bottom > button.top : true;
+    });
+    expect(hidden, `${label} is under the button`).toBe(false);
+  }
 });
 
 test("sending the form opens the closed section that holds an empty required field", async ({ page }) => {

@@ -1,4 +1,4 @@
-import type { Dispatch, FormEvent, SetStateAction } from "react";
+import type { Dispatch, FocusEvent, FormEvent, SetStateAction } from "react";
 import { readCategory } from "./api";
 import { FitFields } from "./FitFields";
 import { budgetMeaning, conceptBudgetMeaning } from "./format";
@@ -113,29 +113,21 @@ export function PreferencesForm({
     });
   }
 
-  return (
-    <form className="preferences-form" onInvalidCapture={openSectionOfInvalidField} onSubmit={submit}>
-      <div className="field-pair">
-        <div className="form-field">
-          <label htmlFor="occasion">Occasion</label>
-          <select id="occasion" onChange={(event) => update("occasion", event.target.value)} value={preferences.occasion}>
-            <option value="">Not set</option>
-            {OCCASIONS.map((occasion) => (
-              <option key={occasion} value={occasion}>{OCCASION_LABELS[occasion]}</option>
-            ))}
-          </select>
-        </div>
-        <div className="form-field">
-          <label htmlFor="season">Season</label>
-          <select id="season" onChange={(event) => update("season", event.target.value)} value={preferences.season}>
-            <option value="">Not set</option>
-            {SEASONS.map((season) => (
-              <option key={season} value={season}>{SEASON_LABELS[season]}</option>
-            ))}
-          </select>
-        </div>
-      </div>
+  /** Firefox and WebKit leave a focused field under the button at the bottom of the screen, unless
+   * it is scrolled into view, which keeps clear of the page's bottom scroll padding. */
+  function keepFieldAboveButton(event: FocusEvent<HTMLFormElement>) {
+    if (event.target.matches("input, select, textarea")) event.target.scrollIntoView?.({ block: "nearest" });
+  }
 
+  const wishesSet = [preferences.occasion, preferences.season, preferences.colors.join("").trim()].filter(Boolean).length;
+
+  return (
+    <form
+      className="preferences-form"
+      onFocusCapture={keepFieldAboveButton}
+      onInvalidCapture={openSectionOfInvalidField}
+      onSubmit={submit}
+    >
       <div className="form-field">
         <label htmlFor="style-goal">What should the looks work for?</label>
         <textarea
@@ -144,25 +136,53 @@ export function PreferencesForm({
           maxLength={300}
           onChange={(event) => update("styleGoal", event.target.value)}
           placeholder="For example, relaxed outfits for autumn office days"
-          required
-          rows={3}
+          rows={2}
           value={preferences.styleGoal}
         />
+        <p className="field-help">Optional. Left empty, the looks follow your occasion and season, or everyday wear.</p>
       </div>
 
-      <div className="form-field">
-        <label htmlFor="preferred-colors">Colors you prefer</label>
-        <input
-          autoComplete="off"
-          id="preferred-colors"
-          maxLength={164}
-          onChange={(event) => update("colors", event.target.value.split(","))}
-          placeholder="Navy, cream, olive"
-          type="text"
-          value={preferences.colors.join(",")}
-        />
-        <p className="field-help">Up to five, separated by commas. Occasion, season and colors are wishes for the stylist model; code does not check them.</p>
-      </div>
+      <details className="exclusions-disclosure">
+        <summary>
+          <span>Occasion, season and colors</span>
+          <span className="selection-count">{wishesSet} set</span>
+        </summary>
+        <div className="disclosure-fields">
+          <div className="field-pair">
+            <div className="form-field">
+              <label htmlFor="occasion">Occasion</label>
+              <select id="occasion" onChange={(event) => update("occasion", event.target.value)} value={preferences.occasion}>
+                <option value="">Not set</option>
+                {OCCASIONS.map((occasion) => (
+                  <option key={occasion} value={occasion}>{OCCASION_LABELS[occasion]}</option>
+                ))}
+              </select>
+            </div>
+            <div className="form-field">
+              <label htmlFor="season">Season</label>
+              <select id="season" onChange={(event) => update("season", event.target.value)} value={preferences.season}>
+                <option value="">Not set</option>
+                {SEASONS.map((season) => (
+                  <option key={season} value={season}>{SEASON_LABELS[season]}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="form-field">
+            <label htmlFor="preferred-colors">Colors you prefer</label>
+            <input
+              autoComplete="off"
+              id="preferred-colors"
+              maxLength={164}
+              onChange={(event) => update("colors", event.target.value.split(","))}
+              placeholder="Navy, cream, olive"
+              type="text"
+              value={preferences.colors.join(",")}
+            />
+            <p className="field-help">Up to five, separated by commas. Occasion, season and colors are wishes for the stylist model; code does not check them.</p>
+          </div>
+        </div>
+      </details>
 
       <div className="field-pair">
         <div className="form-field">
@@ -270,30 +290,32 @@ export function PreferencesForm({
         )}{" "}
         Prices are item prices, without delivery or returns.
       </p>
-      <button
-        aria-busy={loading}
-        aria-describedby="budget-meaning"
-        className={`primary-button${loading ? " is-loading" : ""}`}
-        disabled={!canSubmit}
-        type="submit"
-      >
-        {design
-          ? loading
-            ? "Designing a look…"
-            : hasPlan
-              ? "Design another"
-              : "Design my look"
-          : loading
-            ? "Planning looks…"
-            : hasPlan
-              ? "Update three looks"
-              : "Generate three looks"}
-      </button>
-      {closedText ? (
-        <p className="submit-help" role="status">{closedText}</p>
-      ) : (
-        quotaText && <p className="submit-help">{quotaText}</p>
-      )}
+      <div className="form-submit">
+        <button
+          aria-busy={loading}
+          aria-describedby="budget-meaning"
+          className={`primary-button${loading ? " is-loading" : ""}`}
+          disabled={!canSubmit}
+          type="submit"
+        >
+          {design
+            ? loading
+              ? "Designing a look…"
+              : hasPlan
+                ? "Design another"
+                : "Design my look"
+            : loading
+              ? "Planning looks…"
+              : hasPlan
+                ? "Update three looks"
+                : "Generate three looks"}
+        </button>
+        {closedText ? (
+          <p className="submit-help" role="status">{closedText}</p>
+        ) : (
+          quotaText && <p className="submit-help">{quotaText}</p>
+        )}
+      </div>
     </form>
   );
 }

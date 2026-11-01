@@ -12,6 +12,8 @@ body {
 html {
   scrollbar-color: var(--color-muted) var(--color-paper);
   scroll-padding-top: var(--space-2xl);
+  /* Room for the form's button that stays at the bottom of the screen, so it hides no focused field. */
+  scroll-padding-bottom: 8rem;
 }
 
 body {

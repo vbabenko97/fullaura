@@ -28,6 +28,7 @@ import {
   sameWork,
   shoppingList,
   shoppingTotal,
+  styleGoalOf,
   uncheckedText,
 } from "./plan";
 import type { Preferences } from "./plan";
@@ -413,8 +414,6 @@ export function App() {
 
   /** The brief and the checked fields both modes send, or what to fix first. */
   function checkedPreferences(): ConceptRequest | string {
-    // The field's required check accepts spaces alone, which the server refuses.
-    if (!preferences.styleGoal.trim()) return "Describe what the looks should work for.";
     const colors = preferences.colors.map((color) => color.trim()).filter(Boolean);
     if (colors.length > 5 || colors.some((color) => color.length > 30)) {
       return "Enter up to five colors, with no more than 30 characters each.";
@@ -425,7 +424,7 @@ export function App() {
     if (!parsedFit.ok) return parsedFit.error;
     return {
       brief: {
-        style_goal: preferences.styleGoal.trim(),
+        style_goal: styleGoalOf(preferences),
         preferred_colors: colors,
         occasion: OCCASIONS.find((occasion) => occasion === preferences.occasion) ?? null,
         season: SEASONS.find((season) => season === preferences.season) ?? null,
@@ -950,7 +949,7 @@ export function App() {
                   ) : (
                     <div className="empty-state">
                       <h3>Your plan will appear here</h3>
-                      <p>Describe what the looks are for, set a budget and your sizes, then generate three looks.</p>
+                      <p>Set a budget and your sizes, then generate three looks.</p>
                     </div>
                   )}
                 </>

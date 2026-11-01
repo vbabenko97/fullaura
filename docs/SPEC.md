@@ -12,7 +12,7 @@ The first version has an English interface, shows prices in EUR, and offers only
 
 | Area | First version |
 | --- | --- |
-| Inputs | Style goal, preferred colors, occasion and season (optional), budget, closed, open or any shoes, materials to exclude; whom the looks are for: clothing lines, kinds of bottoms and one-pieces, and sizes (optional); up to three owned items (optional); a portrait and a full-body photo for a try-on (optional) |
+| Inputs | Style goal, preferred colors, occasion and season (optional; an empty goal follows the occasion and season, or everyday wear), budget, closed, open or any shoes, materials to exclude; whom the looks are for: clothing lines, kinds of bottoms and one-pieces, and sizes (optional); up to three owned items (optional); a portrait and a full-body photo for a try-on (optional) |
 | Products | A small catalog that FullAura has permission to use (see [Catalog records](#catalog-records)) |
 | Planning | Three looks; code checks the [hard constraints](#hard-constraints) |
 | Models | Muse Spark for planning; Muse Image for the experimental try-on, which the feasibility test (T-02 in [TASKS.md](TASKS.md)) has not yet judged |
