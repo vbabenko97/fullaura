@@ -267,7 +267,8 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
               <p>Real products that ship to Austria, each with a link to its shop.</p>
             </div>
           )}
-          {children}
+          {/* Hidden, not removed, so a started answer survives the next search. */}
+          <div hidden={running || (!result && !error)}>{children}</div>
         </section>
       </div>
     </div>

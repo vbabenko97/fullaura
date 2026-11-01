@@ -209,6 +209,29 @@ test("an invited person plans, tries on, edits, saves, restores, exports and giv
   expect(refusedByPolicy).toEqual([]);
 });
 
+test("the agent's choices keep clear of each other, and feedback waits for a result", async ({ page }) => {
+  await openAgent(page);
+  const crowded = await page.locator(".shop-mode .radio-choice").evaluateAll((labels) =>
+    labels
+      .filter((label, index) => {
+        const text = label.querySelector("span")!.getBoundingClientRect();
+        const next = labels[index + 1]?.getBoundingClientRect();
+        const sameRow = next && next.top < text.bottom && next.left > text.left;
+        return text.right > label.closest("form")!.getBoundingClientRect().right || (sameRow && next.left < text.right);
+      })
+      .map((label) => label.textContent),
+  );
+  expect(crowded).toEqual([]);
+
+  const feedback = page.getByRole("heading", { name: "Tell us how it went" });
+  await expect(feedback).toBeHidden();
+  await page.getByLabel("What do you need?").fill("A warm jacket");
+  await page.getByLabel("Spend up to (EUR)").fill("200");
+  await page.getByRole("button", { name: "Find it", exact: true }).click();
+  await expect(page.getByText(/Code read every price and stock/)).toBeVisible();
+  await expect(feedback).toBeVisible();
+});
+
 test("the agent finds real products in steps, says what it did not check, and tries them on", async ({ page }) => {
   await openAgent(page);
   await page.getByLabel("What do you need?").fill("Something smart for a video call");
