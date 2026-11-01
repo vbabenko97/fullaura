@@ -21,7 +21,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-17](#t-17-items-left-open-by-the-audit) Items left open by the audit | done | 2026-11-01 |
 | [T-18](#t-18-form-fixes-from-the-authors-test) Form fixes from the author's test | done | 2026-11-01 |
 | [T-19](#t-19-small-fixes-from-the-authors-test) Small fixes from the author's test | done | 2026-11-01 |
-| [T-20](#t-20-the-shopping-agent) The shopping agent | next | |
+| [T-20](#t-20-the-shopping-agent) The shopping agent | done | 2026-11-01 |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -180,6 +180,8 @@ Done when: the checks in the [README](../README.md#check-a-change) pass, and the
 ## T-20: The shopping agent
 
 A person says what they need, for a whole outfit, the upper body or one item, and an agent chooses among real products that code lists from shops' sitemaps and reads from their pages ([SPEC.md](SPEC.md#find-it-for-me), [D-73](DECISIONS.md#d-73-the-shopping-agent-chooses-among-real-shop-pages-that-code-reads)). The mode opens first, and the catalog stays as the other tab. Messages now have separate colors for working, done, something to check and an error; a request that runs shows a spinner; and Keep and Replace are quieter.
+
+The work was deployed on 2026-11-01 as `f2d68dc` and checked on the deployed site, including one real search and one try-on of what it found ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)).
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check and a real search there.
 
