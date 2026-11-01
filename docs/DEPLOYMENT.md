@@ -173,7 +173,7 @@ On 2026-11-01, after the deployment of `main` at `6c4a462`, which adds the fixes
 - Revision `fullaura-demo--0000019` serves all traffic with the app image above. A comparison of the settings before and after shows that only the app's image changed, including the names of its secrets and the values of its other settings. The purge job did not change.
 - `scripts/smoke_http.py` passed over HTTPS with an open beta session.
 - With the first operator invite in Chromium and no model call, the answer "I can't judge it" stayed on one line. The saved-plans message and the try-on heading took the focus without a ring, and the next control showed its ring. A row of the shopping list has `break-inside: avoid` in print. A second saved plan with one goal was named with "(2)". The page did not overflow sideways.
-- A list printed across two pages was checked only on a local server, with its rows multiplied, because the operator's plans fit on one page.
+- A list printed across two pages was checked only on a local server, with its rows multiplied.
 - `scripts/pilot_report.py` with the participants' digests counts ten invites, none activated. The ledger holds $0.170888 for planning and $0.26 for images.
 
 URL: <https://fullaura-demo.blackbay-aaeee2c5.francecentral.azurecontainerapps.io>.
