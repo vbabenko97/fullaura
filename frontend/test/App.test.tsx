@@ -51,10 +51,14 @@ interface Server {
   session: Body;
   token: number;
   expireToken: () => void;
-  previewOutcome: "image" | "budget" | "provider";
+  previewOutcome: "image" | "budget" | "provider" | "timeout";
   restoreFails: boolean;
   /** A restore never reaches the server, as when the connection drops. */
   restoreOffline: boolean;
+  /** When set, a restore answers only once this settles, as on a slow connection. */
+  restoreGate: Promise<void> | null;
+  /** When set, a plan request answers only once this settles, as a slow model would. */
+  planGate: Promise<void> | null;
   catalogFailures: number;
   consentFails: boolean;
   /** When set, a try-on answers only once this settles, as a slow provider would. */
@@ -117,6 +121,8 @@ function installServer(
     previewOutcome: "image",
     restoreFails: false,
     restoreOffline: false,
+    restoreGate: null,
+    planGate: null,
     catalogFailures: 0,
     consentFails: false,
     previewGate: null,
@@ -170,6 +176,7 @@ function installServer(
         return json({ detail: "expired", reason: "plan_expired" }, 409);
       }
       if (!session.planning_open) return json({ detail: "paused", reason: "accounting_unavailable" }, 503);
+      if (server.planGate) await server.planGate;
       session.plan_requests_used = Number(session.plan_requests_used) + 1;
       const next = server.plans.shift();
       if (next === undefined) throw new Error(`${FIXTURE_LABEL} has no queued plan`);
@@ -179,6 +186,7 @@ function installServer(
     }
     if (url === "/api/plans/restore") {
       if (server.restoreOffline) throw new TypeError("Failed to fetch");
+      if (server.restoreGate) await server.restoreGate;
       // Like the server, refuse any field beyond the saved brief, state and catalog ID.
       if (Object.keys(object(body)).sort().join() !== "brief,catalog_id,state") {
         return json({ detail: "extra fields", reason: "invalid" }, 422);
@@ -240,6 +248,10 @@ function installServer(
         return json({ detail: "expired", reason: "plan_expired" }, 409);
       }
       if (server.previewOutcome === "budget") return json({ detail: "budget", reason: "budget" }, 503);
+      if (server.previewOutcome === "timeout") {
+        session.preview_requests_used = Number(session.preview_requests_used) + 1;
+        return json({ detail: "The try-on took too long", reason: "timeout" }, 504);
+      }
       if (server.previewOutcome === "provider") {
         session.preview_requests_used = Number(session.preview_requests_used) + 1;
         return json({ detail: "The image provider could not complete this try-on", reason: "provider" }, 502);
@@ -689,6 +701,24 @@ describe(`${FIXTURE_LABEL}: planning`, () => {
     expect(screen.queryByText(/no longer passes today's checks/)).toBeNull();
   });
 
+  it("holds new requests while a reload brings back the working plan, so a slow answer replaces nothing", async () => {
+    storeWorkingPlan(firstPlan);
+    const server = installServer({ plans: [reducedBudgetPlan] });
+    const slow = deferred();
+    server.restoreGate = slow.promise;
+    render(<App />);
+    expect(await screen.findByText("Checking your last plan against today's catalog.")).toBeTruthy();
+    const submit = screen.getByRole("button", { name: "Planning looks…" }) as HTMLButtonElement;
+    expect(submit.disabled).toBe(true);
+    fireEvent.click(submit);
+    expect(planRequests(server)).toHaveLength(0);
+
+    await act(async () => slow.resolve());
+    expect(await screen.findByRole("heading", { name: "look 3" })).toBeTruthy();
+    expect(screen.queryByText("Checking your last plan against today's catalog.")).toBeNull();
+    expect((screen.getByRole("button", { name: "Update three looks" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it("keeps the working plan when a reload's restore loses the connection, so the next reload restores it", async () => {
     const stored = storeWorkingPlan(firstPlan);
     const server = installServer();
@@ -803,6 +833,52 @@ describe(`${FIXTURE_LABEL}: planning`, () => {
     expect(message.textContent).toContain("for look 1, over the");
     expect(message.textContent).toContain("An item in this plan is no longer in the catalog.");
     expect(message.textContent).not.toMatch(/ae-maarkos|look_1|removed-product/);
+  });
+
+  it("asks for a style goal made of more than spaces before sending a request", async () => {
+    const server = installServer({ plans: [firstPlan] });
+    render(<App />);
+    await screen.findByText(/products\. Prices checked/);
+    fireEvent.change(screen.getByLabelText("What should the looks work for?"), { target: { value: "   " } });
+    fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "250" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+    expect(await screen.findAllByText("Describe what the looks should work for.")).not.toHaveLength(0);
+    expect(planRequests(server)).toHaveLength(0);
+  });
+
+  it("moves the keyboard to Add item when an owned item is removed", async () => {
+    installServer();
+    render(<App />);
+    await screen.findByText(/products\. Prices checked/);
+    const add = screen.getByRole("button", { name: "Add item" });
+    for (let count = 0; count < 3; count += 1) fireEvent.click(add);
+    expect((add as HTMLButtonElement).disabled).toBe(true);
+    const remove = screen.getByRole("button", { name: "Remove item 2" });
+    remove.focus();
+    fireEvent.click(remove);
+    expect(document.activeElement).toBe(add);
+  });
+
+  it("does not let an owned item removed from the form be kept, so the next update stays valid", async () => {
+    const withOwned = object(JSON.parse(firstPlanJson));
+    object((withOwned.looks as Body[])[0].items).accessory = { kind: "owned", id: "owned-1" };
+    const server = installServer({ plans: [withOwned, firstPlan] });
+    render(<App />);
+    await screen.findByText(/products\. Prices checked/);
+    fireEvent.click(screen.getByRole("button", { name: "Add item" }));
+    fireEvent.change(screen.getByLabelText("Color"), { target: { value: "black" } });
+    fireEvent.change(screen.getByLabelText("Description"), { target: { value: "leather belt" } });
+    await generate();
+    const keep = () => screen.getByRole("button", { name: "Keep leather belt in look 1" }) as HTMLButtonElement;
+    expect(keep().disabled).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Remove item 1" }));
+    expect(keep().disabled).toBe(true);
+    expect(screen.getByText("You removed this item from your items, so it cannot be kept.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Update three looks" }));
+    await waitFor(() => expect(planRequests(server)).toHaveLength(2));
+    const state = object(planRequests(server)[1].state);
+    expect(state.owned_items).toEqual([]);
+    expect((state.locks as Body[]).some((lock) => object(lock.item).kind === "owned")).toBe(false);
   });
 });
 
@@ -1058,6 +1134,58 @@ describe(`${FIXTURE_LABEL}: shopping list and saved plans`, () => {
     const line = String(writeText.mock.calls[0]?.[0]).split("\n").find((text) => text.includes("MAARKOS"));
     expect(line).toContain("In stock");
   });
+
+  it("keeps the keyboard in the saved plans when one is deleted", async () => {
+    installServer({ plans: [firstPlan] });
+    render(<App />);
+    await generate();
+    fireEvent.click(screen.getByRole("button", { name: "Save this plan" }));
+    await screen.findByText(/Saved "Relaxed office outfits"/);
+    const remove = screen.getByRole("button", { name: "Delete" });
+    remove.focus();
+    fireEvent.click(remove);
+    // The safe answer takes the focus, so pressing the same key again deletes nothing.
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Keep it" }));
+    fireEvent.click(document.activeElement as HTMLElement);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Delete" }));
+    expect(screen.getByRole("button", { name: "Show list" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
+    expect(document.activeElement).toBe(screen.getByText("Deleted from this device."));
+  });
+
+  it("names the plan's list and an opened saved list each by its own title", async () => {
+    installServer({ plans: [firstPlan] });
+    render(<App />);
+    await generate();
+    fireEvent.click(screen.getByRole("button", { name: "Save this plan" }));
+    await screen.findByText(/Saved "Relaxed office outfits"/);
+    fireEvent.click(screen.getByRole("button", { name: "Show list" }));
+    expect(screen.getByRole("region", { name: "Saved list: Relaxed office outfits" })).toBeTruthy();
+    expect(screen.getByRole("region", { name: "Shopping list" })).toBeTruthy();
+  });
+
+  it("restores a saved plan only once the catalog has loaded, so a restore the server accepts is shown", async () => {
+    const server = installServer({ plans: [firstPlan] });
+    render(<App />);
+    await generate();
+    fireEvent.click(screen.getByRole("button", { name: "Save this plan" }));
+    await screen.findByText(/Saved "Relaxed office outfits"/);
+    cleanup();
+    sessionStorage.clear();
+    server.catalogFailures = 1;
+    render(<App />);
+    await screen.findByText("The catalog could not be loaded");
+    expect((screen.getByRole("button", { name: "Restore" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(server.requests.some((entry) => entry.url === "/api/plans/restore")).toBe(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Load the catalog again" }));
+    await screen.findByText(/products\. Prices checked/);
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    expect(await screen.findByText(/^Restored "Relaxed office outfits"/)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "look 3" })).toBeTruthy();
+  });
 });
 
 describe(`${FIXTURE_LABEL}: product photos`, () => {
@@ -1202,6 +1330,87 @@ describe(`${FIXTURE_LABEL}: try-on`, () => {
     expect((form.get("portrait") as File).type).toBe("image/jpeg");
   });
 
+  it("sends the newest photo chosen for an input, even when an earlier choice finishes preparing later", async () => {
+    const server = await prepareTryOn(installServer({ plans: [firstPlan] }));
+    await waitFor(() =>
+      expect((screen.getByRole("button", { name: "Try on look 1" }) as HTMLButtonElement).disabled).toBe(false),
+    );
+    const earlier = deferred<Blob>();
+    const newer = deferred<Blob>();
+    vi.mocked(normalizePhoto).mockImplementationOnce(() => earlier.promise).mockImplementationOnce(() => newer.promise);
+    const portrait = screen.getByLabelText("Portrait photo");
+    fireEvent.change(portrait, { target: { files: [new File(["a"], "someone-else.png", { type: "image/png" })] } });
+    fireEvent.change(portrait, { target: { files: [new File(["b"], "me.png", { type: "image/png" })] } });
+    await act(async () => newer.resolve(new Blob(["me"], { type: "image/jpeg" })));
+    await act(async () => earlier.resolve(new Blob(["someone else"], { type: "image/jpeg" })));
+    fireEvent.click(await screen.findByRole("button", { name: "Try on look 1" }));
+    await screen.findByRole("img", { name: "Experimental try-on of look 1" });
+    const form = server.requests.find((entry) => entry.url === "/api/previews")?.body as FormData;
+    expect(await (form.get("portrait") as Blob).text()).toBe("me");
+  });
+
+  it("keeps an input cleared while its earlier photo was still being prepared", async () => {
+    const server = await prepareTryOn(installServer({ plans: [firstPlan] }));
+    const slow = deferred<Blob>();
+    vi.mocked(normalizePhoto).mockImplementationOnce(() => slow.promise);
+    const portrait = screen.getByLabelText("Portrait photo");
+    fireEvent.change(portrait, { target: { files: [new File(["a"], "unwanted.png", { type: "image/png" })] } });
+    fireEvent.change(portrait, { target: { files: [] } });
+    await act(async () => slow.resolve(new Blob(["unwanted"], { type: "image/jpeg" })));
+    await waitFor(() =>
+      expect((screen.getByRole("button", { name: "Try on look 1" }) as HTMLButtonElement).disabled).toBe(true),
+    );
+    expect(server.requests.some((entry) => entry.url === "/api/previews")).toBe(false);
+  });
+
+  it("says why the plan went when a try-on finds it expired and it no longer passes the checks", async () => {
+    const server = await prepareTryOn(installServer({ plans: [firstPlan] }));
+    server.expireToken();
+    server.restoreFails = true;
+    fireEvent.click(await screen.findByRole("button", { name: "Try on look 1" }));
+    expect(await screen.findByText(/Your plan expired on the server and no longer passes today's checks/)).toBeTruthy();
+    expect(screen.queryByText(/The three looks passed the catalog checks/)).toBeNull();
+    expect(screen.queryByRole("heading", { name: "Try a look on" })).toBeNull();
+  });
+
+  it("leaves an update running when a try-on meanwhile finds the plan expired and gone", async () => {
+    const server = await prepareTryOn(installServer({ plans: [firstPlan, reducedBudgetPlan] }));
+    const model = deferred();
+    server.planGate = model.promise;
+    fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "160" } });
+    fireEvent.click(screen.getByRole("button", { name: "Update three looks" }));
+    await screen.findByRole("button", { name: "Planning looks…" });
+    server.expireToken();
+    server.restoreFails = true;
+    fireEvent.click(await screen.findByRole("button", { name: "Try on look 1" }));
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Try a look on" })).toBeNull());
+    // The update still runs, so nothing may start a second model request.
+    expect((screen.getByRole("button", { name: "Planning looks…" }) as HTMLButtonElement).disabled).toBe(true);
+
+    await act(async () => model.resolve());
+    expect(await screen.findAllByText("REHMAA LEGGINGS")).not.toHaveLength(0);
+  });
+
+  it("keeps Replace available after a try-on brings back an expired plan written as 249.90", async () => {
+    const server = installServer({ plans: [firstPlan] });
+    render(<App />);
+    await generate("Relaxed office outfits", "249.90");
+    fireEvent.click(screen.getByRole("button", { name: "I agree to this processing of my photos" }));
+    await screen.findByText("You agreed to this processing.");
+    fireEvent.change(screen.getByLabelText("Portrait photo"), {
+      target: { files: [new File(["p"], "portrait.png", { type: "image/png" })] },
+    });
+    fireEvent.change(screen.getByLabelText("Full-body photo"), {
+      target: { files: [new File(["f"], "full.webp", { type: "image/webp" })] },
+    });
+    server.expireToken();
+    fireEvent.click(await screen.findByRole("button", { name: "Try on look 1" }));
+    await screen.findByRole("img", { name: "Experimental try-on of look 1" });
+    expect(screen.queryByText(/Replace is off until you select "Update three looks"/)).toBeNull();
+    const replace = screen.getAllByRole("button", { name: /^Replace .* in look 1$/ })[0] as HTMLButtonElement;
+    expect(replace.disabled).toBe(false);
+  });
+
   it("hides a try-on once the plan changes", async () => {
     await prepareTryOn(installServer({ plans: [firstPlan, reducedBudgetPlan] }));
     fireEvent.click(await screen.findByRole("button", { name: "Try on look 1" }));
@@ -1283,6 +1492,26 @@ describe(`${FIXTURE_LABEL}: try-on`, () => {
     server.previewOutcome = "provider";
     fireEvent.click(await screen.findByRole("button", { name: "Try on look 1" }));
     expect(await screen.findByText(/still counts against this invite/)).toBeTruthy();
+  });
+
+  it("keeps the keyboard on the consent button that replaces the one pressed", async () => {
+    installServer({ plans: [firstPlan] });
+    render(<App />);
+    await generate();
+    const agree = screen.getByRole("button", { name: "I agree to this processing of my photos" });
+    agree.focus();
+    fireEvent.click(agree);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Withdraw consent" })));
+    fireEvent.click(document.activeElement as HTMLElement);
+    await screen.findByText(/Consent withdrawn/);
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "I agree to this processing of my photos" }));
+  });
+
+  it("says that a try-on that ran out of time may still count", async () => {
+    const server = await prepareTryOn(installServer({ plans: [firstPlan] }));
+    server.previewOutcome = "timeout";
+    fireEvent.click(await screen.findByRole("button", { name: "Try on look 1" }));
+    expect(await screen.findByText(/took too long\. Try again\. This try-on may still count against this invite\./)).toBeTruthy();
   });
 
   it("explains an unsupported photo format", async () => {
@@ -1409,6 +1638,18 @@ describe(`${FIXTURE_LABEL}: try-on`, () => {
     expect(screen.queryByText(/Consent withdrawn/)).toBeNull();
     expect((screen.getByLabelText("Portrait photo") as HTMLInputElement).files?.length ?? 0).toBe(0);
     expect(screen.getByText("You agreed to this processing.")).toBeTruthy();
+  });
+
+  it("says in the try-on panel, not over the plan, that an agreement could not be saved", async () => {
+    const server = installServer({ plans: [firstPlan] });
+    render(<App />);
+    await generate();
+    server.consentFails = true;
+    fireEvent.click(screen.getByRole("button", { name: "I agree to this processing of my photos" }));
+    const message = await screen.findByText("store down");
+    expect(message.closest(".tryon-panel")).not.toBeNull();
+    expect(screen.getByText(/The three looks passed the catalog checks/)).toBeTruthy();
+    expect(screen.queryByText(/The looks below are from the last successful request/)).toBeNull();
   });
 
   it("withdrawing consent removes a shown try-on and releases its image", async () => {

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { flushSync } from "react-dom";
 import { formatMoney } from "./format";
 import { shoppingTotal } from "./plan";
 import { ShoppingList } from "./ShoppingList";
@@ -42,8 +43,9 @@ export function SavedPlans({
   if (restoring !== null && !restoreWarning) setRestoring(null);
 
   return (
-    <section className="saved-panel no-print" aria-labelledby="saved-title">
-      <div className="saved-heading">
+    // Only an opened list prints, from its own Print button; the rest of the panel is controls.
+    <section className={`saved-panel${opened ? "" : " no-print"}`} aria-labelledby="saved-title">
+      <div className="saved-heading no-print">
         <div>
           <h2 id="saved-title">Saved on this device</h2>
           <p className="field-help">Plans and shopping lists only; photos and try-ons are never saved.</p>
@@ -54,11 +56,11 @@ export function SavedPlans({
           </button>
         )}
       </div>
-      {message && <p className="field-help" id="saved-message" role="status" tabIndex={-1}>{message}</p>}
+      {message && <p className="field-help no-print" id="saved-message" role="status" tabIndex={-1}>{message}</p>}
       {saved.length === 0 ? (
-        <p className="field-help">Nothing saved yet. Saved plans stay in this browser until you delete them.</p>
+        <p className="field-help no-print">Nothing saved yet. Saved plans stay in this browser until you delete them.</p>
       ) : (
-        <ul className="saved-list">
+        <ul className="saved-list no-print">
           {saved.map((plan) => (
             <li className="saved-item" key={plan.id}>
               <div>
@@ -88,19 +90,39 @@ export function SavedPlans({
                   {open === plan.id ? "Hide list" : "Show list"}
                 </button>
                 {confirming === plan.id ? (
+                  <>
+                    {/* They take the place of the Delete button that had the focus. The safe answer
+                        takes it, so a second press of the same key cannot delete. */}
+                    <button
+                      autoFocus
+                      className="secondary-button"
+                      onClick={() => {
+                        flushSync(() => setConfirming(null));
+                        document.getElementById(`delete-${plan.id}`)?.focus();
+                      }}
+                      type="button"
+                    >
+                      Keep it
+                    </button>
+                    <button
+                      className="secondary-button is-danger"
+                      onClick={() => {
+                        setConfirming(null);
+                        if (open === plan.id) setOpen(null);
+                        onDelete(plan.id);
+                      }}
+                      type="button"
+                    >
+                      Confirm delete
+                    </button>
+                  </>
+                ) : (
                   <button
-                    className="secondary-button is-danger"
-                    onClick={() => {
-                      setConfirming(null);
-                      if (open === plan.id) setOpen(null);
-                      onDelete(plan.id);
-                    }}
+                    className="text-button"
+                    id={`delete-${plan.id}`}
+                    onClick={() => setConfirming(plan.id)}
                     type="button"
                   >
-                    Confirm delete
-                  </button>
-                ) : (
-                  <button className="text-button" onClick={() => setConfirming(plan.id)} type="button">
                     Delete
                   </button>
                 )}

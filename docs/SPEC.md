@@ -68,7 +68,7 @@ A successful plan comes with an opaque token. The server keeps the last checked 
 
 ## Shopping list
 
-The shopping list has one line for each catalog variant and each owned item in the plan, with the looks that use it. A variant that appears in several looks is listed and counted once; an owned item costs nothing and has no shopping link. Each catalog line shows the selected offer's price, retailer link, the date the price was checked, and its stock, or that the offer does not report it. The interface says that the total is the items' price, without delivery or returns, and not a guaranteed final cost. The list can be copied as text or printed.
+The shopping list has one line for each catalog variant and each owned item in the plan, with the looks that use it. A variant that appears in several looks is listed and counted once; an owned item costs nothing and has no shopping link. Each catalog line shows the selected offer's price, retailer link, the date the price was checked, and its stock, or that the offer does not report it. The interface says that the total is the items' price, without delivery or returns, and not a guaranteed final cost. The list can be copied as text or printed, and so can a saved plan's list once it is opened. A printout holds the looks and the lists, never a try-on.
 
 ## Feedback
 

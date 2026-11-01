@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { hasReplacementAlternative, passedChecksText, readableDetail, shoppingList, uncheckedText } from "../src/plan";
+import { hasReplacementAlternative, passedChecksText, preferenceKey, readableDetail, shoppingList, uncheckedText } from "../src/plan";
+import type { Preferences } from "../src/plan";
+import { EMPTY_FIT_DRAFT } from "../src/types";
 import type { Catalog, Fit, ItemRef, OwnedItem, Plan } from "../src/types";
 
 /* A hand-made catalog: one shirt in two sizes and two colors, and a pair of shoes. */
@@ -154,5 +156,37 @@ describe("readableDetail", () => {
     expect(readableDetail({ rule: "fit", detail: "shirt-navy-m is letter size M" }, null, [])).toBe(
       "shirt-navy-m is letter size M",
     );
+  });
+});
+
+describe("preferenceKey", () => {
+  const base: Preferences = {
+    styleGoal: "Office looks",
+    colors: [],
+    occasion: "",
+    season: "",
+    budgetAmount: "249.90",
+    budgetMode: "per_look",
+    footwear: "closed",
+    exclusions: [],
+    fit: { ...EMPTY_FIT_DRAFT, shoeSizes: "39,40", waistSizes: "32/32" },
+    ownedItems: [],
+  };
+  const restored = { ...base, budgetAmount: "249.9", fit: { ...base.fit, shoeSizes: "39, 40" } };
+
+  it("treats a form written back from a saved plan as the same request", () => {
+    expect(preferenceKey(restored)).toBe(preferenceKey(base));
+  });
+
+  it("changes when the budget, a size or another sent preference changes", () => {
+    expect(preferenceKey({ ...base, budgetAmount: "249.91" })).not.toBe(preferenceKey(base));
+    expect(preferenceKey({ ...base, fit: { ...base.fit, shoeSizes: "39" } })).not.toBe(preferenceKey(base));
+    expect(preferenceKey({ ...base, budgetMode: "whole_plan" })).not.toBe(preferenceKey(base));
+    expect(preferenceKey({ ...base, budgetAmount: "" })).not.toBe(preferenceKey({ ...base, budgetAmount: "0" }));
+  });
+
+  it("still tells sizes it cannot parse apart", () => {
+    const broken = { ...base, fit: { ...base.fit, shoeSizes: "39,4" } };
+    expect(preferenceKey(broken)).not.toBe(preferenceKey({ ...broken, fit: { ...broken.fit, shoeSizes: "39,44" } }));
   });
 });

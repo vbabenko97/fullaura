@@ -20,6 +20,8 @@ interface LookCardProps {
   look: Look;
   plan: Plan;
   ownedItems: OwnedItem[];
+  /** The IDs of the owned items the form still lists; one removed since cannot be kept. */
+  ownedItemsInForm: string[];
   ownedNotices: OwnedNotice[];
   fit: Fit | undefined;
   footwear: FootwearChoice;
@@ -37,6 +39,7 @@ export function LookCard({
   look,
   plan,
   ownedItems,
+  ownedItemsInForm,
   ownedNotices,
   fit,
   footwear,
@@ -92,6 +95,7 @@ export function LookCard({
               onToggleLock={onToggleLock}
               onReplaceItem={onReplaceItem}
               ownedItems={ownedItems}
+              ownedItemsInForm={ownedItemsInForm}
               ownedNotices={ownedNotices}
               plan={plan}
               slot={slot}

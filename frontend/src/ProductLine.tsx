@@ -62,6 +62,7 @@ interface ProductLineProps {
   slot: Slot;
   item: ItemRef;
   ownedItems: OwnedItem[];
+  ownedItemsInForm: string[];
   ownedNotices: OwnedNotice[];
   fit: Fit | undefined;
   footwear: FootwearChoice;
@@ -79,6 +80,7 @@ export function ProductLine({
   slot,
   item,
   ownedItems,
+  ownedItemsInForm,
   ownedNotices,
   fit,
   footwear,
@@ -92,6 +94,8 @@ export function ProductLine({
   if (item.kind === "owned") {
     const owned = ownedItems.find((candidate) => candidate.id === item.id);
     const notices = ownedNotices.filter((notice) => notice.item.id === item.id);
+    // Removed from the form since this plan was made, so the next update cannot send it as kept.
+    const removed = !ownedItemsInForm.includes(item.id);
     return (
       <li className="look-item">
         <div className="look-item-heading">
@@ -110,7 +114,7 @@ export function ProductLine({
               aria-label={`${isLocked ? "Release" : "Keep"} ${owned?.description ?? "owned item"} in ${lookLabel(look.id)}`}
               aria-pressed={isLocked}
               className={`lock-button${isLocked ? " is-locked" : ""}`}
-              disabled={lockDisabled}
+              disabled={lockDisabled || (removed && !isLocked)}
               onClick={() => onToggleLock(look.id, slot, item)}
               type="button"
             >
@@ -119,6 +123,9 @@ export function ProductLine({
           </div>
         </div>
         {!hasAlternative && <p className="item-facts">No other catalog or owned item can fill this position.</p>}
+        {removed && (
+          <p className="item-facts no-print">You removed this item from your items, so it cannot be kept.</p>
+        )}
         <h3>{owned?.description ?? "Your item"}</h3>
         <p className="item-facts">
           {owned ? `${owned.color}, ${labelCategory(owned.category)}` : "Already owned"}

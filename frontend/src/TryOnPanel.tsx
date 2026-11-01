@@ -6,6 +6,12 @@ import type { Session } from "./types";
 
 const META_TERMS = "https://dev.meta.ai/legal/terms-of-service";
 const CLEARED = "Any try-on in progress was stopped, and your photos and result were removed from this page.";
+// What a failed try-on did to the invite's quota: one the provider could not finish counts, and one
+// that ran out of time counts once the server had sent it on, which the page cannot tell.
+const COUNTED: Record<string, string> = {
+  provider: " This try-on still counts against this invite.",
+  timeout: " This try-on may still count against this invite.",
+};
 
 interface TryOnResult {
   url: string;
@@ -28,12 +34,13 @@ type TryOnTarget =
 interface TryOnPanelProps {
   session: Session;
   target: TryOnTarget;
-  /** Records the consent on the server; false when that failed. */
-  onConsent: (consent: boolean) => Promise<boolean>;
+  /** Records the consent on the server; why that failed, or null once it is saved. */
+  onConsent: (consent: boolean) => Promise<string | null>;
   onFinished: () => void;
 }
 
 type Photo = { blob: Blob; name: string } | null;
+type PhotoInput = "portrait" | "full_body";
 
 export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPanelProps) {
   const [portrait, setPortrait] = useState<Photo>(null);
@@ -50,12 +57,23 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
   const epoch = useRef(0);
   // Photos of this epoch still being prepared; the panel stays "preparing" until none is left.
   const preparing = useRef(0);
+  // How many times each input was chosen or cleared, so a superseded choice is dropped.
+  const choices = useRef<Record<PhotoInput, number>>({ portrait: 0, full_body: 0 });
   // Set when a try-on finishes, so only a new result moves focus, not coming back to a look.
   const revealResult = useRef(false);
   // The button that starts and cancels a try-on: one element, whichever it says.
   const actionButton = useRef<HTMLButtonElement>(null);
+  // The consent button shown now, "I agree" or "Withdraw consent". Each replaces the other once the
+  // server answers, so focus comes back to whichever is shown if the person was on the first one.
+  const consentButton = useRef<HTMLButtonElement>(null);
+  const refocusConsent = useRef(false);
 
   useEffect(() => () => controller.current?.abort(), []);
+  useEffect(() => {
+    if (!refocusConsent.current || consentBusy) return;
+    refocusConsent.current = false;
+    if (document.activeElement === document.body || document.activeElement === null) consentButton.current?.focus();
+  }, [consentBusy, session.photo_consent]);
   useEffect(() => {
     return () => {
       if (result) URL.revokeObjectURL(result.url);
@@ -69,8 +87,12 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
   const shown = result && result.token === target.token && result.lookId === lookId ? result : null;
   const remaining = Math.max(0, session.preview_requests_limit - session.preview_requests_used);
 
-  async function choosePhoto(setter: (photo: Photo) => void, file: File | undefined) {
+  async function choosePhoto(input: PhotoInput, file: File | undefined) {
     const started = epoch.current;
+    // Only the latest choice for an input may fill it: an earlier, slower photo must not replace a
+    // newer one, or a cleared input, and then be the one sent.
+    const choice = ++choices.current[input];
+    const setter = input === "portrait" ? setPortrait : setFullBody;
     setPhotoError(null);
     setResult(null);
     if (!file) {
@@ -88,10 +110,11 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
     }
     if (epoch.current !== started) return;
     preparing.current -= 1;
-    setter(photo);
+    const latest = choices.current[input] === choice;
+    if (latest) setter(photo);
     // The other photo may still be preparing; only the last one to finish allows a try-on.
     if (preparing.current === 0) setState((value) => (value === "preparing" ? "idle" : value));
-    if (error) setPhotoError(error instanceof PhotoError ? error.message : "This photo could not be prepared.");
+    if (latest && error) setPhotoError(error instanceof PhotoError ? error.message : "This photo could not be prepared.");
   }
 
   /** Stop the try-on at once and forget its photos and result, before the server hears of it. */
@@ -110,14 +133,18 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
   }
 
   async function changeConsent(consent: boolean) {
+    refocusConsent.current = document.activeElement === consentButton.current;
     if (!consent) forgetPhotos();
     else setMessage(null);
     setConsentBusy(true);
     try {
-      const saved = await onConsent(consent);
-      if (consent) return;
+      const failure = await onConsent(consent);
+      if (consent) {
+        if (failure) setMessage(failure);
+        return;
+      }
       setMessage(
-        saved
+        failure === null
           ? `Consent withdrawn. ${CLEARED} Photos already sent to Meta for a try-on cannot be called back.`
           : `${CLEARED} The withdrawal could not be saved, so select "Withdraw consent" again.`,
       );
@@ -183,7 +210,7 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
       setState("error");
       setMessage(
         error instanceof ApiResponseError
-          ? `${errorMessage(error)}${error.reason === "provider" ? " This try-on still counts against this invite." : ""}`
+          ? `${errorMessage(error)}${COUNTED[error.reason ?? ""] ?? ""}`
           : error instanceof Error
             ? error.message
             : "The try-on failed.",
@@ -206,7 +233,8 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
   const disabled = !session.photo_consent || !session.previews_open || consentBusy || state === "loading";
 
   return (
-    <section className="tryon-panel" aria-labelledby="tryon-title">
+    // A printout leaves the device, so it holds the looks and the list, never a try-on.
+    <section className="tryon-panel no-print" aria-labelledby="tryon-title">
       <div className="panel-heading">
         <h2 aria-describedby="tryon-description" id="tryon-title" tabIndex={-1}>Try a look on</h2>
         <p id="tryon-description">
@@ -227,7 +255,13 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
         {session.photo_consent ? (
           <p className="tryon-consent">
             You agreed to this processing.{" "}
-            <button className="text-button" disabled={consentBusy} onClick={() => void changeConsent(false)} type="button">
+            <button
+              className="text-button"
+              disabled={consentBusy}
+              onClick={() => void changeConsent(false)}
+              ref={consentButton}
+              type="button"
+            >
               Withdraw consent
             </button>
           </p>
@@ -237,6 +271,7 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
               className="secondary-button"
               disabled={consentBusy}
               onClick={() => void changeConsent(true)}
+              ref={consentButton}
               type="button"
             >
               I agree to this processing of my photos
@@ -253,7 +288,7 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
             disabled={disabled}
             id="tryon-portrait"
             key={`portrait-${inputsKey}`}
-            onChange={(event) => void choosePhoto(setPortrait, event.currentTarget.files?.[0])}
+            onChange={(event) => void choosePhoto("portrait", event.currentTarget.files?.[0])}
             type="file"
           />
         </div>
@@ -264,7 +299,7 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
             disabled={disabled}
             id="tryon-full-body"
             key={`full-body-${inputsKey}`}
-            onChange={(event) => void choosePhoto(setFullBody, event.currentTarget.files?.[0])}
+            onChange={(event) => void choosePhoto("full_body", event.currentTarget.files?.[0])}
             type="file"
           />
         </div>

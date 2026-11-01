@@ -340,13 +340,18 @@ export interface Preferences {
   ownedItems: OwnedItem[];
 }
 
-/** Changes whenever a preference that a plan request sends changes. */
+/** Changes whenever a preference that a plan request sends changes, and only then: the budget
+ * counts in cents and the fit as parsed, so "249.90" and "249.9", or "39,40" and "39, 40", are the
+ * same request, as they are after a restore writes the form back from the saved plan. */
 export function preferenceKey(preferences: Preferences): string {
+  const { budgetAmount, fit, ...rest } = preferences;
+  const parsedFit = parseFit(fit);
   return JSON.stringify({
-    ...preferences,
+    ...rest,
     colors: preferences.colors.map((color) => color.trim()).filter(Boolean),
     styleGoal: preferences.styleGoal.trim(),
-    amount_cents: Math.round(Number(preferences.budgetAmount) * 100),
+    amount_cents: budgetAmount.trim() ? Math.round(Number(budgetAmount) * 100) : null,
+    fit: parsedFit.ok ? (parsedFit.fit ?? null) : fit,
     exclusions: [...preferences.exclusions].sort(),
   });
 }

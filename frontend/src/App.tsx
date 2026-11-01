@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
 import {
   errorMessage,
   newOperationId,
@@ -154,6 +155,11 @@ export function App() {
   const [current, setCurrent] = useState<CurrentPlan | null>(null);
   const [requestState, setRequestState] = useState<RequestState>("idle");
   const [requestMessage, setRequestMessage] = useState<string | null>(null);
+  // The request state as last shown, for an answer that arrives while another request runs.
+  const shownRequestState = useRef<RequestState>("idle");
+  useEffect(() => {
+    shownRequestState.current = requestState;
+  }, [requestState]);
   const [saved, setSaved] = useState<SavedPlan[]>(() => loadSavedPlans());
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [tryOnLook, setTryOnLook] = useState("look_1");
@@ -234,10 +240,16 @@ export function App() {
       catalog_id: current.catalogId,
     });
     if (!result.plan && result.response) {
-      // The plan no longer passes today's checks, so it cannot be named again; start afresh.
+      // The plan no longer passes today's checks, so it cannot be named again; start afresh, and
+      // say so whichever request found out, an update or a try-on.
       setCurrent(null);
       setLocks([]);
       keepCurrentPlan(null);
+      // A request still running, such as the update that found out, says so once it answers.
+      if (shownRequestState.current !== "loading") {
+        setRequestState("error");
+        setRequestMessage(new PlanLostError().message);
+      }
     }
     return result;
   }
@@ -259,9 +271,17 @@ export function App() {
     const working = loadCurrentPlan();
     if (!working) return;
     setPreferences(preferencesFrom(working));
+    // A running request, like a restore of a saved plan: a plan generated meanwhile would be
+    // replaced by this one when it answered later.
+    setRequestState("loading");
+    setRequestMessage("Checking your last plan against today's catalog.");
     const result = await restore(working, loaded);
     // Kept items belong to the plan they were kept in, so a plan that was not restored keeps none.
     setLocks(result.plan ? working.state.locks : []);
+    if (!stopped() && result.plan) {
+      setRequestState("idle");
+      setRequestMessage(null);
+    }
     if (!stopped() && !result.plan) {
       // Only the server's refusal ends the working plan; after a network error a reload tries again.
       if (result.response) keepCurrentPlan(null);
@@ -349,14 +369,14 @@ export function App() {
     }
   }
 
-  async function setPhotoConsent(consent: boolean): Promise<boolean> {
+  /** Why the consent could not be saved, for the try-on panel to say; null once it is saved. It
+   * leaves the planning request's state alone, which may be running meanwhile. */
+  async function setPhotoConsent(consent: boolean): Promise<string | null> {
     try {
       setSession(parseSession(await postJson("/api/session/photo-consent", { consent })));
-      return true;
+      return null;
     } catch (error) {
-      setRequestState("error");
-      setRequestMessage(errorMessage(error));
-      return false;
+      return errorMessage(error);
     }
   }
 
@@ -380,6 +400,8 @@ export function App() {
 
   /** The brief and the checked fields both modes send, or what to fix first. */
   function checkedPreferences(): ConceptRequest | string {
+    // The field's required check accepts spaces alone, which the server refuses.
+    if (!preferences.styleGoal.trim()) return "Describe what the looks should work for.";
     const colors = preferences.colors.map((color) => color.trim()).filter(Boolean);
     if (colors.length > 5 || colors.some((color) => color.length > 30)) {
       return "Enter up to five colors, with no more than 30 characters each.";
@@ -407,10 +429,16 @@ export function App() {
   function buildRequest(replacement: ReplacementTarget | null): { request: PlanRequest; key: string } | string {
     const checked = checkedPreferences();
     if (typeof checked === "string") return checked;
+    // The server refuses a lock on an owned item the request does not send, so a kept item the
+    // person has since removed from their items is not sent as kept.
+    const listed = new Set(preferences.ownedItems.map((item) => item.id));
+    const sendable = (lock: LockedPlacement) => lock.item.kind !== "owned" || listed.has(lock.item.id);
     const state: StateInput = {
       ...checked.state,
       owned_items: preferences.ownedItems,
-      locks: replacement && current ? locksForReplacement(current.plan, replacement, locks) : current ? locks : [],
+      locks: (replacement && current ? locksForReplacement(current.plan, replacement, locks) : current ? locks : []).filter(
+        sendable,
+      ),
     };
     return {
       request: { brief: checked.brief, state, replacement, plan_token: current?.token ?? null },
@@ -551,6 +579,8 @@ export function App() {
   }
 
   async function restoreSaved(entry: SavedPlan) {
+    // A restore makes the plan current on the server, and showing it needs the catalog.
+    if (!catalog || requestState === "loading") return;
     setRequestState("loading");
     setRequestMessage(`Checking "${entry.name}" against today's catalog.`);
     setSavedMessage(`Checking "${entry.name}" against today's catalog.`);
@@ -585,8 +615,13 @@ export function App() {
   }
 
   function deleteSaved(id: string) {
-    setSavedMessage(deleteSavedPlan(id) ? "Deleted from this device." : "This browser did not allow deleting.");
-    setSaved(loadSavedPlans());
+    const message = deleteSavedPlan(id) ? "Deleted from this device." : "This browser did not allow deleting.";
+    flushSync(() => {
+      setSavedMessage(message);
+      setSaved(loadSavedPlans());
+    });
+    // The deleted plan's buttons are gone, so the answer takes the focus, as after a restore.
+    if (document.activeElement === document.body) document.getElementById("saved-message")?.focus();
   }
 
   const loading = requestState === "loading";
@@ -867,6 +902,7 @@ export function App() {
                               heading?.focus({ preventScroll: true });
                             }}
                             ownedItems={current.state.owned_items}
+                            ownedItemsInForm={preferences.ownedItems.map((item) => item.id)}
                             ownedNotices={current.notices}
                             plan={current.plan}
                             preferencesChanged={!planCurrent && canSubmit}
@@ -908,7 +944,7 @@ export function App() {
 
               {!design && (
                 <SavedPlans
-                  busy={loading}
+                  busy={loading || !catalog}
                   canSave={current !== null}
                   message={savedMessage}
                   onDelete={deleteSaved}
