@@ -31,6 +31,8 @@ def check(base_url: str) -> None:
         html = response.read().decode("utf-8")
         if response.headers.get_content_type() != "text/html" or "FullAura" not in html:
             raise RuntimeError("Frontend entry point is missing")
+        if "frame-ancestors 'none'" not in response.headers.get("Content-Security-Policy", ""):
+            raise RuntimeError("The page has no content security policy")
     assets = re.findall(r'(?:src|href)="(/assets/[^"<>]+)"', html)
     if not assets:
         raise RuntimeError("No frontend assets found in the entry point")

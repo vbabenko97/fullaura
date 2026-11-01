@@ -28,6 +28,7 @@ from backend.app.planner import (
 )
 from backend.app.state import (
     Budget,
+    BudgetMode,
     Fit,
     FootwearChoice,
     ItemKind,
@@ -423,6 +424,138 @@ def test_http_timeout_cancels_the_full_async_request(monkeypatch: pytest.MonkeyP
 def test_a_client_needs_at_least_one_attempt() -> None:
     with pytest.raises(ValueError, match="max_attempts must be at least 1"):
         SparkClient("secret-key", max_attempts=0)
+
+
+@pytest.mark.parametrize("mode", list(BudgetMode))
+@pytest.mark.parametrize(
+    ("footwear", "cheapest"),
+    # Under a wool exclusion: P01 EUR 55 and P05 EUR 65, with P18 EUR 60 when shoes are required.
+    [(FootwearChoice.ANY, 12000), (FootwearChoice.CLOSED, 18000)],
+)
+def test_a_budget_under_the_cheapest_complete_look_is_infeasible_without_a_model_call(
+    mode: BudgetMode, footwear: FootwearChoice, cheapest: int
+) -> None:
+    def request(amount_cents: int) -> State:
+        return State(
+            budget=Budget(amount_cents=amount_cents, mode=mode),
+            material_exclusions={"wool"},
+            footwear=footwear,
+        )
+
+    client, sent, _ = spark()
+    result = plan_looks(BRIEF, request(cheapest - 1), CATALOG, client)
+    assert result.outcome is Outcome.INFEASIBLE and sent == []
+    assert [(c.rule, c.cost_cents) for c in result.conflicts] == [(Rule.BUDGET, cheapest)]
+
+    client, sent, _ = spark(VALID, VALID)
+    assert plan_looks(BRIEF, request(cheapest), CATALOG, client).outcome is not Outcome.INFEASIBLE
+    assert sent
+
+
+def test_an_owned_item_can_fill_a_position_of_the_cheapest_look_for_free() -> None:
+    owned = OwnedItem(id="O1", category="top", color="red", description="red shirt")
+    client, sent, _ = spark()
+    result = plan_looks(BRIEF, state(6499, owned_items=(owned,)), CATALOG, client)
+    assert [c.cost_cents for c in result.conflicts] == [6500] and sent == []  # P05 alone
+
+    client, sent, _ = spark(VALID, VALID)
+    plan_looks(BRIEF, state(6500, owned_items=(owned,)), CATALOG, client)
+    assert sent
+
+
+@pytest.mark.parametrize(
+    ("looks", "slot", "item", "cheapest"),
+    [
+        ((LOOK_1, LOOK_2, LOOK_3), Slot.TOP, "P03", 13500),  # P03 EUR 70 and P05 EUR 65
+        ((LOOK_1, LOOK_2, LOOK_3), Slot.BOTTOM, "P05", 12000),  # P05 EUR 65 and P01 EUR 55
+    ],
+)
+def test_a_kept_item_counts_with_the_cheapest_items_its_look_still_needs(
+    looks: tuple[dict[str, str], ...], slot: Slot, item: str, cheapest: int
+) -> None:
+    current = plan_from_looks(*looks)
+    look = next(look for look in current.looks if look.items.get(slot, None) == ref_of(item))
+    lock = LockedPlacement(look_id=look.id, slot=slot, item=ref_of(item))
+
+    client, sent, _ = spark()
+    result = plan_looks(BRIEF, state(cheapest - 1, plan=current, locks=(lock,)), CATALOG, client)
+    assert result.outcome is Outcome.INFEASIBLE and sent == []
+    assert (Rule.BUDGET, cheapest) in [(c.rule, c.cost_cents) for c in result.conflicts]
+
+    client, sent, _ = spark(VALID, VALID)
+    plan_looks(BRIEF, state(cheapest, plan=current, locks=(lock,)), CATALOG, client)
+    assert sent
+
+
+def test_a_kept_one_piece_needs_no_top_or_bottom() -> None:
+    current = plan_from_looks({"one_piece": "P12"}, LOOK_2, LOOK_3)
+    lock = LockedPlacement(look_id="look_1", slot=Slot.ONE_PIECE, item=ref_of("P12"))
+    client, sent, _ = spark(VALID, VALID)
+    request = state(9500, plan=current, locks=(lock,), material_exclusions=set())
+    result = plan_looks(BRIEF, request, CATALOG, client)
+    assert sent and result.outcome is not Outcome.INFEASIBLE
+
+
+def ref_of(item: str) -> ItemRef:
+    return ItemRef(kind=ItemKind.CATALOG, id=item)
+
+
+def test_a_replacement_cannot_fix_what_the_positions_it_keeps_break() -> None:
+    current = plan_from_looks(LOOK_1, LOOK_2, LOOK_3)
+    top = Replacement(look_id="look_1", slot=Slot.TOP, item=ref_of("P01"))
+
+    client, sent, _ = spark()
+    # Look 2 stays as it is and costs EUR 195.
+    result = plan_looks(BRIEF, state(19499, plan=current), CATALOG, client, replacement=top)
+    assert result.outcome is Outcome.INFEASIBLE and sent == []
+    assert ("look_2", Rule.BUDGET) in [(c.look_id, c.rule) for c in result.conflicts]
+
+    # P09 is viscose and stays in look 3.
+    excluded = state(20000, plan=current, material_exclusions={"viscose"})
+    result = plan_looks(BRIEF, excluded, CATALOG, client, replacement=top)
+    assert result.outcome is Outcome.INFEASIBLE and sent == []
+    assert [c.rule for c in result.conflicts] == [Rule.MATERIAL]
+
+    # The first look has no shoes and keeps that position empty.
+    no_shoes = plan_from_looks({"top": "P01", "bottom": "P05"}, LOOK_2, LOOK_3)
+    closed = state(20000, plan=no_shoes, footwear=FootwearChoice.CLOSED)
+    result = plan_looks(BRIEF, closed, CATALOG, client, replacement=top)
+    assert result.outcome is Outcome.INFEASIBLE and sent == []
+    assert [c.rule for c in result.conflicts] == [Rule.LOOK_COMPOSITION]
+
+
+def test_a_replacement_can_remove_the_item_that_broke_a_constraint() -> None:
+    current = plan_from_looks(LOOK_1, LOOK_2, LOOK_3)
+    client, sent, _ = spark(VALID, VALID)
+    bottom = Replacement(look_id="look_3", slot=Slot.BOTTOM, item=ref_of("P09"))
+    excluded = state(20000, plan=current, material_exclusions={"viscose"})
+    result = plan_looks(BRIEF, excluded, CATALOG, client, replacement=bottom)
+    assert sent and result.outcome is not Outcome.INFEASIBLE
+
+
+def test_a_replacement_keeping_an_owned_item_that_was_removed_still_reaches_the_model() -> None:
+    owned = ItemRef(kind=ItemKind.OWNED, id="O1")
+    look = Look(id="look_1", items={Slot.TOP: owned, Slot.BOTTOM: ref_of("P05")})
+    rest = plan_from_looks(LOOK_1, LOOK_2, LOOK_3)
+    current = Plan(looks=(look, *rest.looks[1:]), selected_offers=rest.selected_offers)
+    client, sent, _ = spark(VALID, VALID)
+    bottom = Replacement(look_id="look_2", slot=Slot.BOTTOM, item=ref_of("P05"))
+    plan_looks(BRIEF, state(20000, plan=current), CATALOG, client, replacement=bottom)
+    assert sent
+
+
+def test_repeated_looks_get_one_repair() -> None:
+    client, sent, _ = spark(reply(LOOK_1, LOOK_1, LOOK_2), VALID)
+    result = plan_looks(BRIEF, state(), CATALOG, client)
+    assert result.outcome is Outcome.SUCCESS and len(sent) == 2
+    assert "look_2 repeats look_1" in sent[1]["messages"][-1]["content"]
+
+
+def test_looks_that_stay_repeated_fail() -> None:
+    client, _, _ = spark(reply(LOOK_1, LOOK_2, LOOK_1), reply(LOOK_2, LOOK_2, LOOK_2))
+    result = plan_looks(BRIEF, state(), CATALOG, client)
+    assert result.outcome is Outcome.GENERATION_FAILED
+    assert {v.rule for v in result.check.violations} == {Rule.LOOK_COMPOSITION}
 
 
 def test_locks_that_break_the_budget_are_infeasible_without_a_model_call() -> None:

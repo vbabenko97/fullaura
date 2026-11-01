@@ -253,7 +253,20 @@ def test_the_budget_is_per_look_by_default() -> None:
     assert Budget(amount_cents=10000).mode is PER_LOOK
 
 
-def test_whole_plan_counts_each_color_or_size_variant_of_a_product() -> None:
+def test_whole_plan_counts_each_color_variant_of_a_product() -> None:
+    ivory = variant_like("P01", "S-IVORY")
+    navy = variant_like("P01", "S-NAVY").model_copy(update={"color": "navy"})
+    catalog = catalog_with(ivory, navy)
+    shirts = plan(
+        {"top": "S-IVORY", "bottom": "P05"},
+        {"top": "S-NAVY", "bottom": "P05"},
+        {"top": "S-IVORY", "bottom": "P05"},
+    )
+    assert check_plan(state(17500, WHOLE_PLAN, plan=shirts), catalog).passed  # 55+55+65
+    assert not check_plan(state(17499, WHOLE_PLAN, plan=shirts), catalog).passed
+
+
+def test_a_plan_uses_one_size_of_a_product_in_one_color() -> None:
     medium, large = variant_like("P01", "S-M"), variant_like("P01", "S-L")
     catalog = catalog_with(medium, large)
     shirts = plan(
@@ -261,8 +274,15 @@ def test_whole_plan_counts_each_color_or_size_variant_of_a_product() -> None:
         {"top": "S-L", "bottom": "P05"},
         {"top": "S-M", "bottom": "P05"},
     )
-    assert check_plan(state(17500, WHOLE_PLAN, plan=shirts), catalog).passed  # 55+55+65
-    assert not check_plan(state(17499, WHOLE_PLAN, plan=shirts), catalog).passed
+    assert found(check_plan(state(30000, plan=shirts), catalog).violations) == [
+        (Rule.ONE_SIZE, "S-L", None)
+    ]
+    one_size = plan(
+        {"top": "S-M", "bottom": "P05"},
+        {"top": "S-M", "bottom": "P09"},
+        {"top": "S-M", "bottom": "P05"},
+    )
+    assert check_plan(state(30000, plan=one_size), catalog).passed
 
 
 @pytest.mark.parametrize("mode", [PER_LOOK, WHOLE_PLAN])

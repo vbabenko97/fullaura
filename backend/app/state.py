@@ -14,6 +14,8 @@ from backend.app.catalog import Category, GarmentType, Id, Line, Material, Recor
 LOOKS_PER_PLAN = 3
 MAX_OWNED_ITEMS = 3
 MAX_FIT_SIZES = 12
+# The most a browser can send exactly. A larger whole number can also be too large to divide.
+MAX_BUDGET_CENTS = 2**53 - 1
 
 
 class BudgetMode(StrEnum):
@@ -22,7 +24,7 @@ class BudgetMode(StrEnum):
 
 
 class Budget(Record):
-    amount_cents: PositiveInt  # EUR
+    amount_cents: Annotated[PositiveInt, Field(le=MAX_BUDGET_CENTS)]  # EUR
     mode: BudgetMode = BudgetMode.PER_LOOK  # the default, D-17 in docs/DECISIONS.md
 
 

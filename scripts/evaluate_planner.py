@@ -18,6 +18,7 @@ import itertools
 import json
 import time
 from collections import Counter
+from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -264,12 +265,30 @@ def cheapest_baseline(case: EvaluationCase, catalog: Catalog) -> tuple[Plan, int
     """Return the cheapest distinct three-look plan that passes the shared hard checks."""
     offers = cheapest_usable_offers(catalog, case.state())
     candidates = candidate_looks(catalog, offers)
+    garments = {
+        variant.id: (product.id, variant.color)
+        for product in catalog.products
+        for variant in product.variants
+    }
+
+    def one_size_each(looks: Sequence[CandidateLook]) -> bool:
+        """A plan uses one size of a product in one color, so each garment has one variant."""
+        variant_ids = {variant_id for look in looks for _, variant_id in look.items}
+        return len(variant_ids) == len({garments[variant_id] for variant_id in variant_ids})
+
     chosen_looks: tuple[CandidateLook, ...] | None = None
     plan_cost: int | None = None
     if case.budget.mode is BudgetMode.PER_LOOK:
-        affordable = [look for look in candidates if look.cost_cents <= case.budget.amount_cents]
-        if len(affordable) >= 3:
-            chosen_looks = tuple(affordable[:3])
+        cheapest: list[CandidateLook] = []
+        for look in candidates:
+            if (
+                len(cheapest) < 3
+                and look.cost_cents <= case.budget.amount_cents
+                and one_size_each([*cheapest, look])
+            ):
+                cheapest.append(look)
+        if len(cheapest) == 3:
+            chosen_looks = tuple(cheapest)
             plan_cost = sum(look.cost_cents for look in chosen_looks)
     else:
         best_rank: tuple[int, tuple[tuple[str, ...], ...]] | None = None
@@ -277,7 +296,7 @@ def cheapest_baseline(case: EvaluationCase, catalog: Catalog) -> tuple[Plan, int
         for chosen in itertools.combinations(candidates[:WHOLE_PLAN_SEARCH_LOOKS], 3):
             variant_ids = {variant_id for look in chosen for _, variant_id in look.items}
             total = sum(offers[variant_id].price_cents or 0 for variant_id in variant_ids)
-            if total > case.budget.amount_cents:
+            if total > case.budget.amount_cents or not one_size_each(chosen):
                 continue
             rank = (total, tuple(look.signature for look in chosen))
             if best_rank is None or rank < best_rank:

@@ -35,9 +35,9 @@ from backend.app.catalog import (
     Catalog,
     CompositionStatus,
     Offer,
-    Product,
     Record,
     Variant,
+    stated_kind,
 )
 from backend.app.constraints import cheapest_usable_offers, names_material
 from backend.app.photos import outfit_prompt, plain_words
@@ -55,6 +55,7 @@ from backend.app.planner import (
 from backend.app.state import FootwearChoice, ItemKind, ItemRef, Look, Plan, Slot, State
 
 CONCEPT_ATTEMPTS = 2  # the first concept and one repair
+BROKEN_RULES = "The concept broke these rules: "
 MATCHING_ATTEMPTS = 1
 MAX_CALLS = CONCEPT_ATTEMPTS + MATCHING_ATTEMPTS  # the reservation covers every call's attempts
 RESERVED_HTTP_ATTEMPTS = MAX_CALLS * HTTP_ATTEMPTS_PER_CALL
@@ -153,21 +154,6 @@ _COLOR_WORDS = {
     "lila": "purple",
     "gelb": "yellow",
 }
-# Words in a product title, English or German, that state the kind of a top, knit, outer layer or
-# shoe; the first that matches counts, so "Langarmshirt" is a long-sleeve top and not a shirt.
-_TITLE_KINDS = (
-    (re.compile(r"langarm|long-?sleeve"), "long-sleeve top"),
-    (re.compile(r"sweat-?shirt"), "sweatshirt"),
-    (re.compile(r"\bt-?shirt"), "t-shirt"),
-    (re.compile(r"overshirt"), "overshirt"),
-    (re.compile(r"strickjacke|cardigan"), "cardigan"),
-    (re.compile(r"pullover|sweater|jumper"), "sweater"),
-    (re.compile(r"boot|stiefel"), "boots"),
-    (re.compile(r"sneaker|runner"), "sneakers"),
-    (re.compile(r"slides?\b"), "slides"),
-    (re.compile(r"sandal"), "sandals"),
-    (re.compile(r"loafer"), "loafers"),
-)
 # Words for a garment's cut in a concept's fit or a product title. Each English word is its own
 # cut, so code never counts two cuts, such as slim and regular, as the same; "schmal", "weit" and
 # "oversize" count as the cut they translate or spell.
@@ -341,7 +327,7 @@ def design_look(
             problems = concept_problems(concept, state)
             if not problems:
                 break
-            failure = "The concept broke these rules: " + "; ".join(problems)
+            failure = BROKEN_RULES + "; ".join(problems)
             concept = None
         messages += [
             {"role": "assistant", "content": reply},
@@ -457,7 +443,7 @@ def decide_matches(
             wanted = "open" if item.kind in OPEN_SHOES else "closed"
             if product.footwear_closure.value != wanted:
                 differences.append(f"{product.footwear_closure.value} shoes, not {wanted}")
-        kind = _catalog_kind(product)
+        kind = stated_kind(product)
         if kind is None:
             differences.append(f"kind not confirmed as {item.kind}")
         elif kind != item.kind:
@@ -532,9 +518,11 @@ def concept_prompt(concept: Concept) -> str:
 
 def concept_json(result: ConceptResult, catalog_id: str, token: str | None) -> dict[str, Any]:
     concept = result.concept
+    # The rules a concept broke explain the failure; other errors hold technical text.
+    explained = result.error if (result.error or "").startswith(BROKEN_RULES) else None
     return {
         "outcome": result.outcome.value,
-        "error": result.error,
+        "error": explained,
         "catalog_id": catalog_id,
         "concept_token": token,
         "concept": None
@@ -627,15 +615,6 @@ def _proposals(reply: str, count: int) -> dict[int, str | None]:
     if set(proposals) != set(range(count)):
         raise ValueError("not one match per concept item")
     return proposals
-
-
-def _catalog_kind(product: Product) -> str | None:
-    """A product's kind as its record states it: a bottom's or one-piece's garment type, or else
-    a kind its title names."""
-    if product.garment_type:
-        return product.garment_type.value
-    title = product.title.lower()
-    return next((kind for words, kind in _TITLE_KINDS if words.search(title)), None)
 
 
 def _catalog_color(color: str | None) -> str | None:

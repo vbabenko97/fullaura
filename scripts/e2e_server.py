@@ -51,18 +51,30 @@ def _choose(request: dict[str, Any]) -> dict[str, Any]:
             if owned["category"] in categories:
                 by_slot[slot].insert(0, owned["id"])
                 price[owned["id"]] = 0
+    # A plan uses one size of a product in one color; owned items have no sizes.
+    garment = {item["id"]: (item["title"], item["brand"], item["color"]) for item in candidates}
+
+    def one_size_each(item_ids: set[str]) -> bool:
+        return len(item_ids) == len({garment.get(item_id, item_id) for item_id in item_ids})
+
     replacement = request["replacement"]
     if replacement:
         looks = request["current_plan"]
         for look in looks:
             look["items"] = {slot: item["id"] for slot, item in look["items"].items()}
-            if look["id"] == replacement["look_id"]:
-                current = look["items"][replacement["slot"]]
-                others = set(look["items"].values())
-                options = by_slot.get(replacement["slot"], [])
-                look["items"][replacement["slot"]] = next(
-                    (item for item in options if item != current and item not in others), current
-                )
+        target = next(look for look in looks if look["id"] == replacement["look_id"])
+        current = target["items"].pop(replacement["slot"])
+        others = set(target["items"].values())
+        kept = {item for look in looks for item in look["items"].values()}
+        options = by_slot.get(replacement["slot"], [])
+        target["items"][replacement["slot"]] = next(
+            (
+                item
+                for item in options
+                if item != current and item not in others and one_size_each(kept | {item})
+            ),
+            current,
+        )
         return {"looks": looks}
 
     locks: dict[str, dict[str, str]] = {}
@@ -75,6 +87,7 @@ def _choose(request: dict[str, Any]) -> dict[str, Any]:
         key=lambda combo: (sum(price[item] for item in combo if item), combo[0], combo[1]),
     )
     looks, used = [], set()
+    planned = {lock["item_id"] for lock in request["locks"]}
     for number in range(1, 4):
         look_id = f"look_{number}"
         kept = locks.get(look_id, {})
@@ -83,9 +96,10 @@ def _choose(request: dict[str, Any]) -> dict[str, Any]:
             items |= kept
             signature = tuple(sorted(items.items()))
             cost = sum(price.get(item, 0) for item in set(items.values()))
-            if signature in used or cost > budget:
+            if signature in used or cost > budget or not one_size_each(planned | {*items.values()}):
                 continue
             used.add(signature)
+            planned |= {*items.values()}
             looks.append({"id": look_id, "items": items})
             break
     return {"looks": looks}

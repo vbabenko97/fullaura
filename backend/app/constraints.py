@@ -66,6 +66,7 @@ class Rule(StrEnum):
     MATERIAL = "material"  # the composition lists an excluded material
     COMPOSITION_UNCHECKED = "composition_unchecked"  # not complete, so an exclusion cannot pass
     FIT = "fit"  # outside the lines, garment types or sizes the person stated
+    ONE_SIZE = "one_size"  # a second size of a product and color that the plan already uses
     FOOTWEAR = "footwear"  # not the closed or open shoes the person chose, or closure unknown
     DELIVERY = "delivery"  # delivery to Austria is not confirmed
     STOCK = "stock"  # the selected offer reports the variant out of stock
@@ -293,6 +294,7 @@ def check_plan(state: State, catalog: Catalog) -> Check:
     violations: list[Violation] = []
     notices: list[Notice] = []
     owned = {item.id: item for item in state.owned_items}
+    sizes: dict[tuple[str, str | None], str] = {}  # the first variant of each product and color
     placed = (item for look in plan.looks for item in look.items.values())
     for item in dict.fromkeys(placed):  # each distinct item once, in plan order
         if item.kind is ItemKind.OWNED:
@@ -317,6 +319,15 @@ def check_plan(state: State, catalog: Catalog) -> Check:
             continue
         violations.extend(_fit_violations(product, variant, state.fit))
         violations.extend(footwear_violations(product, variant, state.footwear))
+        first = sizes.setdefault((product.id, variant.color), item.id)
+        if first != item.id:
+            violations.append(
+                Violation(
+                    Rule.ONE_SIZE,
+                    f"{first} and {item.id} are two sizes of one product; use one in every look",
+                    item,
+                )
+            )
         offer_id = plan.selected_offers.get(item.id, "")
         offer = variant.offer(offer_id)
         if offer is None:
@@ -409,18 +420,23 @@ def _over_budget(
         return []
     subject = f"look {look_id}" if look_id else "the whole plan"
     if locked:
-        subject = f"the items locked in {subject}" if look_id else "the locked items"
+        subject = f"the items kept in {subject}" if look_id else "the kept items"
     return [
         Violation(
             Rule.BUDGET,
-            f"{_eur(known)}{' or more' if None in prices else ''} for {subject}, over the "
-            f"{_eur(budget.amount_cents)} budget for "
-            f"{'each look' if budget.mode is BudgetMode.PER_LOOK else 'the whole plan'}",
+            f"{eur(known)}{' or more' if None in prices else ''} for {subject}, over the "
+            f"{budget_text(budget)}",
             look_id=look_id,
             cost_cents=known,
         )
     ]
 
 
-def _eur(cents: int) -> str:
+def budget_text(budget: Budget) -> str:
+    """The budget and what it limits, as the end of a sentence."""
+    limit = "each look" if budget.mode is BudgetMode.PER_LOOK else "the whole plan"
+    return f"{eur(budget.amount_cents)} budget for {limit}"
+
+
+def eur(cents: int) -> str:
     return f"EUR {cents // 100}.{cents % 100:02d}"
