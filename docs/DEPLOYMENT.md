@@ -80,7 +80,7 @@ Later on 2026-10-31, after the deployment of `97530e2`, which applies [D-60](DEC
 - Revision `fullaura-demo--0000010` serves all traffic with the app image above. The app's environment variables, secret names, scale settings and revision mode, and the purge job's image, schedule and settings, are the same as before the update.
 - `scripts/smoke_http.py` passed over HTTPS with an open beta session.
 - The operator invite planned and tried on a look for the synthetic persona p1 with `e2e/live.e2e.ts`; both succeeded, in 28 seconds together.
-- `scripts/pilot_report.py` against the real store showed that none of the ten participant invites had been opened, so every participant's try-on runs with the search tools off. The ledger then held $0.057937 for planning and $0.06 for images.
+- `scripts/pilot_report.py` against the real store showed that none of the ten participant invites had been [activated](BETA.md#reading-the-pilot-report). A try-on needs the age confirmation that activates an invite, so every participant's try-on runs with the search tools off. The ledger then held $0.057937 for planning and $0.06 for images.
 
 Later on 2026-10-31, after the deployment of `main` at `b9e7cd0`, which adds bounded request bodies and prompt inputs ([D-61](DECISIONS.md#d-61-api-request-bodies-and-prompt-inputs-are-bounded)), consistent kept items, working plans and try-ons, and the Design My Look code behind its flag, with `az containerapp update` of the app image only and `FULLAURA_DESIGN_MODE` unset:
 
@@ -89,13 +89,13 @@ Later on 2026-10-31, after the deployment of `main` at `b9e7cd0`, which adds bou
 - Revision `fullaura-demo--0000011` serves all traffic with the app image above. The app's environment variables, secret names, scale settings and revision mode, and the purge job's image, schedule and settings, are the same as before the update.
 - `scripts/smoke_http.py` passed over HTTPS with an open beta session, and a 1 MB request to `/api/plans` on the deployed site answered 413, which only the new revision does.
 - The same browser state, reopened on the new revision: the tab's working plan came back on load; `/api/session` reported `design_open: false` and the page showed no Design My Look control; the plan saved before the update was restored and still passed every check; an update from its new token passed; and a try-on succeeded.
-- `scripts/pilot_report.py` against the real store showed that none of the ten participant invites had been opened. The ledger then held $0.079099 for planning and $0.07 for images. The operator invite has used all 8 of its planning requests.
+- `scripts/pilot_report.py` against the real store showed that none of the ten participant invites had been activated. The ledger then held $0.079099 for planning and $0.07 for images. The operator invite has used all 8 of its planning requests.
 
 Later on 2026-10-31, two operator invites were added to the secret `invite-hashes` with `az containerapp secret set`, keeping the eleven earlier digests, and revision `fullaura-demo--0000011` was restarted so that it reads the new value. The image, `session-secret`, the purge job and the pilot's times stayed as they were.
 
 - The secret holds 13 digests: the ten participants', the first operator invite's and the two new ones. The earlier value is kept in the operator's ignored files; a rollback sets it again and restarts the revision.
 - `scripts/smoke_http.py` passed over HTTPS. Both new invites open a session with 0 of 8 planning requests used and `design_open: false`, and the first operator invite still opens one, with its 8 requests used.
-- `scripts/pilot_report.py` with the participants' digests still counts ten invites, none opened; the operator invites' calls count only under `calls_of_other_invites`.
+- `scripts/pilot_report.py` with the participants' digests still counts ten invites, none activated; the operator invites' calls count only under `calls_of_other_invites`.
 
 On 2026-11-01, after the deployment of `main` at `a5e6028`, which adds the fixes of T-13, with `az containerapp update` of the app image only:
 
