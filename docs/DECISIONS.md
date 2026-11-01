@@ -545,3 +545,19 @@ Each decision has a number that is never reused and a status: accepted, proposed
 - **Decision:** Printing the page shows the looks and the shopping list, and a saved plan's list while it is opened; the try-on panel, its photos and its result never print. A storage token goes only to an `https://<account>.blob.core.windows.net/<container>` URL, in the app and in the pilot report.
 - **Reason:** An audit on 2026-11-01 found that a saved list's own Print button printed none of it, because the whole saved-plans panel was hidden from print, while the try-on panel printed with the person's generated image. A printout leaves the device, and FullAura saves no try-on ([D-31](#d-31-no-persistent-server-copies-of-personal-photos)), so a printed copy should not hold one either. The same audit found that the pilot report sent the operator's storage token to any URL it was given, and that the app's check accepted an address whose host was not Azure.
 - **Consequences:** A person who wants a picture of a try-on has to save it from the browser on purpose. With a plan shown and a saved list opened, both lists print, each under its own title. A store URL with a port, a path below the container or a query is refused at startup.
+
+## D-70: A try-on waits for a running plan request and never restores over a newer plan
+
+- **Date:** 2026-11-01
+- **Status:** accepted
+- **Decision:** A try-on cannot start while a plan request runs, including the restore after a reload, and the panel says why. A try-on that finds its plan expired brings that plan back only when no request is running and the page still shows that plan; otherwise it stops.
+- **Reason:** An audit on 2026-11-01 found that a try-on whose token had just been replaced restored the plan it started with, so an update the person had spent a planning request on could be replaced by the older plan, on the server and on the page. With a token that is still current, the server already refuses a try-on during a plan request as busy, so holding it back takes nothing away.
+- **Consequences:** A try-on that started before an update and then finds its plan replaced says "This plan is no longer current on the server." The server refuses it before reserving anything, so it does not count, and the person can try the look on again on the new plan. A plan that the server lost in a restart while no request runs is still brought back, as before.
+
+## D-71: The purge job's time limit covers every retry, and the image's user cannot change the application
+
+- **Date:** 2026-11-01
+- **Status:** accepted
+- **Decision:** The purge job's replica timeout is 1800 seconds instead of 600. The Dockerfile pins its three base images by digest, and root owns the application files, so the runtime user can read them but not change them.
+- **Reason:** Azure's replica timeout takes precedence over the retry limit ([Job settings](https://learn.microsoft.com/en-us/azure/container-apps/jobs#job-settings)), and an attempt that reaches the deletion takes about three minutes because it waits 120 seconds again, so 600 seconds could stop the third retry. Deployed images are built on the operator's machine, so a tag that moved between CI's build and that build would put an unchecked base image into production. If a flaw let a request write files, a runtime user who owned the application could change its code.
+- **Consequences:** A purge run that hangs holds its 0.25 vCPU replica for up to 30 minutes, and ends by 09:30 UTC, before the second check of the deletion at 09:45 UTC. Pinned base images take no security update until someone changes the digests, which is acceptable for a pilot that closes on 2026-11-09. The purge job keeps its own image, so the pins and the read-only files reach it only if that image changes. CI still does not publish images, so the operator builds the deployed image from the commit CI checked and smoke-tests that digest.

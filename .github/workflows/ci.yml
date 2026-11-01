@@ -57,6 +57,8 @@ jobs:
         run: |
           docker run --detach --name fullaura-ci --publish 127.0.0.1:8000:8000 fullaura:ci
           uv run --frozen python scripts/smoke_http.py
+          # The runtime user can read the application but not change it.
+          docker exec fullaura-ci sh -c 'test ! -w /app/backend/app && test ! -w /app/backend/app/main.py && test ! -w /app/frontend/dist/index.html'
       - name: Container logs and cleanup
         if: always()
         run: |
