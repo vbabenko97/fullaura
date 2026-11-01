@@ -1,5 +1,5 @@
 import { compositionText, formatCheckedDate, formatMoney, labelSlot, variantFacts } from "./format";
-import { catalogItem } from "./plan";
+import { catalogItem, readableDetail } from "./plan";
 import type { Catalog, Concept, ConceptItem, Shoppable } from "./types";
 
 interface ConceptCardProps {
@@ -105,7 +105,7 @@ export function ConceptCard({ catalog, concept, shoppable, matchingFailed }: Con
             <p>Every item has a close match, but:</p>
             <ul>
               {shoppable.violations.map((violation) => (
-                <li key={violation}>{violation}</li>
+                <li key={violation}>{readableDetail({ rule: null, detail: violation }, catalog)}</li>
               ))}
             </ul>
           </>
@@ -128,7 +128,7 @@ export function ConceptCard({ catalog, concept, shoppable, matchingFailed }: Con
                 <p>These products together fail:</p>
                 <ul>
                   {shoppable.violations.map((violation) => (
-                    <li key={violation}>{violation}</li>
+                    <li key={violation}>{readableDetail({ rule: null, detail: violation }, catalog)}</li>
                   ))}
                 </ul>
               </>

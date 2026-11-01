@@ -1,7 +1,9 @@
 """Planning with Muse Spark, without network calls: the model's replies are scripted."""
 
 import asyncio
+import copy
 import io
+import itertools
 import json
 import logging
 from pathlib import Path
@@ -11,11 +13,13 @@ from urllib.request import Request
 
 import pytest
 
-from backend.app.catalog import Catalog
-from backend.app.constraints import Rule
+from backend.app.catalog import Catalog, Size
+from backend.app.config import Settings
+from backend.app.constraints import Rule, cheapest_usable_offers
 from backend.app.planner import (
     MAX_TOKENS,
     REASONING_EFFORT,
+    SLOT_CATEGORIES,
     Brief,
     Occasion,
     Outcome,
@@ -24,6 +28,9 @@ from backend.app.planner import (
     Season,
     SparkClient,
     _post_json,
+    _three_look_conflicts,
+    check_complete_plan,
+    infeasibility,
     plan_looks,
 )
 from backend.app.state import (
@@ -435,6 +442,32 @@ def test_a_client_needs_at_least_one_attempt() -> None:
 def test_a_budget_under_the_cheapest_complete_look_is_infeasible_without_a_model_call(
     mode: BudgetMode, footwear: FootwearChoice, cheapest: int
 ) -> None:
+    request = State(
+        budget=Budget(amount_cents=cheapest - 1, mode=mode),
+        material_exclusions={"wool"},
+        footwear=footwear,
+    )
+    client, sent, _ = spark()
+    result = plan_looks(BRIEF, request, CATALOG, client)
+    assert result.outcome is Outcome.INFEASIBLE and sent == []
+    assert [(c.rule, c.cost_cents) for c in result.conflicts] == [(Rule.BUDGET, cheapest)]
+
+
+@pytest.mark.parametrize(
+    ("mode", "footwear", "floor"),
+    [
+        # Under a wool exclusion the three cheapest looks are P01 and P05 at EUR 120, P01 and P09
+        # at EUR 125, and P03 and P05 at EUR 135; closed shoes add P18 at EUR 60 to each.
+        (BudgetMode.PER_LOOK, FootwearChoice.ANY, 13500),
+        (BudgetMode.PER_LOOK, FootwearChoice.CLOSED, 19500),
+        # P01, P03 and P05 make three looks: one top, the other top, or one over the other.
+        (BudgetMode.WHOLE_PLAN, FootwearChoice.ANY, 19000),
+        (BudgetMode.WHOLE_PLAN, FootwearChoice.CLOSED, 25000),
+    ],
+)
+def test_a_budget_under_three_different_looks_is_infeasible_without_a_model_call(
+    mode: BudgetMode, footwear: FootwearChoice, floor: int
+) -> None:
     def request(amount_cents: int) -> State:
         return State(
             budget=Budget(amount_cents=amount_cents, mode=mode),
@@ -443,12 +476,185 @@ def test_a_budget_under_the_cheapest_complete_look_is_infeasible_without_a_model
         )
 
     client, sent, _ = spark()
-    result = plan_looks(BRIEF, request(cheapest - 1), CATALOG, client)
+    result = plan_looks(BRIEF, request(floor - 1), CATALOG, client)
     assert result.outcome is Outcome.INFEASIBLE and sent == []
-    assert [(c.rule, c.cost_cents) for c in result.conflicts] == [(Rule.BUDGET, cheapest)]
+    assert [(c.rule, c.cost_cents) for c in result.conflicts] == [(Rule.BUDGET, floor)]
+    assert result.conflicts[0].detail.startswith("Three different looks need at least EUR ")
 
     client, sent, _ = spark(VALID, VALID)
-    assert plan_looks(BRIEF, request(cheapest), CATALOG, client).outcome is not Outcome.INFEASIBLE
+    assert plan_looks(BRIEF, request(floor), CATALOG, client).outcome is not Outcome.INFEASIBLE
+    assert sent
+
+
+def every_look(catalog: Catalog, request: State) -> list[tuple[dict[Slot, ItemRef], int]]:
+    """Every look the checks accept, with its cost, found without the planner's shortcuts."""
+    offers = cheapest_usable_offers(catalog, request)
+    prices = {ref_of(key): offer.price_cents or 0 for key, offer in offers.items()}
+    options: dict[Slot, list[ItemRef | None]] = {slot: [None] for slot in Slot}
+    for slot, categories in SLOT_CATEGORIES.items():
+        for product in catalog.products:
+            if product.category in categories:
+                options[slot] += [ref_of(v.id) for v in product.variants if v.id in offers]
+        for item in request.owned_items:
+            if item.category in categories:
+                ref = ItemRef(kind=ItemKind.OWNED, id=item.id)
+                prices[ref] = 0
+                options[slot].append(ref)
+    looks = []
+    for chosen in itertools.product(*options.values()):
+        items = {slot: ref for slot, ref in zip(options, chosen, strict=True) if ref}
+        separates = Slot.TOP in items and Slot.BOTTOM in items
+        if separates == (Slot.ONE_PIECE in items) or (
+            request.footwear is not FootwearChoice.ANY and Slot.FOOTWEAR not in items
+        ):
+            continue
+        if len(set(items.values())) == len(items):
+            looks.append((items, sum(prices[ref] for ref in items.values())))
+    return looks
+
+
+def plan_within(catalog: Catalog, request: State, limit: int) -> Plan | None:
+    """Any plan of three different looks that the checks pass within the limit, or None."""
+    offers = cheapest_usable_offers(catalog, request)
+    prices = {key: offer.price_cents or 0 for key, offer in offers.items()}
+    whole = request.budget.mode is BudgetMode.WHOLE_PLAN
+    looks = [items for items, cost in every_look(catalog, request) if cost <= limit]
+    roomy = request.model_copy(
+        update={"budget": Budget(amount_cents=limit, mode=request.budget.mode)}
+    )
+    for chosen in itertools.combinations(looks, 3):
+        used = {ref for items in chosen for ref in items.values()}
+        catalog_used = {ref.id for ref in used if ref.kind is ItemKind.CATALOG}
+        if whole and sum(prices[key] for key in catalog_used) > limit:
+            continue
+        plan = Plan(
+            looks=tuple(
+                Look(id=f"look_{number}", items=items) for number, items in enumerate(chosen, 1)
+            ),
+            selected_offers={key: offers[key].id for key in catalog_used},
+        )
+        if check_complete_plan(plan, roomy, catalog).passed:
+            return plan
+    return None
+
+
+def three_look_floor(request: State, catalog: Catalog) -> int:
+    offers = cheapest_usable_offers(catalog, request)
+    floor = _three_look_conflicts(request, catalog, offers)[0].cost_cents
+    assert floor is not None
+    return floor
+
+
+COAT = OwnedItem(id="O1", category="outerwear", color="camel", description="long wool coat")
+SHIRT = OwnedItem(id="O2", category="top", color="red", description="red shirt")
+
+
+@pytest.mark.parametrize("mode", list(BudgetMode))
+@pytest.mark.parametrize(
+    "request_fields",
+    [
+        {"material_exclusions": {"wool"}},
+        {"material_exclusions": {"wool"}, "footwear": FootwearChoice.CLOSED},
+        {"material_exclusions": {"wool"}, "owned_items": (COAT,)},
+        {"material_exclusions": {"wool"}, "owned_items": (SHIRT,)},
+        {"material_exclusions": {"wool", "viscose"}, "owned_items": (SHIRT,)},
+        {"fit": Fit(lines={"women"}), "owned_items": (SHIRT,)},
+        # A dress over the owned top's bottom, a dress, and a dress with the top as a mid layer.
+        {"fit": Fit(lines={"women"}), "owned_items": (SHIRT,), "footwear": FootwearChoice.CLOSED},
+        {},
+        {"footwear": FootwearChoice.CLOSED},
+    ],
+)
+def test_the_three_look_budget_matches_a_search_of_every_plan(
+    mode: BudgetMode, request_fields: dict[str, Any]
+) -> None:
+    """A refusal says no plan can pass, so its budget must be exact: below it no plan exists, and
+    at it the checks accept one."""
+    request = State(budget=Budget(amount_cents=1, mode=mode), **request_fields)
+    floor = three_look_floor(request, CATALOG)
+    assert plan_within(CATALOG, request, floor) is not None
+    assert plan_within(CATALOG, request, floor - 1) is None
+
+
+def test_the_three_look_budget_holds_on_the_real_catalog() -> None:
+    real = Catalog.model_validate_json(Settings().catalog_file.read_text(encoding="utf-8"))
+    fit = Fit(
+        lines={"men"},
+        sizes=(
+            Size(system="letter", value="M"),
+            Size(system="waist_length", value="32/32"),
+            Size(system="eu_shoe", value="42"),
+        ),
+    )
+    for mode in BudgetMode:
+        request = State(
+            budget=Budget(amount_cents=1, mode=mode), fit=fit, footwear=FootwearChoice.CLOSED
+        )
+        floor = three_look_floor(request, real)
+        assert plan_within(real, request, floor) is not None
+        assert plan_within(real, request, floor - 1) is None
+
+
+def catalog_with_sizes(*additions: tuple[str, str, int]) -> Catalog:
+    """The synthetic catalog with another size of a product: (variant, new ID, price in cents)."""
+    data = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    for source, new_id, price in additions:
+        for product in data["products"]:
+            for variant in list(product["variants"]):
+                if variant["id"] == source:
+                    extra = copy.deepcopy(variant)
+                    extra["id"] = new_id
+                    extra["sku"] = new_id
+                    extra["offers"][0]["id"] = f"offer_{new_id}_AT"
+                    extra["offers"][0]["price_cents"] = price
+                    product["variants"].append(extra)
+    return Catalog.model_validate(data)
+
+
+def test_two_sizes_of_a_product_do_not_count_as_two_looks() -> None:
+    sized = catalog_with_sizes(("P01", "P01L", 5500))
+    client, sent, _ = spark()
+    # Counting P01L as a different look would make the third look EUR 120, not EUR 135.
+    result = plan_looks(BRIEF, state(13499), sized, client)
+    assert sent == [] and [c.cost_cents for c in result.conflicts] == [13500]
+
+
+def test_the_cheaper_size_of_a_product_sets_the_three_look_budget() -> None:
+    sized = catalog_with_sizes(("P01", "P01S", 5000))
+    client, sent, _ = spark()
+    result = plan_looks(BRIEF, state(13499), sized, client)
+    # P01S and P05 at EUR 115, P01S and P09 at EUR 120, P03 and P05 at EUR 135.
+    assert sent == [] and [c.cost_cents for c in result.conflicts] == [13500]
+    assert infeasibility(state(11499), sized)[0].cost_cents == 11500  # the cheapest look first
+
+
+def test_too_few_looks_are_infeasible_at_any_budget_and_an_owned_item_can_add_them() -> None:
+    one_look = {
+        "fit": Fit(lines={"women"}),
+        "footwear": FootwearChoice.CLOSED,
+        "material_exclusions": frozenset(),
+    }
+    client, sent, _ = spark()
+    # P12 and P18 are the only look: P09 needs a top, and the women's line has none.
+    result = plan_looks(BRIEF, state(10_000_000, **one_look), CATALOG, client)
+    assert result.outcome is Outcome.INFEASIBLE and sent == []
+    assert [c.rule for c in result.conflicts] == [Rule.LOOK_COMPOSITION]
+    assert result.conflicts[0].detail.startswith("Only one complete look fits")
+    assert plan_within(CATALOG, state(10_000_000, **one_look), 10_000_000) is None
+
+    client, sent, _ = spark(VALID, VALID)
+    with_top = state(10_000_000, owned_items=(SHIRT,), **one_look)
+    assert plan_looks(BRIEF, with_top, CATALOG, client).outcome is not Outcome.INFEASIBLE
+    assert sent
+
+
+def test_a_request_with_kept_items_keeps_only_the_cheapest_look_check() -> None:
+    """The three-look search covers a request that keeps nothing; a kept item can still reach
+    the model on a budget the search would refuse."""
+    current = plan_from_looks(LOOK_1, LOOK_2, LOOK_3)
+    lock = LockedPlacement(look_id="look_1", slot=Slot.TOP, item=ref_of("P01"))
+    client, sent, _ = spark(VALID, VALID)
+    plan_looks(BRIEF, state(12000, plan=current, locks=(lock,)), CATALOG, client)
     assert sent
 
 
@@ -458,8 +664,13 @@ def test_an_owned_item_can_fill_a_position_of_the_cheapest_look_for_free() -> No
     result = plan_looks(BRIEF, state(6499, owned_items=(owned,)), CATALOG, client)
     assert [c.cost_cents for c in result.conflicts] == [6500] and sent == []  # P05 alone
 
+    # With the owned top: P05 at EUR 65, P09 at EUR 70, and owned shoes or P01 at EUR 120.
+    client, sent, _ = spark()
+    result = plan_looks(BRIEF, state(11999, owned_items=(owned,)), CATALOG, client)
+    assert [c.cost_cents for c in result.conflicts] == [12000] and sent == []
+
     client, sent, _ = spark(VALID, VALID)
-    plan_looks(BRIEF, state(6500, owned_items=(owned,)), CATALOG, client)
+    plan_looks(BRIEF, state(12000, owned_items=(owned,)), CATALOG, client)
     assert sent
 
 
@@ -533,6 +744,98 @@ def test_a_replacement_can_remove_the_item_that_broke_a_constraint() -> None:
     assert sent and result.outcome is not Outcome.INFEASIBLE
 
 
+def test_a_replacement_no_other_item_can_fill_within_the_budget_is_infeasible() -> None:
+    blazer = ItemRef(kind=ItemKind.OWNED, id="O1")
+    worn = plan_from_looks(LOOK_1, LOOK_2, LOOK_3)
+    with_blazer = Look(id="look_1", items={**worn.looks[0].items, Slot.OUTER_LAYER: blazer})
+    current = Plan(looks=(with_blazer, *worn.looks[1:]), selected_offers=worn.selected_offers)
+    target = Replacement(look_id="look_1", slot=Slot.OUTER_LAYER, item=blazer)
+
+    # Look 1 costs EUR 180 without the owned blazer, and the cheapest outerwear, P15, EUR 85.
+    client, sent, _ = spark()
+    result = plan_looks(
+        BRIEF, state(26499, plan=current, owned_items=(COAT,)), CATALOG, client, replacement=target
+    )
+    assert result.outcome is Outcome.INFEASIBLE and sent == []
+    assert [c.rule for c in result.conflicts] == [Rule.REPLACEMENT]
+
+    client, sent, _ = spark(VALID, VALID)
+    plan_looks(
+        BRIEF, state(26500, plan=current, owned_items=(COAT,)), CATALOG, client, replacement=target
+    )
+    assert sent
+
+
+def test_a_whole_plan_budget_counts_every_kept_item_for_a_replacement() -> None:
+    current = plan_from_looks(LOOK_1, LOOK_2, LOOK_3)
+    target = Replacement(look_id="look_2", slot=Slot.FOOTWEAR, item=ref_of("P18"))
+    # Replacing P18 in look 2 keeps it for looks 1 and 3: P01, P03, P05, P09 and P18 cost EUR 320,
+    # and no other wool-free shoe has a complete composition.
+    wool_free = plan_looks(
+        BRIEF,
+        State(
+            budget=Budget(amount_cents=10_000_000, mode=BudgetMode.WHOLE_PLAN),
+            material_exclusions={"wool"},
+            plan=current,
+        ),
+        CATALOG,
+        spark()[0],
+        replacement=target,
+    )
+    assert [c.rule for c in wool_free.conflicts] == [Rule.REPLACEMENT]
+
+    # Without the exclusion P17 costs EUR 78, for EUR 398 in all.
+    def request(amount_cents: int) -> State:
+        return State(
+            budget=Budget(amount_cents=amount_cents, mode=BudgetMode.WHOLE_PLAN), plan=current
+        )
+
+    client, sent, _ = spark()
+    result = plan_looks(BRIEF, request(39799), CATALOG, client, replacement=target)
+    assert result.outcome is Outcome.INFEASIBLE and sent == []
+    client, sent, _ = spark(VALID, VALID)
+    plan_looks(BRIEF, request(39800), CATALOG, client, replacement=target)
+    assert sent
+
+
+def test_another_size_of_the_same_item_is_not_a_replacement() -> None:
+    sized = catalog_with_sizes(("P03", "P03L", 7000))
+    current = plan_from_looks(LOOK_1, LOOK_2, LOOK_3)
+    target = Replacement(look_id="look_2", slot=Slot.TOP, item=ref_of("P03"))
+    other_size = reply(LOOK_1, {**LOOK_2, "top": "P03L"}, LOOK_3)
+    good = reply(LOOK_1, {**LOOK_2, "top": "P16"}, LOOK_3)
+    client, sent, _ = spark(other_size, good)
+    result = plan_looks(
+        BRIEF,
+        state(plan=current, material_exclusions=frozenset()),
+        sized,
+        client,
+        replacement=target,
+    )
+    assert result.outcome is Outcome.SUCCESS and len(sent) == 2
+    assert result.plan.looks[1].items[Slot.TOP].id == "P16"
+    repair = sent[1]["messages"][-1]["content"]
+    assert "not another size of it" in repair
+    # The other size of the replaced garment is not offered to the model at all.
+    offered = {c["id"] for c in json.loads(sent[0]["messages"][1]["content"])["candidates"]}
+    assert "P03L" not in offered and "P16" in offered
+
+
+def test_a_replacement_with_only_other_sizes_of_the_item_is_infeasible() -> None:
+    fit = Fit(lines={"men"}, garment_types={"trousers"})
+    sized = catalog_with_sizes(("P05", "P05L", 6500))
+    current = plan_from_looks(
+        {"top": "P01", "bottom": "P05"},
+        {"top": "P03", "bottom": "P05"},
+        {"top": "P01", "bottom": "P05", "footwear": "P18"},
+    )
+    target = Replacement(look_id="look_1", slot=Slot.BOTTOM, item=ref_of("P05"))
+    client, sent, _ = spark()
+    result = plan_looks(BRIEF, state(plan=current, fit=fit), sized, client, replacement=target)
+    assert result.outcome is Outcome.INFEASIBLE and sent == []
+    assert [c.rule for c in result.conflicts] == [Rule.REPLACEMENT]
+
+
 def test_a_replacement_keeping_an_owned_item_that_was_removed_still_reaches_the_model() -> None:
     owned = ItemRef(kind=ItemKind.OWNED, id="O1")
     look = Look(id="look_1", items={Slot.TOP: owned, Slot.BOTTOM: ref_of("P05")})
@@ -594,6 +897,44 @@ def test_a_fit_that_leaves_no_complete_look_is_infeasible_without_a_model_call()
     result = plan_looks(BRIEF, state(fit=NO_MENS_BOTTOM), CATALOG, client)
     assert (result.outcome, sent) == (Outcome.INFEASIBLE, [])
     assert [conflict.rule for conflict in result.conflicts] == [Rule.LOOK_COMPOSITION]
+
+
+def test_a_refusal_for_a_missing_shoe_size_names_the_sizes_there_are() -> None:
+    fit = Fit(lines={"men"}, sizes=(Size(system="eu_shoe", value="44"),))
+    client, sent, _ = spark()
+    request = state(fit=fit, footwear=FootwearChoice.CLOSED, material_exclusions=frozenset())
+    result = plan_looks(BRIEF, request, CATALOG, client)
+    assert (result.outcome, sent) == (Outcome.INFEASIBLE, [])
+    shoes = next(conflict for conflict in result.conflicts if conflict.rule is Rule.FOOTWEAR)
+    assert shoes.detail == (
+        "No closed shoes fit your line, sizes and materials, and you listed no shoes of your own. "
+        "EU shoe sizes in the catalog for your line: 42."
+    )
+
+
+def test_a_refusal_for_a_missing_clothing_size_names_the_sizes_there_are() -> None:
+    data = json.loads(FIXTURE.read_text(encoding="utf-8"))
+    sizes = {"P01": "M", "P03": "L", "P05": "M"}
+    for product in data["products"]:
+        for variant in product["variants"]:
+            if variant["id"] in sizes:
+                variant["normalized_size"] = {"system": "letter", "value": sizes[variant["id"]]}
+    sized = Catalog.model_validate(data)
+    fit = Fit(lines={"men"}, sizes=(Size(system="letter", value="XL"),))
+    client, sent, _ = spark()
+    result = plan_looks(BRIEF, state(fit=fit), sized, client)
+    assert (result.outcome, sent) == (Outcome.INFEASIBLE, [])
+    assert [conflict.rule for conflict in result.conflicts] == [Rule.LOOK_COMPOSITION]
+    assert result.conflicts[0].detail == (
+        "No top and bottom or dress fits your line, sizes and materials, and your own items do "
+        "not complete a look. Clothing sizes in the catalog for your line: M, L."
+    )
+
+
+def test_a_refusal_with_every_stated_size_in_the_catalog_names_no_sizes() -> None:
+    client, _, _ = spark()
+    result = plan_looks(BRIEF, state(fit=NO_MENS_BOTTOM), CATALOG, client)
+    assert "sizes in the catalog" not in result.conflicts[0].detail
 
 
 def test_an_owned_item_completes_a_look_that_the_fit_leaves_without_a_bottom() -> None:

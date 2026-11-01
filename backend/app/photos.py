@@ -339,18 +339,47 @@ _GARMENT = {
 
 OWNED_TEXT_CHARS = 80
 _PLAIN_TEXT = re.compile(r"[^A-Za-z0-9À-ɏ ,.'/-]+")
+_WORD = re.compile(r"[^\W\d_]+(?:-[^\W\d_]+)*")
+# The English and German words that describe a garment. An owned item's description reaches the
+# image model through this list, so what a person types cannot ask it for anything else.
+_GARMENT_WORDS = frozenset(
+    """
+    black white grey gray navy blue green olive brown beige cream ivory ecru red pink purple plum
+    lilac lavender yellow orange burgundy maroon wine teal turquoise mint khaki camel tan sand taupe
+    charcoal silver gold mustard coral rust stone off-white multicolour multicolor
+    light dark pale bright deep soft
+    schwarz weiss weiß grau hellgrau dunkelgrau blau hellblau dunkelblau grün dunkelgrün braun rot
+    dunkelrot rosa lila gelb
+    plain striped stripe stripes checked check checks plaid tartan floral dotted dots polka
+    herringbone houndstooth ribbed cable patterned gestreift kariert
+    cotton wool merino cashmere alpaca linen hemp silk denim leather suede corduroy velvet satin
+    viscose lyocell modal polyester polyamide nylon acrylic elastane fleece tweed flannel knit
+    knitted woven jersey canvas rubber baumwolle wolle leinen seide leder wildleder cord
+    t-shirt tshirt tee shirt blouse polo sweater jumper pullover hoodie sweatshirt cardigan
+    turtleneck vest tank top long-sleeve short-sleeve sleeveless sleeve sleeves blazer jacket coat
+    raincoat parka trench anorak overshirt bomber windbreaker trousers pants jeans chinos chino
+    shorts skirt leggings joggers dress jumpsuit sneakers sneaker trainers boots boot loafers
+    shoes shoe sandals heels flats bag scarf hat cap beanie belt gloves
+    hemd bluse hose jacke mantel strickjacke schuhe stiefel rock kleid gürtel tasche schal mütze
+    slim regular relaxed loose wide straight oversized cropped fitted tapered long short high low
+    mid midi maxi mini fit cut leg waist collar neck v-neck crew crewneck button buttons zip zipped
+    hood hooded ankle knee double-breasted single-breasted
+    """.split()
+)
 
 
 def plain_words(text: str, limit: int) -> str:
-    """Letters, digits, spaces and light punctuation only, cut to limit characters, so text
-    that did not come from code reads as a description rather than an instruction."""
+    """Letters, digits, spaces and light punctuation only, cut to limit characters. It removes
+    markup and quotes; the words stay, so it does not stop the text from instructing a model."""
     return " ".join(_PLAIN_TEXT.sub(" ", text).split())[:limit].strip()
 
 
-def _quoted(text: str, limit: int) -> str:
-    """A person's own words as a short quoted description."""
-    plain = plain_words(text, limit)
-    return f'"{plain}"' if plain else "(no description)"
+def _garment_words(text: str, limit: int) -> str:
+    """Only the words of a person's text that describe a garment, as a short quoted description.
+    Live runs drew a beard and a crown and printed a sale sign from plain words alone."""
+    words = [word for word in _WORD.findall(text.lower()) if word in _GARMENT_WORDS]
+    kept = " ".join(words)[:limit].strip()
+    return f'"{kept}"' if kept else "(no description)"
 
 
 def outfit_prompt(lines: list[str]) -> str:
@@ -369,10 +398,9 @@ def outfit_prompt(lines: list[str]) -> str:
 
 
 def preview_prompt(look: Look, state: State, catalog: Catalog) -> str:
-    """The try-on prompt for a checked look, written from catalog facts and the person's own
-    descriptions of owned items, quoted and limited to plain words. It describes colors, garment
-    kinds and materials so that the model draws an approximation; no product image or brand mark
-    is sent."""
+    """The try-on prompt for a checked look, written from catalog facts and the garment words of
+    the person's descriptions of owned items. It describes colors, garment kinds and materials so
+    that the model draws an approximation; no product image or brand mark is sent."""
     owned = {item.id: item for item in state.owned_items}
     lines = []
     for slot in Slot:
@@ -382,7 +410,7 @@ def preview_prompt(look: Look, state: State, catalog: Catalog) -> str:
         if item.kind is ItemKind.OWNED:
             entry = owned.get(item.id)
             if entry is not None:
-                described = _quoted(f"{entry.color} {entry.description}", OWNED_TEXT_CHARS)
+                described = _garment_words(f"{entry.color} {entry.description}", OWNED_TEXT_CHARS)
                 kind = _GARMENT[entry.category]
                 lines.append(f"- {slot.value}: their own {kind}, described as {described}")
             continue

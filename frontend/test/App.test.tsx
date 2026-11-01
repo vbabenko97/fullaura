@@ -95,7 +95,8 @@ function installServer(
       beta: true,
       invited: options.invited ?? true,
       accounting: options.accounting ?? true,
-      age_confirmed: options.aged ?? true,
+      // Like the server: while the store cannot be read, it cannot say the age was confirmed.
+      age_confirmed: (options.accounting ?? true) && (options.aged ?? true),
       photo_consent: false,
       plan_requests_used: 0,
       plan_requests_limit: 8,
@@ -416,6 +417,62 @@ describe(`${FIXTURE_LABEL}: access`, () => {
     expect(screen.queryByText(/pydantic/)).toBeNull();
   });
 
+  it.each([
+    ["closed", { beta: false, invited: false }, "The FullAura beta is closed"],
+    ["closed to an open session", { beta: false, invited: true }, "The FullAura beta is closed"],
+    ["waiting for an invite", { beta: true, invited: false }, "Open your invite"],
+  ])("lets a person read and delete saved plans while the beta is %s", async (_, access, heading) => {
+    const line = {
+      key: "catalog:one",
+      kind: "catalog",
+      name: "Saved shirt",
+      details: "Size M",
+      looks: ["look 1"],
+      price_cents: 3990,
+      retailer: "Shop",
+      url: "https://shop.example/shirt",
+      checked_at: "2026-10-30T12:00:00.000Z",
+      stock: null,
+    };
+    localStorage.setItem(
+      "fullaura.saved-plans.v1",
+      JSON.stringify([
+        {
+          id: "saved-one",
+          saved_at: "2026-10-30T12:00:00.000Z",
+          name: "Autumn plan",
+          brief: { style_goal: "Autumn", preferred_colors: [], occasion: null, season: null },
+          state: { plan: firstPlan },
+          catalog_id: object(catalog).id,
+          shopping_list: [line],
+        },
+      ]),
+    );
+    const server = installServer();
+    Object.assign(server.session, access);
+    render(<App />);
+    expect(await screen.findByText(heading)).toBeTruthy();
+    expect(screen.getByText("Autumn plan")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Restore" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Save this plan" })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: "Show list" }));
+    expect(within(screen.getByRole("table")).getByText("Saved shirt")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
+    await waitFor(() => expect(screen.queryByText("Autumn plan")).toBeNull());
+    expect(JSON.parse(localStorage.getItem("fullaura.saved-plans.v1") ?? "[]")).toEqual([]);
+  });
+
+  it("shows no saved section on a closed page with nothing saved", async () => {
+    const server = installServer();
+    Object.assign(server.session, { beta: false, invited: false });
+    render(<App />);
+    await screen.findByText("The FullAura beta is closed");
+    expect(screen.queryByText("Saved on this device")).toBeNull();
+  });
+
   it("opens the closed section that holds an empty required field when the form is submitted", async () => {
     const server = installServer();
     render(<App />);
@@ -459,7 +516,7 @@ describe(`${FIXTURE_LABEL}: data notice`, () => {
     );
     expect(notice.getByText(/does not store the\s+inputs or outputs of these requests/)).toBeTruthy();
     expect(notice.getByText(/not a check of FullAura's account/)).toBeTruthy();
-    expect(notice.getByText(/If the look includes an item you own, the description includes the color/)).toBeTruthy();
+    expect(notice.getByText(/If the look includes an item you own, the description includes the words/)).toBeTruthy();
     expect(notice.queryByText(/Design my look/)).toBeNull(); // nothing about a mode this invite cannot use
   });
 
@@ -648,9 +705,113 @@ describe(`${FIXTURE_LABEL}: planning`, () => {
     expect(await screen.findByText(/planning is paused/)).toBeTruthy();
     expect((screen.getByRole("button", { name: "Generate three looks" }) as HTMLButtonElement).disabled).toBe(true);
   });
+
+  it("keeps the plan on the screen when the store fails during a session", async () => {
+    const server = installServer({ plans: [firstPlan] });
+    render(<App />);
+    await generate();
+    // What the server sends while the store cannot be read.
+    Object.assign(server.session, {
+      accounting: false,
+      age_confirmed: false,
+      photo_consent: false,
+      planning_open: false,
+      previews_open: false,
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Update three looks" }));
+    expect(await screen.findByText(/planning is paused/)).toBeTruthy();
+    expect(screen.queryByText("Before you start")).toBeNull();
+    expect(screen.getAllByRole("heading", { name: "MAARKOS HEAVY WEIGHT T-SHIRT" })).toHaveLength(2);
+    expect((screen.getByRole("button", { name: "Save this plan" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("asks for the age once the store is back, for a person who never confirmed it", async () => {
+    const server = installServer({ accounting: false });
+    render(<App />);
+    await screen.findByText(/planning is paused/);
+    cleanup();
+    Object.assign(server.session, { accounting: true, planning_open: true });
+    render(<App />);
+    expect(await screen.findByText("Before you start")).toBeTruthy();
+  });
+
+  it("names products in a failure instead of catalog IDs and position codes", async () => {
+    installServer({
+      plans: [
+        {
+          outcome: "generation_failed",
+          plan: null,
+          conflicts: [],
+          violations: [
+            { rule: "fit", detail: "ae-maarkos-moonshadow-m is letter size M, not L" },
+            { rule: "budget", detail: "EUR 124.88 for look look_1, over the EUR 100.00 budget for each look" },
+            { rule: "unknown_item", detail: "No catalog record removed-product-m" },
+          ],
+          notices: [],
+          error: null,
+        },
+      ],
+    });
+    render(<App />);
+    await screen.findByText(/products\. Prices checked/);
+    fireEvent.change(screen.getByLabelText("What should the looks work for?"), { target: { value: "Office" } });
+    fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "100" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+    const message = await screen.findByText(/No plan passed the catalog checks/);
+    expect(message.textContent).toContain("MAARKOS HEAVY WEIGHT T-SHIRT is letter size M, not L");
+    expect(message.textContent).toContain("for look 1, over the");
+    expect(message.textContent).toContain("An item in this plan is no longer in the catalog.");
+    expect(message.textContent).not.toMatch(/ae-maarkos|look_1|removed-product/);
+  });
 });
 
 describe(`${FIXTURE_LABEL}: shopping list and saved plans`, () => {
+  const KEPT = { look_id: "look_1", slot: "top", item: { kind: "catalog", id: "ae-maarkos-moonshadow-m" } };
+  const keepTShirt = () =>
+    fireEvent.click(screen.getByRole("button", { name: "Keep MAARKOS HEAVY WEIGHT T-SHIRT in look 1" }));
+  const releaseTShirt = () => screen.findByRole("button", { name: "Release MAARKOS HEAVY WEIGHT T-SHIRT in look 1" });
+
+  it("keeps a kept item through saving and restoring", async () => {
+    installServer({ plans: [firstPlan] });
+    render(<App />);
+    await generate();
+    keepTShirt();
+    fireEvent.click(screen.getByRole("button", { name: "Save this plan" }));
+    await screen.findByText(/Saved "Relaxed office outfits" on this device/);
+    expect(JSON.parse(localStorage.getItem("fullaura.saved-plans.v1") ?? "[]")[0].state.locks).toEqual([KEPT]);
+
+    fireEvent.click(await releaseTShirt());
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    await screen.findByText("The saved plan still passes every check.");
+    expect(await releaseTShirt()).toBeTruthy();
+  });
+
+  it("keeps a kept item through a reload, and forgets it once released", async () => {
+    installServer({ plans: [firstPlan] });
+    render(<App />);
+    await generate();
+    keepTShirt();
+    cleanup();
+    render(<App />);
+    fireEvent.click(await releaseTShirt());
+    cleanup();
+    render(<App />);
+    expect(await screen.findByRole("button", { name: "Keep MAARKOS HEAVY WEIGHT T-SHIRT in look 1" })).toBeTruthy();
+  });
+
+  it("keeps a kept item when an expired plan is restored for an update", async () => {
+    const server = installServer({ plans: [firstPlan, firstPlan] });
+    render(<App />);
+    await generate();
+    keepTShirt();
+    server.expireToken();
+    fireEvent.click(screen.getByRole("button", { name: "Update three looks" }));
+    await screen.findByText(/The three looks passed the catalog checks/);
+    const restore = server.requests.find((entry) => entry.url === "/api/plans/restore");
+    expect(object(object(restore?.body).state).locks).toEqual([KEPT]);
+    expect(await releaseTShirt()).toBeTruthy();
+  });
+
   it("lists each product once and copies the list", async () => {
     const writeText = vi.fn<(text: string) => Promise<void>>(async () => undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });

@@ -9,12 +9,13 @@ calls, latency and token usage, never prompts, briefs or profiles.
 from __future__ import annotations
 
 import asyncio
+import heapq
 import http.client
 import json
 import logging
 import math
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from typing import Annotated, Any, Self
@@ -33,9 +34,11 @@ from backend.app.constraints import (
     check_plan,
     eur,
     lock_conflicts,
+    missing_sizes_text,
 )
 from backend.app.meta_images import RETRY_STATUS, error_detail, post_json_async
 from backend.app.state import (
+    BudgetMode,
     FootwearChoice,
     ItemKind,
     ItemRef,
@@ -320,8 +323,8 @@ Stay within the budget: with mode "per_look" each look's distinct catalog items,
 Suit the brief's occasion and season when they are given.
 
 When "replacement" is present, replace its item with a different item in the stated look and
-slot. Keep every other slot exactly as it appears in "current_plan", including slots that are
-empty. Do not add or remove items in other slots.
+slot, not another size of the same item. Keep every other slot exactly as it appears in
+"current_plan", including slots that are empty. Do not add or remove items in other slots.
 
 Reply with JSON only, in this form:
 {{"looks": [{{"id": "look_1", "items": {{"top": "ID", "bottom": "ID", "footwear": "ID"}}}},
@@ -388,7 +391,8 @@ def plan_looks(
         else:
             plan = _preserve_replacement_positions(plan, state, replacement, catalog, offers)
             check = check_complete_plan(plan, state, catalog)
-            planned = _replacement_violations(plan, state, replacement) + _repeated_looks(plan)
+            planned = _replacement_violations(plan, state, replacement, catalog)
+            planned += _repeated_looks(plan)
             if planned:
                 check = Check(tuple(planned) + check.violations, check.notices)
             if check.passed:
@@ -442,7 +446,12 @@ def infeasibility(
     if replacement is not None and state.plan is not None:
         # A replacement leaves empty positions empty, so a look that needs more cannot get it.
         conflicts += _look_violations(state.plan, state, catalog)
-    return conflicts or _cheapest_look_conflicts(held, catalog, offers)
+    conflicts = conflicts or _cheapest_look_conflicts(held, catalog, offers)
+    if conflicts:
+        return conflicts
+    if replacement is not None:
+        return _replacement_conflicts(state, catalog, offers, replacement)
+    return [] if state.locks else _three_look_conflicts(state, catalog, offers)
 
 
 def _holding_kept_positions(state: State, replacement: Replacement | None) -> State:
@@ -515,6 +524,171 @@ def _cheapest_look_conflicts(
             )
             violations.append(Violation(Rule.BUDGET, detail, look_id=look_id, cost_cents=cents))
     return violations
+
+
+@dataclass(frozen=True, slots=True)
+class _Piece:
+    """An item a look can use: an owned item, or a garment at its cheapest usable size. A plan
+    holds one size of a garment, so the cheapest size stands for all of them."""
+
+    id: str
+    category: Category
+    price: int
+
+
+def _pieces(state: State, catalog: Catalog, offers: dict[str, Offer]) -> list[_Piece]:
+    cheapest: dict[tuple[str, str | None], _Piece] = {}
+    for product in catalog.products:
+        for variant in product.variants:
+            if variant.id in offers:
+                piece = _Piece(variant.id, product.category, offers[variant.id].price_cents or 0)
+                garment = (product.id, variant.color)
+                if garment not in cheapest or piece.price < cheapest[garment].price:
+                    cheapest[garment] = piece
+    return [*cheapest.values(), *(_Piece(i.id, i.category, 0) for i in state.owned_items)]
+
+
+def _three_look_conflicts(
+    state: State, catalog: Catalog, offers: dict[str, Offer]
+) -> list[Violation]:
+    """A conflict when no three different looks can pass, for a request that keeps nothing. A
+    refusal says no plan exists, so the search counts everything a plan may use: a shared item, a
+    second top as a mid layer, and any optional position."""
+    tops = SLOT_CATEGORIES[Slot.TOP]
+    pieces = _pieces(state, catalog, offers)
+    outfits: list[tuple[_Piece, ...]] = [
+        (top, bottom)
+        for top in pieces
+        if top.category in tops
+        for bottom in pieces
+        if bottom.category is Category.BOTTOM
+    ]
+    outfits += [(piece,) for piece in pieces if piece.category is Category.ONE_PIECE]
+    optional = (
+        SLOT_CATEGORIES[Slot.MID_LAYER]
+        | SLOT_CATEGORIES[Slot.OUTER_LAYER]
+        | SLOT_CATEGORIES[Slot.ACCESSORY]
+    )
+    if state.footwear is FootwearChoice.ANY:
+        optional |= SLOT_CATEGORIES[Slot.FOOTWEAR]
+        bases = outfits
+    else:
+        shoes = [piece for piece in pieces if piece.category is Category.FOOTWEAR]
+        bases = [(*outfit, shoe) for outfit in outfits for shoe in shoes]
+    bases.sort(key=lambda base: sum(piece.price for piece in base))
+    layers = [piece for piece in pieces if piece.category in optional]
+
+    def look_costs() -> Iterator[int]:
+        # Three looks with two or more optional items each imply three with one at most, for less.
+        for base in bases:
+            cost = sum(piece.price for piece in base)
+            yield cost
+            yield from (cost + layer.price for layer in layers if layer not in base)
+
+    cheapest_looks = heapq.nsmallest(3, look_costs())
+    if len(cheapest_looks) < 3:
+        count = "one complete look fits" if len(cheapest_looks) == 1 else "two complete looks fit"
+        detail = f"Only {count} your line, sizes and materials, and a plan needs three different"
+        return [Violation(Rule.LOOK_COMPOSITION, f"{detail} looks")]
+    budget = state.budget
+    floor = (
+        cheapest_looks[2]
+        if budget.mode is BudgetMode.PER_LOOK
+        else _cheapest_three_looks_together(bases, pieces)
+    )
+    if budget.amount_cents >= floor:
+        return []
+    detail = f"Three different looks need at least {eur(floor)}, over the {budget_text(budget)}"
+    return [Violation(Rule.BUDGET, detail, cost_cents=floor)]
+
+
+def _cheapest_three_looks_together(bases: list[tuple[_Piece, ...]], pieces: list[_Piece]) -> int:
+    """The lowest cost of the distinct items of three different looks; bases run cheapest first.
+    Every such plan holds a base and more items. One more item is enough when it can go over or
+    instead of the base's top; otherwise two more make the base, the base with one and the base
+    with the other."""
+    best = math.inf
+    tops = SLOT_CATEGORIES[Slot.TOP]
+    for base in bases:
+        cost = sum(piece.price for piece in base)
+        if cost >= best:
+            break
+        has_top = any(piece.category in tops for piece in base)
+        # A bottom cannot join a one-piece, and any other item can go in or replace a position.
+        extras = sorted(
+            (piece for piece in pieces if piece not in base),
+            key=lambda piece: piece.price,
+        )
+        usable = [p.price for p in extras if has_top or p.category is not Category.BOTTOM]
+        if len(usable) >= 2:
+            best = min(best, cost + usable[0] + usable[1])
+        if has_top:
+            enough = (p.price for p in extras if p.category in {*tops, Category.ONE_PIECE})
+            best = min(best, cost + next(enough, math.inf))
+    return int(best)
+
+
+def _replacement_conflicts(
+    state: State, catalog: Catalog, offers: dict[str, Offer], replacement: Replacement
+) -> list[Violation]:
+    """A conflict when no other item can take the replaced position with every other position as
+    it is: another size of the item is not another item, and a plan holds one size of a garment."""
+    plan = state.plan
+    look = (
+        next((look for look in plan.looks if look.id == replacement.look_id), None)
+        if plan
+        else None
+    )
+    if plan is None or look is None:
+        return []
+
+    def price(item: ItemRef) -> int:
+        offer = offers.get(item.id) if item.kind is ItemKind.CATALOG else None
+        return (offer.price_cents or 0) if offer else 0
+
+    in_look = {item for slot, item in look.items.items() if slot is not replacement.slot}
+    kept = {
+        item
+        for other in plan.looks
+        for slot, item in other.items.items()
+        if (other.id, slot) != (replacement.look_id, replacement.slot)
+    }
+    per_look = state.budget.mode is BudgetMode.PER_LOOK
+    room = state.budget.amount_cents - sum(price(item) for item in (in_look if per_look else kept))
+    categories = SLOT_CATEGORIES[replacement.slot]
+    if room >= 0 and any(
+        owned.category in categories
+        and (ref := ItemRef(kind=ItemKind.OWNED, id=owned.id)) != replacement.item
+        and ref not in in_look
+        for owned in state.owned_items
+    ):
+        return []
+    worn = {_garment(item, catalog): item.id for item in kept}
+    replaced = _garment(replacement.item, catalog)
+    for product in catalog.products:
+        if product.category not in categories:
+            continue
+        for variant in product.variants:
+            ref = ItemRef(kind=ItemKind.CATALOG, id=variant.id)
+            garment = (product.id, variant.color)
+            if (
+                variant.id in offers
+                and ref not in in_look
+                and garment != replaced
+                and worn.get(garment, variant.id) == variant.id
+                and (0 if not per_look and ref in kept else price(ref)) <= room
+            ):
+                return []
+    detail = "No other item can fill this position within your line, sizes, materials and budget"
+    return [Violation(Rule.REPLACEMENT, detail, replacement.item, replacement.look_id)]
+
+
+def _garment(item: ItemRef, catalog: Catalog) -> tuple[str, str | None] | None:
+    """The product and color of a catalog item, which a plan holds in one size; None otherwise."""
+    variant, product = catalog.variant(item.id), catalog.product_of(item.id)
+    if item.kind is ItemKind.OWNED or variant is None or product is None:
+        return None
+    return product.id, variant.color
 
 
 def _repeated_looks(plan: Plan) -> list[Violation]:
@@ -664,9 +838,10 @@ def _look_violations(plan: Plan, state: State, catalog: Catalog) -> list[Violati
 
 
 def _replacement_violations(
-    plan: Plan, state: State, replacement: Replacement | None
+    plan: Plan, state: State, replacement: Replacement | None, catalog: Catalog
 ) -> list[Violation]:
-    """Require a replacement to change only the selected, occupied position."""
+    """Require a replacement to change only the selected, occupied position, to a different
+    item."""
     if replacement is None:
         return []
     current = state.plan
@@ -692,6 +867,16 @@ def _replacement_violations(
                         Violation(
                             Rule.REPLACEMENT,
                             f"Replace {look_id} {slot.value} with a different item",
+                            replacement.item,
+                            look_id,
+                        )
+                    )
+                elif (garment := _garment(after, catalog)) and garment == _garment(before, catalog):
+                    violations.append(
+                        Violation(
+                            Rule.REPLACEMENT,
+                            f"Replace {look_id} {slot.value} with a different item, not another "
+                            "size of it",
                             replacement.item,
                             look_id,
                         )
@@ -724,21 +909,18 @@ def _base_outfit_conflicts(
     if Category.ONE_PIECE not in categories and not (
         categories & SLOT_CATEGORIES[Slot.TOP] and Category.BOTTOM in categories
     ):
-        conflicts.append(
-            Violation(
-                Rule.LOOK_COMPOSITION,
-                "No catalog variant that passes the checks, and no owned item, completes a top "
-                "and bottom or a one_piece",
-            )
+        worn = {*SLOT_CATEGORIES[Slot.TOP], Category.BOTTOM, Category.ONE_PIECE}
+        detail = (
+            "No top and bottom or dress fits your line, sizes and materials, and your own items "
+            f"do not complete a look. {missing_sizes_text(state, catalog, worn)}"
         )
+        conflicts.append(Violation(Rule.LOOK_COMPOSITION, detail.strip()))
     if state.footwear is not FootwearChoice.ANY and Category.FOOTWEAR not in categories:
-        conflicts.append(
-            Violation(
-                Rule.FOOTWEAR,
-                f"No {state.footwear} catalog footwear passes the checks, and no owned item is "
-                "footwear",
-            )
+        detail = (
+            f"No {state.footwear} shoes fit your line, sizes and materials, and you listed no "
+            f"shoes of your own. {missing_sizes_text(state, catalog, {Category.FOOTWEAR})}"
         )
+        conflicts.append(Violation(Rule.FOOTWEAR, detail.strip()))
     return conflicts
 
 
@@ -749,6 +931,7 @@ def _request(
     offers: dict[str, Offer],
     replacement: Replacement | None = None,
 ) -> dict[str, Any]:
+    replaced = _garment(replacement.item, catalog) if replacement else None
     candidates = [
         {
             "id": variant.id,
@@ -761,7 +944,7 @@ def _request(
         }
         for product in catalog.products
         for variant in product.variants
-        if variant.id in offers
+        if variant.id in offers and (product.id, variant.color) != replaced
     ]
     return {
         "brief": brief.model_dump(mode="json"),

@@ -201,6 +201,31 @@ test("sending the form opens the closed section that holds an empty required fie
   await expect(section.getByLabel("Color")).toBeFocused();
 });
 
+test("the Keep and Replace buttons stay inside their look card at every width", async ({ page }, testInfo) => {
+  await openWorkspace(page);
+  await page.getByLabel("What should the looks work for?").fill("Office days");
+  await page.getByLabel("Budget in EUR").fill("450");
+  await page.getByRole("checkbox", { name: "Men's", exact: true }).check();
+  await page.getByLabel("Letter size").selectOption("M");
+  await page.getByLabel("Waist sizes").fill("32/32");
+  await page.getByLabel("EU shoe sizes").fill("42, 43");
+  await page.getByRole("button", { name: /three looks$/ }).click();
+  await expect(page.getByRole("heading", { name: "look 3" })).toBeVisible();
+  // A tablet in landscape and a narrow laptop window; the card narrows before the grid changes.
+  for (let width = 320; width <= 1600; width += 40) {
+    await page.setViewportSize({ width, height: 900 });
+    const outside = await page.evaluate(
+      () =>
+        [...document.querySelectorAll(".lock-button, .replace-button")].filter((button) => {
+          const card = button.closest(".look-card")?.getBoundingClientRect();
+          return card !== undefined && button.getBoundingClientRect().right > card.right + 0.5;
+        }).length,
+    );
+    expect(outside, `buttons outside their card at ${width}px`).toBe(0);
+    if (width === 1200) await shot(page, testInfo.project.name, `look-card-${width}`);
+  }
+});
+
 test("an invite link pasted into an open tab opens the invite", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByLabel("Invite code")).toBeVisible();
