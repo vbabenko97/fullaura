@@ -105,7 +105,7 @@ On 2026-11-01, after the deployment of `main` at `a5e6028`, which adds the fixes
 - In Chromium, a damaged invite link pasted into the open tab and a short code were each refused with a message, and the content security policy refused nothing on those pages or on the workspace.
 - The first operator invite, with its 8 planning requests used, opened the workspace. A request for the men's line with closed shoes and EUR 10 was answered as infeasible at EUR 124.88, with no model call, and its planning requests stayed at 8. This request is counted on that invite.
 - No model was called on the deployed site for these checks, because the first operator invite cannot plan and the other two are set aside. The plans, try-ons and the whole flow with the real providers ran on this code on a local server with synthetic personas, for $0.14 at list prices in a local ledger: three plans with missing sizes used one size of each garment on the first attempt, the four live browser tests passed, and one try-on of the pullover drew a closed sweater.
-- `scripts/pilot_report.py` with the participants' digests counts ten invites, none opened.
+- `scripts/pilot_report.py` with the participants' digests counts ten invites, none activated. Confirming the age is the first step it can see, so this does not show whether a link was opened.
 
 URL: <https://fullaura-demo.blackbay-aaeee2c5.francecentral.azurecontainerapps.io>.
 
