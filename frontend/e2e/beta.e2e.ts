@@ -70,6 +70,10 @@ test("an invited person plans, tries on, edits, saves, restores, exports and giv
       document.body.dataset.printed = "yes";
     };
   });
+  const refusedByPolicy: string[] = [];
+  page.on("console", (message) => {
+    if (/Content Security Policy/i.test(message.text())) refusedByPolicy.push(message.text());
+  });
 
   await page.goto(`/#invite=${INVITE}`);
   const age = page.getByRole("checkbox", { name: "I confirm that I am 18 or older." });
@@ -132,7 +136,7 @@ test("an invited person plans, tries on, edits, saves, restores, exports and giv
   }
   await expect(page.getByRole("button", { name: "Try on look 1" })).toBeDisabled();
 
-  const keep = page.getByRole("button", { name: /^Keep .* in look_1$/ }).first();
+  const keep = page.getByRole("button", { name: /^Keep .* in look 1$/ }).first();
   const kept = (await keep.getAttribute("aria-label"))?.replace(/^Keep /, "Release ") ?? "";
   await keep.click();
   await page.getByLabel("Budget in EUR").fill("420");
@@ -141,7 +145,7 @@ test("an invited person plans, tries on, edits, saves, restores, exports and giv
   await expect(page.getByRole("button", { name: kept })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("img", { name: /Experimental try-on/ })).toHaveCount(0);
 
-  await page.getByRole("button", { name: /^Replace .* in look_2$/ }).first().click();
+  await page.getByRole("button", { name: /^Replace .* in look 2$/ }).first().click();
   await expect(page.getByText(/The item was replaced/)).toBeVisible();
   await shot(page, project, "05-replaced");
 
@@ -181,6 +185,31 @@ test("an invited person plans, tries on, edits, saves, restores, exports and giv
     () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
   );
   expect(horizontalOverflow).toBe(false);
+  expect(refusedByPolicy).toEqual([]);
+});
+
+test("sending the form opens the closed section that holds an empty required field", async ({ page }) => {
+  await openWorkspace(page);
+  await page.getByLabel("What should the looks work for?").fill("Office days");
+  await page.getByLabel("Budget in EUR").fill("300");
+  const section = page.locator("details", { hasText: "Items you already own" });
+  await section.locator("summary").click();
+  await section.getByRole("button", { name: "Add item" }).click();
+  await section.locator("summary").click();
+  await expect(section.getByLabel("Color")).toBeHidden();
+  await page.getByRole("button", { name: /three looks$/ }).click();
+  await expect(section.getByLabel("Color")).toBeFocused();
+});
+
+test("an invite link pasted into an open tab opens the invite", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByLabel("Invite code")).toBeVisible();
+  await page.evaluate((invite) => {
+    window.location.hash = `#invite=${invite}`;
+  }, INVITE);
+  const age = page.getByRole("checkbox", { name: "I confirm that I am 18 or older." });
+  await expect(age.or(page.getByRole("heading", { name: "Your preferences" }))).toBeVisible();
+  expect(page.url()).not.toContain("invite=");
 });
 
 /* The real catalog has no photo FullAura may show, so this test gives every variant an invented

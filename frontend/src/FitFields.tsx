@@ -129,7 +129,10 @@ export function FitFields({ fitDraft, setFitDraft }: FitFieldsProps) {
           Separate sizes with commas. Half sizes are rare, so you can add the next whole size too.
         </p>
       </div>
-      <p className="field-help">Up to {MAX_FIT_SIZES} sizes in total.</p>
+      <p className="field-help">
+        Up to {MAX_FIT_SIZES} sizes in total. Where you give no size, the looks can show any size of an item, so check it
+        before you buy.
+      </p>
     </section>
   );
 }

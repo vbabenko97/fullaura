@@ -13,7 +13,7 @@ import {
 import { AccessGate } from "./AccessGate";
 import { ConceptCard } from "./ConceptCard";
 import { FeedbackForm } from "./FeedbackForm";
-import { budgetKept, formatCheckedDate, formatMoney } from "./format";
+import { budgetKept, formatCheckedRange, formatMoney, lookLabel } from "./format";
 import { LookCard } from "./LookCard";
 import {
   fitDraftFrom,
@@ -28,7 +28,7 @@ import {
 import type { Preferences } from "./plan";
 import { PreferencesForm } from "./PreferencesForm";
 import { PrivacyNotice } from "./PrivacyNotice";
-import { deleteSavedPlan, keepCurrentPlan, loadCurrentPlan, loadSavedPlans, savePlan } from "./planStorage";
+import { deleteSavedPlan, keepCurrentPlan, loadCurrentPlan, loadSavedPlans, MAX_SAVED, savePlan } from "./planStorage";
 import { SavedPlans } from "./SavedPlans";
 import { ShoppingList } from "./ShoppingList";
 import { TryOnPanel } from "./TryOnPanel";
@@ -101,9 +101,17 @@ class PlanLostError extends Error {
   }
 }
 
-function inviteFromLocation(): string | null {
+/** The invite code in the address, which then leaves the address. A damaged link stays as it is,
+ * for the server to refuse. */
+function takeInviteFromLocation(): string | null {
   const match = /(?:^#|&)invite=([^&]+)/.exec(window.location.hash);
-  return match ? decodeURIComponent(match[1]) : null;
+  if (!match) return null;
+  window.history.replaceState(null, "", window.location.pathname + window.location.search);
+  try {
+    return decodeURIComponent(match[1]);
+  } catch {
+    return match[1];
+  }
 }
 
 function preferencesFrom(saved: { brief: Brief; state: StateInput }): Preferences {
@@ -121,16 +129,13 @@ function preferencesFrom(saved: { brief: Brief; state: StateInput }): Preference
   };
 }
 
-/** When the newest price in the catalog was checked against its shop. */
-function latestCheck(catalog: Catalog): string {
-  const dates = catalog.products.flatMap((product) =>
-    product.variants.flatMap((variant) => variant.offers.map((offer) => offer.source.checked_at)),
+/** When the catalog's prices were checked against their shops. */
+function catalogChecks(catalog: Catalog): string {
+  return formatCheckedRange(
+    catalog.products.flatMap((product) =>
+      product.variants.flatMap((variant) => variant.offers.map((offer) => offer.source.checked_at)),
+    ),
   );
-  return dates.length ? formatCheckedDate(dates.reduce((a, b) => (a > b ? a : b))) : "";
-}
-
-function lookLabel(lookId: string): string {
-  return lookId.replaceAll("_", " ");
 }
 
 export function App() {
@@ -268,13 +273,12 @@ export function App() {
   useEffect(() => {
     let cancelled = false;
     async function start() {
-      const invite = inviteFromLocation();
+      const invite = takeInviteFromLocation();
       if (invite) {
-        window.history.replaceState(null, "", window.location.pathname + window.location.search);
         try {
           await postJson("/api/session/invite", { code: invite });
         } catch (error) {
-          if (!cancelled) setGateMessage(errorMessage(error));
+          if (!cancelled) showInviteError(error);
         }
       }
       let next: Session;
@@ -291,19 +295,35 @@ export function App() {
       await openWorkspace(() => cancelled);
     }
     void start();
+    function openPastedInvite() {
+      const invite = takeInviteFromLocation();
+      if (invite) void openInvite(invite);
+    }
+    window.addEventListener("hashchange", openPastedInvite);
     return () => {
       cancelled = true;
+      window.removeEventListener("hashchange", openPastedInvite);
     };
   }, []);
+
+  /** The access gate shows it until an invite opens, and the workspace after that. */
+  function showInviteError(error: unknown) {
+    const message = errorMessage(error);
+    setGateMessage(message);
+    setRequestState("error");
+    setRequestMessage(message);
+  }
 
   async function openInvite(code: string) {
     setGateBusy(true);
     setGateMessage(null);
+    setRequestState("idle");
+    setRequestMessage(null);
     let next: Session;
     try {
       next = parseSession(await postJson("/api/session/invite", { code }));
     } catch (error) {
-      setGateMessage(errorMessage(error));
+      showInviteError(error);
       return;
     } finally {
       setGateBusy(false);
@@ -501,8 +521,18 @@ export function App() {
   function saveCurrent() {
     if (!current || !catalog) return;
     const entry = savedFrom(current, catalog);
-    setSavedMessage(savePlan(entry) ? `Saved "${entry.name}" on this device.` : "This browser did not allow saving.");
-    setSaved(loadSavedPlans());
+    const before = loadSavedPlans();
+    if (!savePlan(entry)) {
+      setSavedMessage("This browser did not allow saving.");
+      return;
+    }
+    const after = loadSavedPlans();
+    const removed = before.find((plan) => !after.some((kept) => kept.id === plan.id));
+    setSavedMessage(
+      `Saved "${entry.name}" on this device.` +
+        (removed ? ` It keeps ${MAX_SAVED} plans, so "${removed.name}" was removed.` : ""),
+    );
+    setSaved(after);
   }
 
   async function restoreSaved(entry: SavedPlan) {
@@ -566,9 +596,9 @@ export function App() {
       <header className="topbar no-print">
         <a className="wordmark" href="/" aria-label="FullAura home">FullAura</a>
         <p className="environment-label">Closed beta</p>
-        {ready && session.accounting && (
+        {ready && session.accounting && !session.pilot_ended && (
           <p className="environment-label">
-            {remainingPlans} of {session.plan_requests_limit} plans left
+            {remainingPlans} of {session.plan_requests_limit} planning requests left
           </p>
         )}
       </header>
@@ -618,7 +648,7 @@ export function App() {
             </div>
             <p className="catalog-status" aria-live="polite">
               {catalogState === "loading" && "Loading catalog"}
-              {catalogState === "ready" && catalog && `${catalog.products.length} products. ${latestCheck(catalog)}`}
+              {catalogState === "ready" && catalog && `${catalog.products.length} products. ${catalogChecks(catalog)}`}
               {catalogState === "error" && "Catalog unavailable"}
             </p>
           </div>
@@ -893,8 +923,7 @@ function failureMessage(result: PlanResponse, replacement: boolean, hadLocks: bo
     .slice(0, 3)
     .map((item) => item.detail)
     .join(" ");
-  const diagnostic = violations || result.error?.slice(0, 300) || "";
-  return diagnostic ? `${summary} ${diagnostic}` : summary;
+  return violations ? `${summary} ${violations}` : summary;
 }
 
 function conceptFailureMessage(result: ConceptResponse): string {

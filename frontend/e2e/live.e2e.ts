@@ -107,20 +107,15 @@ for (const persona of PERSONAS) {
     await expect(page.getByText("You agreed to this processing.")).toBeVisible();
     await page.getByLabel("Portrait photo").setInputFiles(join(personasFolder, `${persona.name}-portrait.webp`));
     await page.getByLabel("Full-body photo").setInputFiles(join(personasFolder, `${persona.name}-full-body.webp`));
+    const answer = page.waitForResponse((response) => response.url().endsWith("/api/previews"), { timeout: 150_000 });
     await page.getByRole("button", { name: "Try on look 1" }).click();
     const image = page.getByRole("img", { name: "Experimental try-on of look 1" });
     const error = page.locator(".preview-status.is-error");
     await expect(image.or(error).first()).toBeVisible({ timeout: 150_000 });
     if (await error.isVisible()) throw new Error(`Try-on failed for ${persona.name}: ${await error.innerText()}`);
-    const data = await image.evaluate(async (element) => {
-      const blob = await (await fetch((element as HTMLImageElement).src)).blob();
-      const bytes = new Uint8Array(await blob.arrayBuffer());
-      let text = "";
-      bytes.forEach((byte) => (text += String.fromCharCode(byte)));
-      return { type: blob.type, base64: btoa(text) };
-    });
-    const extension = data.type.replace("image/", "");
-    writeFileSync(join(out, `${persona.name}-look1-tryon.${extension}`), Buffer.from(data.base64, "base64"));
+    const response = await answer;
+    const extension = (response.headers()["content-type"] ?? "image/png").replace("image/", "");
+    writeFileSync(join(out, `${persona.name}-look1-tryon.${extension}`), await response.body());
   });
 }
 
@@ -162,7 +157,7 @@ test("live: the whole flow on one persona", async ({ page }) => {
   await expect(page.getByRole("img", { name: "Experimental try-on of look 1" })).toBeVisible({ timeout: 150_000 });
   await page.screenshot({ path: join(out, "full-2-try-on.png"), fullPage: true });
 
-  const keep = page.getByRole("button", { name: /^Keep .* in look_1$/ }).first();
+  const keep = page.getByRole("button", { name: /^Keep .* in look 1$/ }).first();
   const kept = (await keep.getAttribute("aria-label"))?.replace(/^Keep /, "Release ") ?? "";
   await keep.click();
   await page.getByLabel("Budget in EUR").fill("260");
@@ -172,7 +167,7 @@ test("live: the whole flow on one persona", async ({ page }) => {
   await expect(page.getByRole("button", { name: kept })).toHaveAttribute("aria-pressed", "true");
   await expect(page.getByRole("img", { name: /Experimental try-on/ })).toHaveCount(0);
 
-  await page.getByRole("button", { name: /^Replace .* in look_2$/ }).first().click();
+  await page.getByRole("button", { name: /^Replace .* in look 2$/ }).first().click();
   const replaced = page.getByText(/The item was replaced/);
   await expect(replaced.or(page.getByRole("alert")).first()).toBeVisible({ timeout: 180_000 });
   writeFileSync(join(out, "full-3-replace.txt"), (await page.locator(".request-message").innerText()) + "\n");

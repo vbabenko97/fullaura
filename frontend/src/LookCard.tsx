@@ -1,4 +1,4 @@
-import { formatMoney } from "./format";
+import { formatMoney, lookLabel } from "./format";
 import { lookCost } from "./plan";
 import { ProductLine } from "./ProductLine";
 import { SLOTS } from "./types";
@@ -54,7 +54,7 @@ export function LookCard({
   return (
     <article className="look-card" aria-labelledby={`${look.id}-title`}>
       <header className="look-card-header">
-        <h2 id={`${look.id}-title`}>{look.id.replaceAll("_", " ")}</h2>
+        <h2 id={`${look.id}-title`}>{lookLabel(look.id)}</h2>
         <p className="look-total">{formatMoney(lookCost(look, plan, catalog))}</p>
       </header>
       {onTryOn && (

@@ -1,5 +1,15 @@
 import { useState } from "react";
-import { compositionText, formatCheckedDate, formatMoney, labelCategory, labelSlot, variantFacts } from "./format";
+import {
+  compositionText,
+  formatCheckedDate,
+  formatMoney,
+  labelCategory,
+  labelSlot,
+  lookLabel,
+  sentenceCase,
+  stockText,
+  variantFacts,
+} from "./format";
 import { catalogItem, hasReplacementAlternative, selectedOffer } from "./plan";
 import type {
   Catalog,
@@ -88,7 +98,7 @@ export function ProductLine({
           <span className="slot-name">{labelSlot(slot)}</span>
           <div className="look-item-actions">
             <button
-              aria-label={`Replace ${owned?.description ?? "owned item"} in ${look.id}`}
+              aria-label={`Replace ${owned?.description ?? "owned item"} in ${lookLabel(look.id)}`}
               className="secondary-button replace-button"
               disabled={replaceDisabled || isLocked || !hasAlternative}
               onClick={() => onReplaceItem(look.id, slot, item)}
@@ -97,7 +107,7 @@ export function ProductLine({
               Replace
             </button>
             <button
-              aria-label={`${isLocked ? "Release" : "Keep"} ${owned?.description ?? "owned item"} in ${look.id}`}
+              aria-label={`${isLocked ? "Release" : "Keep"} ${owned?.description ?? "owned item"} in ${lookLabel(look.id)}`}
               aria-pressed={isLocked}
               className={`lock-button${isLocked ? " is-locked" : ""}`}
               disabled={lockDisabled}
@@ -116,9 +126,10 @@ export function ProductLine({
         <p className="item-price">Already owned</p>
         {notices.map((notice) => (
           <p className="item-facts" key={`${notice.kind}-${notice.material}`}>
+            {sentenceCase(notice.material)}
             {notice.kind === "owned_reported"
-              ? `${notice.material} reported by you. It is excluded from new purchases.`
-              : `${notice.material} is unconfirmed for this item.`}
+              ? " reported by you. It is excluded from new purchases."
+              : " is unconfirmed for this item."}
           </p>
         ))}
       </li>
@@ -147,7 +158,7 @@ export function ProductLine({
           <span className="slot-name">{labelSlot(slot)}</span>
         <div className="look-item-actions">
           <button
-            aria-label={`Replace ${entry.product.title} in ${look.id}`}
+            aria-label={`Replace ${entry.product.title} in ${lookLabel(look.id)}`}
             className="secondary-button replace-button"
             disabled={replaceDisabled || isLocked || !hasAlternative}
             onClick={() => onReplaceItem(look.id, slot, item)}
@@ -156,7 +167,7 @@ export function ProductLine({
             Replace
           </button>
           <button
-            aria-label={`${isLocked ? "Release" : "Keep"} ${entry.product.title} in ${look.id}`}
+            aria-label={`${isLocked ? "Release" : "Keep"} ${entry.product.title} in ${lookLabel(look.id)}`}
             aria-pressed={isLocked}
             className={`lock-button${isLocked ? " is-locked" : ""}`}
             disabled={lockDisabled}
@@ -174,7 +185,7 @@ export function ProductLine({
           <h3>{entry.product.title}</h3>
           {facts && <p className="item-facts">{facts}</p>}
           <p className="item-facts">{composition}</p>
-          {offer?.stock === null && <p className="item-facts">Stock not reported</p>}
+          {offer && <p className="item-facts">{stockText(offer.stock)}</p>}
           <div className="item-source">
             <span className="item-price">{formatMoney(offer?.price_cents ?? null)}</span>
             {offerLink ? (

@@ -221,7 +221,6 @@ export interface PlanResponse {
   catalog_changed: boolean;
   conflicts: { rule: string | null; detail: string }[];
   violations: { rule: string; detail: string }[];
-  error: string | null;
   notices: OwnedNotice[];
 }
 
