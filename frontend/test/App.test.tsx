@@ -823,8 +823,93 @@ describe(`${FIXTURE_LABEL}: shopping list and saved plans`, () => {
 
     fireEvent.click(await releaseTShirt());
     fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    fireEvent.click(screen.getByRole("button", { name: "Replace current plan" }));
     await screen.findByText("The saved plan still passes the catalog checks.");
     expect(await releaseTShirt()).toBeTruthy();
+  });
+
+  const restoresOf = (server: Server) => server.requests.filter((entry) => entry.url === "/api/plans/restore").length;
+
+  it("asks before a restore when kept items changed since the plan was saved", async () => {
+    const server = installServer({ plans: [firstPlan] });
+    render(<App />);
+    await generate();
+    fireEvent.click(screen.getByRole("button", { name: "Save this plan" }));
+    await screen.findByText(/Saved "Relaxed office outfits" on this device/);
+    keepTShirt();
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    expect(screen.getByRole("alert").textContent).toMatch(/kept items are not saved/);
+    expect(restoresOf(server)).toBe(0);
+  });
+
+  it("asks before a restore when the form changed since the plan was saved", async () => {
+    const server = installServer({ plans: [firstPlan] });
+    render(<App />);
+    await generate();
+    fireEvent.click(screen.getByRole("button", { name: "Save this plan" }));
+    await screen.findByText(/Saved "Relaxed office outfits" on this device/);
+    fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "249" } });
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    expect(screen.getByRole("alert").textContent).toMatch(/changes to the preferences are not applied/);
+    expect(restoresOf(server)).toBe(0);
+    fireEvent.click(screen.getByRole("button", { name: "Replace current plan" }));
+    await screen.findByText(/^Restored "Relaxed office outfits"/);
+    expect((screen.getByLabelText("Budget in EUR") as HTMLInputElement).value).toBe("250");
+  });
+
+  it("asks before a restore replaces preferences typed with no plan yet, and not on an untouched form", async () => {
+    const server = installServer({ plans: [firstPlan] });
+    render(<App />);
+    await generate();
+    fireEvent.click(screen.getByRole("button", { name: "Save this plan" }));
+    await screen.findByText(/Saved "Relaxed office outfits" on this device/);
+    cleanup();
+    sessionStorage.clear(); // a new tab, with the saved plan and no working plan
+    render(<App />);
+    await screen.findByText(/products\. Prices checked/);
+    const goal = screen.getByLabelText("What should the looks work for?");
+    fireEvent.change(goal, { target: { value: "A long answer I typed" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Restore" }));
+    expect(screen.getByRole("alert").textContent).toMatch(/changes to the preferences/);
+    expect(restoresOf(server)).toBe(0);
+    fireEvent.click(screen.getByRole("button", { name: "Keep current plan" }));
+    fireEvent.change(goal, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    await screen.findByText(/^Restored "Relaxed office outfits"/);
+    expect(restoresOf(server)).toBe(1);
+  });
+
+  it("does not ask when the page already holds the saved plan, also after restoring it", async () => {
+    const server = installServer({ plans: [firstPlan] });
+    render(<App />);
+    await generate();
+    keepTShirt();
+    fireEvent.click(screen.getByRole("button", { name: "Save this plan" }));
+    await screen.findByText(/Saved "Relaxed office outfits" on this device/);
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    await screen.findByText(/^Restored "Relaxed office outfits"/);
+    expect(screen.queryByRole("button", { name: "Keep current plan" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    await waitFor(() => expect(restoresOf(server)).toBe(2));
+    expect(screen.queryByRole("button", { name: "Keep current plan" })).toBeNull();
+  });
+
+  it("does not bring the question back by itself once what it warned about was saved", async () => {
+    installServer({ plans: [firstPlan] });
+    render(<App />);
+    await generate();
+    fireEvent.click(screen.getByRole("button", { name: "Save this plan" }));
+    await screen.findByText(/Saved "Relaxed office outfits" on this device/);
+    keepTShirt();
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    expect(screen.getByRole("button", { name: "Keep current plan" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Save this plan" }));
+    expect(screen.queryByRole("button", { name: "Keep current plan" })).toBeNull();
+    const release = await releaseTShirt();
+    release.focus();
+    fireEvent.click(release); // differs from the saved copy again
+    expect(screen.queryByRole("button", { name: "Keep current plan" })).toBeNull();
+    expect(document.activeElement?.getAttribute("aria-label")).toMatch(/MAARKOS/);
   });
 
   it("asks before a restore replaces a plan that is not saved, and answers beside the saved plans", async () => {
@@ -1077,6 +1162,16 @@ describe(`${FIXTURE_LABEL}: what the checks and buttons tell a person`, () => {
     fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "249" } });
     expect(screen.getAllByText(/Replace is off until you select "Update three looks"/)).toHaveLength(3);
   });
+
+  it("does not point to Update when Update cannot be used, as once the requests are used up", async () => {
+    const server = installServer();
+    server.session.planning_open = false;
+    storeWorkingPlan(firstPlan);
+    render(<App />);
+    await screen.findAllByRole("button", { name: /^Replace .* in look 1$/ });
+    fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "249" } });
+    expect(screen.queryByText(/Replace is off until/)).toBeNull();
+  });
 });
 
 describe(`${FIXTURE_LABEL}: try-on`, () => {
@@ -1151,6 +1246,23 @@ describe(`${FIXTURE_LABEL}: try-on`, () => {
     await screen.findByRole("img", { name: "Experimental try-on of look 1" });
     expect(screen.getByText("Your try-on of look 1 is ready.")).toBeTruthy();
     expect(document.activeElement).toBe(comment);
+  });
+
+  it("leaves focus on another control of the panel when the person moved there while the try-on ran", async () => {
+    const server = await prepareTryOn(installServer({ plans: [firstPlan] }));
+    const provider = deferred();
+    server.previewGate = provider.promise;
+    const button = await screen.findByRole("button", { name: "Try on look 1" });
+    button.focus();
+    fireEvent.click(button);
+    await screen.findByRole("button", { name: "Cancel try-on" });
+    const panel = screen.getByRole("heading", { name: "Try a look on" }).closest("section") as HTMLElement;
+    const terms = within(panel).getByRole("link", { name: "terms" });
+    terms.focus();
+    await act(async () => provider.resolve());
+    await screen.findByRole("img", { name: "Experimental try-on of look 1" });
+    expect(screen.getByText("Your try-on of look 1 is ready.")).toBeTruthy();
+    expect(document.activeElement).toBe(terms);
   });
 
   it("does not move focus again when a person comes back to a look with a try-on", async () => {

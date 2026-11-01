@@ -52,6 +52,8 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
   const preparing = useRef(0);
   // Set when a try-on finishes, so only a new result moves focus, not coming back to a look.
   const revealResult = useRef(false);
+  // The button that starts and cancels a try-on: one element, whichever it says.
+  const actionButton = useRef<HTMLButtonElement>(null);
 
   useEffect(() => () => controller.current?.abort(), []);
   useEffect(() => {
@@ -286,12 +288,13 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
         {photoError && <p className="notice notice-error" role="alert">{photoError}</p>}
         <div className="preview-actions">
           {state === "loading" ? (
-            <button className="secondary-button" onClick={cancel} type="button">Cancel try-on</button>
+            <button className="secondary-button" onClick={cancel} ref={actionButton} type="button">Cancel try-on</button>
           ) : (
             <button
               className="secondary-button"
               disabled={disabled || !portrait || !fullBody || state === "preparing"}
               onClick={() => void generate()}
+              ref={actionButton}
               type="button"
             >
               {state === "preparing" ? "Preparing photo…" : `Try on ${label}`}
@@ -316,9 +319,9 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
           ref={(node) => {
             if (!node || !revealResult.current) return;
             revealResult.current = false;
-            // A person who moved on while the drawing ran keeps their place.
+            // A person who moved anywhere else while the drawing ran keeps their place.
             const active = document.activeElement;
-            if (active !== document.body && !node.closest(".tryon-panel")?.contains(active)) return;
+            if (active !== document.body && active !== actionButton.current) return;
             node.scrollIntoView?.({ block: "start" });
             node.focus({ preventScroll: true });
           }}

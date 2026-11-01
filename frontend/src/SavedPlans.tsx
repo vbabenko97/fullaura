@@ -13,8 +13,8 @@ interface SavedPlansProps {
   canSave?: boolean;
   onSave?: () => void;
   onRestore?: (plan: SavedPlan) => void;
-  /** Whether a restore would replace a working plan that no saved copy holds. */
-  replacesUnsaved?: boolean;
+  /** What a restore would lose, for the person to confirm; empty when it would lose nothing. */
+  restoreWarning?: string;
 }
 
 function savedDate(value: string): string {
@@ -27,7 +27,7 @@ function savedDate(value: string): string {
 export function SavedPlans({
   saved,
   canSave = false,
-  replacesUnsaved = false,
+  restoreWarning = "",
   busy,
   message,
   onSave,
@@ -38,6 +38,8 @@ export function SavedPlans({
   const [restoring, setRestoring] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const opened = saved.find((plan) => plan.id === open);
+  // Once nothing would be lost the question is over; a later change must not bring it back by itself.
+  if (restoring !== null && !restoreWarning) setRestoring(null);
 
   return (
     <section className="saved-panel no-print" aria-labelledby="saved-title">
@@ -71,7 +73,7 @@ export function SavedPlans({
                     className="secondary-button"
                     disabled={busy}
                     id={`restore-${plan.id}`}
-                    onClick={() => (replacesUnsaved ? setRestoring(plan.id) : onRestore(plan))}
+                    onClick={() => (restoreWarning ? setRestoring(plan.id) : onRestore(plan))}
                     type="button"
                   >
                     Restore
@@ -103,11 +105,9 @@ export function SavedPlans({
                   </button>
                 )}
               </div>
-              {onRestore && replacesUnsaved && restoring === plan.id && (
+              {onRestore && restoreWarning && restoring === plan.id && (
                 <div className="saved-confirm">
-                  <p className="field-help" role="alert">
-                    Your current plan is not saved, and restoring replaces it. Save it first if you want to keep it.
-                  </p>
+                  <p className="field-help" role="alert">{restoreWarning}</p>
                   <div className="look-item-actions">
                     <button
                       autoFocus
