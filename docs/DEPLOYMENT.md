@@ -248,7 +248,7 @@ On 2026-10-31 the earlier app images, of `a7eba24` and of `00c7e2f`, were run lo
 
 - Close model calls and the beta's routes at once: `az containerapp update --name fullaura-demo --resource-group rg-fullaura-demo --subscription <subscription ID> --set-env-vars FULLAURA_BETA_ENABLED=false`. Plans saved on participants' devices stay readable in their browsers.
 - Stop serving altogether: `az containerapp ingress disable --name fullaura-demo --resource-group rg-fullaura-demo --subscription <subscription ID>`.
-- Delete every pilot record before the purge job does: `az storage blob delete-batch --account-name <storage account> --source pilot --auth-mode login --subscription <subscription ID>`. The operator needs the Storage Blob Data Contributor role on the account.
+- Delete every pilot record before the purge job does: `az storage blob delete-batch --account-name <storage account> --source pilot --auth-mode login --subscription <subscription ID>`. The operator holds only Storage Blob Data Reader, so give them Storage Blob Data Contributor on the `pilot` container for this, as in [Deleting the pilot records](#deleting-the-pilot-records), and remove that role assignment afterwards.
 - Remove all FullAura resources: `az group delete --name rg-fullaura-demo --subscription <subscription ID>`. This also deletes the logs and cannot be undone.
 
 ## Official references

@@ -12,7 +12,7 @@ import pytest
 from backend.app.pilot import OperationKind, Pilot, PilotLimits, Refused, invite_hash
 from backend.app.store import DirectoryStore, MemoryStore
 from scripts.pilot_invites import create
-from scripts.pilot_report import report
+from scripts.pilot_report import invite_digests, open_store, report
 
 CODES = ("report-invite-one", "report-invite-two", "report-invite-three")
 HASHES = [invite_hash(code) for code in CODES]
@@ -70,6 +70,16 @@ def test_invites_keep_codes_local_and_publish_only_their_digests(tmp_path: Path)
     assert invites.stat().st_mode & 0o077 == 0
     with pytest.raises(SystemExit, match="exists"):
         create(1, "https://beta.example", tmp_path)
+
+
+def test_a_new_batch_never_replaces_the_digests_of_an_earlier_one(tmp_path: Path) -> None:
+    invites, hashes = create(2, "https://beta.example/", tmp_path)
+    earlier = hashes.read_text(encoding="utf-8")
+    invites.rename(tmp_path / "invites-batch-1.csv")  # as the old message asked
+    with pytest.raises(SystemExit, match="invite-hashes.txt exists"):
+        create(1, "https://beta.example/", tmp_path)
+    assert hashes.read_text(encoding="utf-8") == earlier
+    assert not invites.exists()
 
 
 def test_an_empty_store_reports_zeros_against_the_invites_provided(tmp_path: Path) -> None:
@@ -332,3 +342,21 @@ def test_calls_that_never_reached_the_provider_or_the_ledger_are_not_counted_as_
     assert (certainty["not_in_ledger"]["calls"], certainty["not_in_ledger"]["images"]) == (1, 0)
     assert certainty["running"]["calls"] == 0
     assert result["spending_usd"]["ledger"]["reserved"]["images"] == 0
+
+
+def test_the_report_reads_digests_as_the_app_does_and_refuses_anything_else() -> None:
+    first, second = HASHES[0], HASHES[1]
+    assert invite_digests(f"{first}, {second.upper()}\n") == [first, second]
+    assert invite_digests(f"{first},{second}\n{first}\n") == [first, second]  # two files joined
+    with pytest.raises(SystemExit):
+        invite_digests("invite,code,link,given_to\n1,abc,https://site/#invite=abc,\n")
+    with pytest.raises(SystemExit):
+        invite_digests("\n")
+
+
+@pytest.mark.parametrize(
+    "url", ["http://stfullaura.blob.core.windows.net/pilot", "https://storage.example/pilot"]
+)
+def test_the_report_sends_the_operator_token_only_to_an_azure_blob_account(url: str) -> None:
+    with pytest.raises(SystemExit):
+        open_store(url)

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 from pathlib import Path
 
 from backend.app.config import PROJECT_ROOT
@@ -22,16 +23,20 @@ DEFAULT_FOLDER = PROJECT_ROOT / "data" / "private" / "beta"
 def create(count: int, base_url: str, folder: Path) -> tuple[Path, Path]:
     folder.mkdir(parents=True, exist_ok=True)
     invites, hashes = folder / "invites.csv", folder / "invite-hashes.txt"
-    if invites.exists():
-        raise SystemExit(f"{invites} exists; move it away before creating new invites")
+    # The digests of an earlier batch are what the app and the pilot report know, so neither file
+    # may be replaced by a new batch.
+    for existing in (invites, hashes):
+        if existing.exists():
+            raise SystemExit(f"{existing} exists; move both files away before creating new invites")
     codes = [new_invite_code() for _ in range(count)]
-    with invites.open("w", newline="", encoding="utf-8") as file:
+    # Created readable by the operator alone, so the codes are never open to others.
+    descriptor = os.open(invites, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with open(descriptor, "w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
         writer.writerow(["invite", "code", "link", "given_to"])
         for number, code in enumerate(codes, start=1):
             writer.writerow([number, code, f"{base_url.rstrip('/')}/#invite={code}", ""])
     hashes.write_text(",".join(invite_hash(code) for code in codes) + "\n", encoding="utf-8")
-    invites.chmod(0o600)
     return invites, hashes
 
 

@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 from collections import Counter
 from collections.abc import Callable
@@ -30,7 +31,13 @@ from typing import Any
 import httpx2
 
 from backend.app.pilot import BUDGET_OF, Budget, OperationKind, TryOnIssue
-from backend.app.store import STORAGE_RESOURCE, AzureBlobStore, DirectoryStore, Store
+from backend.app.store import (
+    STORAGE_RESOURCE,
+    AzureBlobStore,
+    DirectoryStore,
+    Store,
+    blob_container,
+)
 
 # What a call's recorded outcome means for the person. backend/app/main.py writes them.
 OUTCOME_CATEGORY = {
@@ -67,10 +74,26 @@ def cli_token(subscription: str | None) -> Callable[[httpx2.Client], tuple[str, 
 
 
 def open_store(url: str, subscription: str | None = None) -> Store:
+    """A local folder, or the Blob container the app uses; the operator's storage token is sent
+    to an Azure Blob account over HTTPS only, never to a mistyped address."""
     if url.startswith("file://"):
         return DirectoryStore(Path(url.removeprefix("file://")))
-    account_url, container = url.rstrip("/").rsplit("/", 1)
-    return AzureBlobStore(account_url, container, token=cli_token(subscription))
+    blob = blob_container(url)
+    if blob is None:
+        raise SystemExit(
+            "--store-url must be file:///folder or https://<account>.blob.core.windows.net/<container>"
+        )
+    return AzureBlobStore(*blob, token=cli_token(subscription))
+
+
+def invite_digests(text: str) -> list[str]:
+    """The SHA-256 digests in an invite-hashes.txt file, each once: separated by commas, with any
+    spaces around them ignored as the app ignores them, or by line breaks, as when two files were
+    joined. Anything else, such as the invites.csv with its codes, is refused."""
+    digests = list(dict.fromkeys(entry.lower() for entry in re.split(r"[\s,]+", text) if entry))
+    if not digests or not all(re.fullmatch(r"[0-9a-f]{64}", digest) for digest in digests):
+        raise SystemExit("--invites must list SHA-256 digests, as in invite-hashes.txt")
+    return digests
 
 
 def outcome_of(record: dict[str, Any]) -> str | None:
@@ -414,7 +437,7 @@ def main() -> None:
     args = parser.parse_args()
     hashes = None
     if args.invites:
-        hashes = [h for h in args.invites.read_text(encoding="utf-8").strip().split(",") if h]
+        hashes = invite_digests(args.invites.read_text(encoding="utf-8"))
     store = open_store(args.store_url, args.subscription)
     print(json.dumps(report(store, hashes, per_invite=args.per_invite), indent=2))
 

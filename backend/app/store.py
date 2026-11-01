@@ -18,7 +18,7 @@ from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from xml.etree import ElementTree
 
 import httpx2
@@ -291,14 +291,35 @@ class AzureBlobStore:
                 return names
 
 
+def blob_container(url: str) -> tuple[str, str] | None:
+    """The account URL and container of https://<account>.blob.core.windows.net/<container>, or
+    None for any other URL, so a storage token is sent only to an Azure Blob account over HTTPS."""
+    try:
+        parts = urlsplit(url.rstrip("/"))
+        host = parts.hostname or ""
+    except ValueError:  # such as a malformed IPv6 host
+        return None
+    container = parts.path.removeprefix("/")
+    if (
+        parts.scheme != "https"
+        or parts.netloc.lower() != host  # no port or user information
+        or not host.endswith(".blob.core.windows.net")
+        or not container
+        or "/" in container
+        or parts.query
+        or parts.fragment
+    ):
+        return None
+    return f"https://{host}", container
+
+
 def open_store(url: str) -> Store:
     if url == "memory://":
         return MemoryStore()
     if url.startswith("file://"):
         return DirectoryStore(Path(url.removeprefix("file://")))
-    if url.startswith("https://") and ".blob.core.windows.net/" in url:
-        account_url, container = url.rstrip("/").rsplit("/", 1)
-        return AzureBlobStore(account_url, container)
+    if blob := blob_container(url):
+        return AzureBlobStore(*blob)
     raise ValueError("FULLAURA_STORE_URL must be memory://, file:///folder or a blob container URL")
 
 

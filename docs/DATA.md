@@ -1,6 +1,6 @@
 # Data and demo assets
 
-No personal photographs or generated personal previews are included in this repository. `backend/data/catalog.json` holds product facts, without images, from the sources in the register below. The landing page uses local system fonts and CSS, with no third-party imagery.
+No personal photographs or generated personal previews are included in this repository. `backend/data/catalog.json` holds product facts, without images, from the sources in the register below. The landing page uses local system fonts and CSS, with no third-party imagery. `docs/assets/t04-preferences-desktop.png` and `t04-preferences-mobile.png` are screenshots of FullAura's own planning screen during T-04, showing a scripted plan of catalog facts; they hold no product photo, personal photo or model output.
 
 The tests use `tests/fixtures/synthetic_catalog.json`, a catalog invented for testing and marked `"synthetic": true`. Its products, prices, retailer and links are fictional, and its links use the reserved test domain `synthetic.example`. It is not a catalog source: it stays out of the container image and must not appear in the interface or a demo as real products.
 
