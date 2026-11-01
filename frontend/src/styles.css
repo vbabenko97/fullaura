@@ -214,6 +214,10 @@
   column-gap: var(--space-lg);
 }
 
+.choice-row .radio-choice > span {
+  white-space: nowrap;
+}
+
 .radio-choice,
 .check-choice {
   display: flex;
@@ -1085,6 +1089,11 @@
     break-inside: avoid;
     border-color: var(--color-rule);
     box-shadow: none;
+  }
+
+  /* A list too long for one page still breaks between items, not inside one. */
+  .shopping-table tr {
+    break-inside: avoid;
   }
 }
 

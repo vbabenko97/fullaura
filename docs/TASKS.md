@@ -20,6 +20,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-16](#t-16-fixes-from-the-repository-audit) Fixes from the repository audit | done | 2026-11-01 |
 | [T-17](#t-17-items-left-open-by-the-audit) Items left open by the audit | done | 2026-11-01 |
 | [T-18](#t-18-form-fixes-from-the-authors-test) Form fixes from the author's test | done | 2026-11-01 |
+| [T-19](#t-19-small-fixes-from-the-authors-test) Small fixes from the author's test | next | |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -164,6 +165,12 @@ The author used the deployed site on 2026-11-01 and found the form too long and 
 The work was deployed on 2026-11-01 as `b192cbd`. The deployed site passed the HTTP smoke check and shows the shorter form ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). No plan ran with the new form there, so an empty goal ran only in unit tests with scripted responses.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check and showing the shorter form.
+
+## T-19: Small fixes from the author's test
+
+The author's test on 2026-11-01 also found four small defects. The answer "I can't judge it" broke over four lines and now stays on one. Two saved plans with one goal had the same name, and a later one now takes a number. A printed shopping list could break inside an item and now breaks between items. A heading or message that a script gives the focus to showed a ring, as if it were a control, and no longer does; controls keep their ring, and the next Tab still goes on from that place.
+
+Done when: the checks in the [README](../README.md#check-a-change) pass, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check.
 
 ## T-06: Evaluation and submission
 

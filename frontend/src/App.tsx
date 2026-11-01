@@ -34,7 +34,7 @@ import {
 import type { Preferences } from "./plan";
 import { PreferencesForm } from "./PreferencesForm";
 import { PrivacyNotice } from "./PrivacyNotice";
-import { deleteSavedPlan, keepCurrentPlan, loadCurrentPlan, loadSavedPlans, MAX_SAVED, savePlan } from "./planStorage";
+import { deleteSavedPlan, keepCurrentPlan, loadCurrentPlan, loadSavedPlans, MAX_SAVED, savedName, savePlan } from "./planStorage";
 import { SavedPlans } from "./SavedPlans";
 import { ShoppingList } from "./ShoppingList";
 import { TryOnPanel } from "./TryOnPanel";
@@ -575,8 +575,9 @@ export function App() {
 
   function saveCurrent() {
     if (!current || !catalog) return;
-    const entry = savedFrom(current, catalog, locks);
     const before = loadSavedPlans();
+    const copy = savedFrom(current, catalog, locks);
+    const entry = { ...copy, name: savedName(copy, before) };
     if (!savePlan(entry)) {
       setSavedMessage("This browser did not allow saving.");
       return;
