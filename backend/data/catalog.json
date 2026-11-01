@@ -1084,7 +1084,7 @@
           },
           "source": {
             "url": "https://www.armedangels.com/de-at/products/relaxed-jersey-shorts-dried-palm",
-            "checked_at": "2026-10-28T11:45:43Z"
+            "checked_at": "2026-11-01T12:00:00Z"
           },
           "offers": [
             {
@@ -1096,10 +1096,10 @@
               "delivery_confirmed_to": [
                 "AT"
               ],
-              "stock": "in_stock",
+              "stock": "out_of_stock",
               "source": {
                 "url": "https://www.armedangels.com/de-at/products/relaxed-jersey-shorts-dried-palm",
-                "checked_at": "2026-10-28T11:45:43Z"
+                "checked_at": "2026-11-01T12:00:00Z"
               }
             }
           ]
