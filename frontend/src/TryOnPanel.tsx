@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ApiResponseError, errorMessage, newOperationId, readJson } from "./api";
+import { lookLabel } from "./format";
 import { ACCEPTED_PHOTO_TYPES, normalizePhoto, PhotoError } from "./photos";
 import type { Session } from "./types";
 
@@ -33,10 +34,6 @@ interface TryOnPanelProps {
 }
 
 type Photo = { blob: Blob; name: string } | null;
-
-function lookLabel(lookId: string): string {
-  return lookId.replaceAll("_", " ");
-}
 
 export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPanelProps) {
   const [portrait, setPortrait] = useState<Photo>(null);

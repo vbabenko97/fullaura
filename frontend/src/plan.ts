@@ -1,5 +1,5 @@
 import { EU_SHOE_SIZE, LETTER_SIZES, MAX_FIT_SIZES, SLOT_CATEGORIES, SLOTS, WAIST_SIZE } from "./types";
-import { formatCheckedDate, labelCategory, labelSlot } from "./format";
+import { formatCheckedDate, labelCategory, labelSlot, lookLabel, stockText } from "./format";
 import type {
   BudgetMode,
   Catalog,
@@ -236,10 +236,6 @@ export function preferenceKey(preferences: Preferences): string {
   });
 }
 
-function lookLabel(lookId: string): string {
-  return lookId.replaceAll("_", " ");
-}
-
 /** One line per distinct catalog variant and owned item: a variant used in several looks is
  * bought once, and an owned item costs nothing. */
 export function shoppingList(plan: Plan, catalog: Catalog, ownedItems: OwnedItem[]): ShoppingLine[] {
@@ -309,6 +305,7 @@ export function shoppingListText(lines: ShoppingLine[], formatMoney: (cents: num
       line.kind === "owned" ? "already owned, EUR 0" : formatMoney(line.price_cents),
       line.retailer && line.url ? `${line.retailer}: ${line.url}` : null,
       line.checked_at ? formatCheckedDate(line.checked_at) : null,
+      line.kind === "catalog" ? stockText(line.stock) : null,
       `in ${line.looks.join(", ")}`,
     ]
       .filter(Boolean)

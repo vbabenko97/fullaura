@@ -141,6 +141,7 @@ function installServer(
     const session = server.session;
     if (url === "/api/session") return json(session);
     if (url === "/api/session/invite") {
+      if (String(object(body).code).length > 64) return json({ detail: "not valid", reason: "invalid" }, 422);
       if (object(body).code !== "good-invite") return json({ detail: "invalid", reason: "invite_invalid" }, 403);
       session.invited = true;
       return json(session);
@@ -262,7 +263,7 @@ function planRequests(server: Server): Body[] {
 }
 
 async function generate(styleGoal = "Relaxed office outfits", budget = "250") {
-  await screen.findByText(/products\. Price checked/);
+  await screen.findByText(/products\. Prices checked/);
   fireEvent.change(screen.getByLabelText("What should the looks work for?"), { target: { value: styleGoal } });
   fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: budget } });
   fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
@@ -320,6 +321,7 @@ describe(`${FIXTURE_LABEL}: access`, () => {
     fireEvent.click(screen.getByRole("checkbox", { name: "I confirm that I am 18 or older." }));
     fireEvent.click(confirm);
     expect(await screen.findByRole("heading", { name: "Your preferences" })).toBeTruthy();
+    expect(screen.queryByText(/This invite code is not valid/)).toBeNull();
   });
 
   it("opens the invite in the link fragment and removes it from the address", async () => {
@@ -329,6 +331,103 @@ describe(`${FIXTURE_LABEL}: access`, () => {
     expect(await screen.findByRole("heading", { name: "Your preferences" })).toBeTruthy();
     expect(object(server.requests[0].body)).toEqual({ code: "good-invite" });
     expect(window.location.hash).toBe("");
+  });
+
+  it("opens an invite link pasted into a tab that is already open", async () => {
+    const server = installServer({ invited: false });
+    render(<App />);
+    await screen.findByLabelText("Invite code");
+    window.location.hash = "#invite=good-invite";
+    expect(await screen.findByRole("heading", { name: "Your preferences" })).toBeTruthy();
+    expect(server.requests.filter((entry) => entry.url === "/api/session/invite")).toHaveLength(1);
+    expect(window.location.hash).toBe("");
+  });
+
+  it("shows a refused invite link pasted over an open workspace, and keeps the workspace", async () => {
+    installServer();
+    render(<App />);
+    await screen.findByRole("heading", { name: "Your preferences" });
+    window.location.hash = "#invite=wrong-invite";
+    expect(await screen.findByText(/This invite code is not valid/)).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Your preferences" })).toBeTruthy();
+  });
+
+  it("calls a damaged invite link not valid instead of stopping on the loading line", async () => {
+    window.location.hash = "#invite=%E0%A4%A";
+    installServer({ invited: false });
+    render(<App />);
+    expect(await screen.findByText(/This invite code is not valid/)).toBeTruthy();
+  });
+
+  it("explains a request the server could not read", async () => {
+    installServer({ invited: false });
+    render(<App />);
+    fireEvent.change(await screen.findByLabelText("Invite code"), { target: { value: "x".repeat(65) } });
+    fireEvent.click(screen.getByRole("button", { name: "Open invite" }));
+    expect(await screen.findByText(/Check what you entered/)).toBeTruthy();
+    expect(screen.queryByText(/status 422/)).toBeNull();
+  });
+
+  it("counts planning requests in the header and stops counting when the beta ends", async () => {
+    const server = installServer();
+    render(<App />);
+    expect(await screen.findByText("8 of 8 planning requests left")).toBeTruthy();
+    cleanup();
+    server.session.pilot_ended = true;
+    render(<App />);
+    await screen.findByRole("heading", { name: "Your preferences" });
+    expect(screen.queryByText(/requests left/)).toBeNull();
+  });
+
+  it("says over which days the catalog's prices were checked", async () => {
+    const dated = structuredClone(catalog);
+    const offers = (object(dated).products as Body[]).flatMap((product) =>
+      (product.variants as Body[]).flatMap((variant) => variant.offers as Body[]),
+    );
+    for (const offer of offers) object(offer.source).checked_at = "2026-10-30T09:00:00Z";
+    installServer({ catalog: dated });
+    render(<App />);
+    expect(await screen.findByText(/products\. Prices checked 30 Oct 2026$/)).toBeTruthy();
+    cleanup();
+    object(offers[0].source).checked_at = "2026-10-01T09:00:00Z";
+    render(<App />);
+    expect(await screen.findByText(/products\. Prices checked 1 Oct 2026 to 30 Oct 2026$/)).toBeTruthy();
+  });
+
+  it("keeps a failed plan's technical error out of the page", async () => {
+    installServer({
+      plans: [
+        {
+          outcome: "generation_failed",
+          plan: null,
+          conflicts: [],
+          violations: [],
+          notices: [],
+          error: "1 validation error for Plan https://errors.pydantic.dev/2.14/v/too_short",
+        },
+      ],
+    });
+    render(<App />);
+    await screen.findByText(/products\. Prices checked/);
+    fireEvent.change(screen.getByLabelText("What should the looks work for?"), { target: { value: "Office" } });
+    fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "250" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+    expect(await screen.findByText(/No plan passed the catalog checks/)).toBeTruthy();
+    expect(screen.queryByText(/pydantic/)).toBeNull();
+  });
+
+  it("opens the closed section that holds an empty required field when the form is submitted", async () => {
+    const server = installServer();
+    render(<App />);
+    await screen.findByText(/products\. Prices checked/);
+    fireEvent.change(screen.getByLabelText("What should the looks work for?"), { target: { value: "Office" } });
+    fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "250" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add item" }));
+    const section = screen.getByText("Items you already own", { selector: "summary span" }).closest("details");
+    expect(section?.open).toBe(false);
+    fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+    expect(section?.open).toBe(true);
+    expect(planRequests(server)).toEqual([]);
   });
 
   it("keeps an accepted invite when the catalog fails once, and loads it again on request", async () => {
@@ -371,7 +470,7 @@ describe(`${FIXTURE_LABEL}: data notice`, () => {
     const notice = within(screen.getByText("How FullAura handles your data").closest("details") as HTMLElement);
     expect(
       notice.getByText(
-        /not a check of FullAura's account\. Design my look first sends your style goal, colors, occasion, season, budget, clothing line, the kinds of bottoms and dresses you wear, and your shoe and material choices, without your sizes or owned items; it then sends its concept with the catalog products in your sizes, so that the model can pick the closest ones\. FullAura does not store your preferences; the server keeps your latest plan and your latest concept in memory for up to a day\./,
+        /not a check of FullAura's account\. Design my look first sends your style goal, colors, occasion, season, budget, clothing line, the kinds of bottoms and dresses you wear, and your shoe and material choices, without your sizes or owned items; it then sends its concept with the catalog products in your sizes, so that the model can pick the closest ones\. FullAura does not store your preferences; the server keeps your latest plan and your latest concept in memory until a day after you last use FullAura\./,
       ),
     ).toBeTruthy();
     expect(notice.getByText(/a description of the look, or of your concept in Design my look, to Meta's Muse Image model/)).toBeTruthy();
@@ -406,7 +505,7 @@ describe(`${FIXTURE_LABEL}: planning`, () => {
     });
     render(<App />);
     await generate();
-    fireEvent.click(screen.getByRole("button", { name: "Keep MAARKOS HEAVY WEIGHT T-SHIRT in look_1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Keep MAARKOS HEAVY WEIGHT T-SHIRT in look 1" }));
     fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "160" } });
     fireEvent.click(screen.getByRole("button", { name: "Update three looks" }));
 
@@ -424,7 +523,7 @@ describe(`${FIXTURE_LABEL}: planning`, () => {
     const server = installServer({ plans: [firstPlan, replacementPlan] });
     render(<App />);
     await generate();
-    fireEvent.click(screen.getByRole("button", { name: "Replace MAARKOS HEAVY WEIGHT T-SHIRT in look_1" }));
+    fireEvent.click(screen.getByRole("button", { name: "Replace MAARKOS HEAVY WEIGHT T-SHIRT in look 1" }));
     expect(await screen.findByText(/The item was replaced/)).toBeTruthy();
     const replacement = planRequests(server)[1];
     expect(replacement.replacement).toEqual({
@@ -525,7 +624,7 @@ describe(`${FIXTURE_LABEL}: planning`, () => {
   it("says next to the button what the budget limits, and totals the plan as the shopping list does", async () => {
     installServer({ plans: [firstPlan] });
     render(<App />);
-    await screen.findByText(/products\. Price checked/);
+    await screen.findByText(/products\. Prices checked/);
     const button = screen.getByRole("button", { name: "Generate three looks" });
     const meaning = () => document.getElementById(button.getAttribute("aria-describedby") ?? "")?.textContent ?? "";
     expect(meaning()).toMatch(/^The budget is a limit for each look on its own, so the three looks together can cost more\./);
@@ -587,6 +686,47 @@ describe(`${FIXTURE_LABEL}: shopping list and saved plans`, () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm delete" }));
     await screen.findByText("Deleted from this device.");
     expect(JSON.parse(localStorage.getItem("fullaura.saved-plans.v1") ?? "[]")).toEqual([]);
+  });
+
+  it("names the saved plan that a new one pushes out", async () => {
+    const older = Array.from({ length: 10 }, (_, index) => ({
+      id: `saved-${index}`,
+      saved_at: "2026-10-30T12:00:00.000Z",
+      name: index === 9 ? "The oldest plan" : `Plan ${index}`,
+      brief: { style_goal: "Older plan", preferred_colors: [], occasion: null, season: null },
+      state: { plan: firstPlan },
+      catalog_id: object(catalog).id,
+      shopping_list: [],
+    }));
+    localStorage.setItem("fullaura.saved-plans.v1", JSON.stringify(older));
+    installServer({ plans: [firstPlan] });
+    render(<App />);
+    await generate();
+    fireEvent.click(screen.getByRole("button", { name: "Save this plan" }));
+    expect(await screen.findByText(/It keeps 10 plans, so "The oldest plan" was removed/)).toBeTruthy();
+    expect(JSON.parse(localStorage.getItem("fullaura.saved-plans.v1") ?? "[]")).toHaveLength(10);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save this plan" })); // the same plan again
+    await screen.findByText(/^Saved "Relaxed office outfits" on this device\.$/);
+  });
+
+  it("shows stock in the shopping list when the shop reports it", async () => {
+    const writeText = vi.fn<(text: string) => Promise<void>>(async () => undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    const stocked = structuredClone(catalog);
+    const shirt = (object(stocked).products as Body[])
+      .flatMap((product) => product.variants as Body[])
+      .find((variant) => variant.id === "ae-maarkos-moonshadow-m");
+    for (const offer of (shirt?.offers ?? []) as Body[]) offer.stock = "in_stock";
+    installServer({ plans: [firstPlan], catalog: stocked });
+    render(<App />);
+    await generate();
+    const row = within(screen.getByRole("table")).getByText("MAARKOS HEAVY WEIGHT T-SHIRT").closest("tr") as HTMLElement;
+    expect(within(row).getByText("In stock")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Copy list" }));
+    await screen.findByText("Copied the list.");
+    const line = String(writeText.mock.calls[0]?.[0]).split("\n").find((text) => text.includes("MAARKOS"));
+    expect(line).toContain("In stock");
   });
 });
 
@@ -962,7 +1102,7 @@ function conceptRequests(server: Server) {
 
 /** Switch to Design my look, fill the two required fields and send; the caller awaits the answer. */
 async function requestConcept(styleGoal = "Black and white office basics", budget = "200") {
-  await screen.findByText(/products\. Price checked/);
+  await screen.findByText(/products\. Prices checked/);
   fireEvent.click(screen.getByRole("radio", { name: "Design my look (experimental)" }));
   fireEvent.change(screen.getByLabelText("What should the looks work for?"), { target: { value: styleGoal } });
   fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: budget } });
@@ -973,7 +1113,7 @@ describe(`${FIXTURE_LABEL}: Design my look`, () => {
   it("adds nothing while the design flag is off", async () => {
     installServer();
     render(<App />);
-    await screen.findByText(/products\. Price checked/);
+    await screen.findByText(/products\. Prices checked/);
     expect(screen.queryByRole("group", { name: "Mode" })).toBeNull();
     expect(screen.queryByRole("radio", { name: "Design my look (experimental)" })).toBeNull();
     expect(screen.queryByText("Design my look does not use items you own.")).toBeNull();
@@ -984,7 +1124,7 @@ describe(`${FIXTURE_LABEL}: Design my look`, () => {
   it("switches mode by radio, leaves out owned items, and sends only the brief and the four checked fields", async () => {
     const server = installServer({ design: true, concepts: [conceptResponse()] });
     render(<App />);
-    await screen.findByText(/products\. Price checked/);
+    await screen.findByText(/products\. Prices checked/);
     const modes = within(screen.getByRole("group", { name: "Mode" }));
     expect((modes.getByRole("radio", { name: "Three looks from real products" }) as HTMLInputElement).checked).toBe(true);
     fireEvent.click(screen.getByText("Items you already own", { selector: "summary span" }));

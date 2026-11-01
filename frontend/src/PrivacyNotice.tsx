@@ -26,7 +26,7 @@ export function PrivacyNotice({ recordsPurgeAt, designOpen }: PrivacyNoticeProps
             {designOpen &&
               "Design my look first sends your style goal, colors, occasion, season, budget, clothing line, the kinds of bottoms and dresses you wear, and your shoe and material choices, without your sizes or owned items; it then sends its concept with the catalog products in your sizes, so that the model can pick the closest ones. "}
             FullAura does not store your preferences; the server keeps your latest plan
-            {designOpen && " and your latest concept"} in memory for up to a day.
+            {designOpen && " and your latest concept"} in memory until a day after you last use FullAura.
           </li>
           <li>
             A try-on sends your two photos, redrawn without metadata, and a description of the look

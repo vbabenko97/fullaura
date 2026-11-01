@@ -6,7 +6,7 @@ import type { SavedPlan } from "./types";
  * a private window, so every access tolerates failure. */
 const SAVED_KEY = "fullaura.saved-plans.v1";
 const CURRENT_KEY = "fullaura.current-plan.v1";
-const MAX_SAVED = 10;
+export const MAX_SAVED = 10;
 
 function read(storage: () => Storage, key: string): unknown {
   try {

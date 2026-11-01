@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { formatCheckedDate, formatMoney } from "./format";
+import { formatCheckedDate, formatMoney, stockText } from "./format";
 import { shoppingListText, shoppingTotal } from "./plan";
 import type { ShoppingLine } from "./types";
 
@@ -63,9 +63,7 @@ export function ShoppingList({ lines, title = "Shopping list" }: ShoppingListPro
                     "Link unavailable"
                   )}
                   {line.checked_at && <span className="source-date">{formatCheckedDate(line.checked_at)}</span>}
-                  {line.kind === "catalog" && line.stock !== "in_stock" && (
-                    <span className="source-date">{line.stock === "out_of_stock" ? "Out of stock" : "Stock not reported"}</span>
-                  )}
+                  {line.kind === "catalog" && <span className="source-date">{stockText(line.stock)}</span>}
                 </td>
               </tr>
             ))}

@@ -256,7 +256,6 @@ export function parsePlanResponse(value: unknown): PlanResponse {
       detail: readString(entry.detail, "planning violation detail"),
     };
   });
-  const error = value.error == null ? null : readString(value.error, "planning error");
   const notices = readArray(value.notices ?? [], "planning notices").map((entry) => {
     if (!isRecord(entry) || (entry.kind !== "owned_reported" && entry.kind !== "owned_unconfirmed")) {
       throw new Error("Invalid planning notice");
@@ -279,7 +278,6 @@ export function parsePlanResponse(value: unknown): PlanResponse {
     catalog_changed: value.catalog_changed === true,
     conflicts,
     violations,
-    error,
     notices,
   };
 }
@@ -429,6 +427,7 @@ const REASON_MESSAGES: Record<string, string> = {
   concept_expired: "This concept was replaced. Try on the current one.",
   not_configured: "This feature is not configured on the server.",
   closed: "The beta is closed.",
+  invalid: "This request is not valid. Check what you entered and try again.",
   timeout: "The request took too long. Try again.",
   provider: "The model provider could not complete this request. Try again later.",
 };

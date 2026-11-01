@@ -30,10 +30,36 @@ export function budgetKept(amountCents: number, mode: BudgetMode): string {
     : `All three looks within ${formatMoney(amountCents)}`;
 }
 
+function checkedDay(date: Date): string {
+  return new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: "UTC" }).format(date);
+}
+
 export function formatCheckedDate(value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "Source date not available";
-  return `Price checked ${new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeZone: "UTC" }).format(date)}`;
+  return `Price checked ${checkedDay(date)}`;
+}
+
+/** The days a set of prices was checked, oldest first, so the newest check does not date them all. */
+export function formatCheckedRange(values: string[]): string {
+  const times = values.map((value) => new Date(value).getTime()).filter((time) => !Number.isNaN(time));
+  if (times.length === 0) return "";
+  const oldest = checkedDay(new Date(Math.min(...times)));
+  const newest = checkedDay(new Date(Math.max(...times)));
+  return oldest === newest ? `Prices checked ${newest}` : `Prices checked ${oldest} to ${newest}`;
+}
+
+export function stockText(stock: "in_stock" | "out_of_stock" | null): string {
+  if (stock === "in_stock") return "In stock";
+  return stock === "out_of_stock" ? "Out of stock" : "Stock not reported";
+}
+
+export function lookLabel(lookId: string): string {
+  return lookId.replaceAll("_", " ");
+}
+
+export function sentenceCase(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
 /** When the beta deletes its records, as a sentence ending; the beta runs on Vienna time. */

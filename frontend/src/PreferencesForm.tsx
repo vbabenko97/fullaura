@@ -98,8 +98,15 @@ export function PreferencesForm({
     onSubmit();
   }
 
+  /** The browser cannot focus a required field in a closed section, so it refuses the submit
+   * without saying why. Opening the section lets it point at the field. */
+  function openSectionOfInvalidField(event: FormEvent<HTMLFormElement>) {
+    const section = event.target instanceof Element ? event.target.closest("details") : null;
+    if (section) section.open = true;
+  }
+
   return (
-    <form className="preferences-form" onSubmit={submit}>
+    <form className="preferences-form" onInvalidCapture={openSectionOfInvalidField} onSubmit={submit}>
       <div className="field-pair">
         <div className="form-field">
           <label htmlFor="occasion">Occasion</label>
