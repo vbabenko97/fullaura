@@ -17,6 +17,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-13](#t-13-fixes-from-the-test-pass) Fixes from the test pass | done | 2026-11-01 |
 | [T-14](#t-14-fixes-from-the-second-test-pass) Fixes from the second test pass | done | 2026-11-01 |
 | [T-15](#t-15-fixes-before-the-human-test) Fixes before the human test | done | 2026-11-01 |
+| [T-16](#t-16-fixes-from-the-repository-audit) Fixes from the repository audit | next | |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -129,6 +130,16 @@ An agent walked through the deployed site as a new person on 2026-11-01, and a s
 The changes were checked on a local server with scripted providers, including by keyboard in Chromium and Firefox. The work was deployed on 2026-11-01 as `7267da0` and checked on the deployed site with one real try-on ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). No plan ran there, because no invite that may be used has planning requests left; the first such plan is the T-08 acceptance.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check and these four scenarios repeated on it.
+
+## T-16: Fixes from the repository audit
+
+An agent audited the whole repository on 2026-11-01, with two more agents reviewing the frontend and the operations files, and checked each finding before fixing it. On the try-on, the newest photo chosen for an input is the one sent, even when an earlier choice finishes preparing later; a try-on that ran out of time says that it may still count; a printout holds the looks and the lists but no try-on, and an opened saved list now prints ([D-69](DECISIONS.md#d-69-a-printout-holds-the-looks-and-the-lists-never-a-try-on)). A reload no longer accepts a new request while it brings back the working plan, a try-on that finds the plan expired and failing says so, and restoring a plan after a try-on keeps Replace on when only the way the budget or sizes were written differs. An owned item removed from the form can no longer be kept, so updates stay valid; a saved plan is restored only once the catalog has loaded; consent failures show in the try-on panel; and keyboard focus no longer drops to the top of the page after a deleted plan, a consent change or a removed item, while the question before a delete gives the focus to the answer that keeps the plan. A style goal of spaces alone is refused before a request.
+
+For operations, `.dockerignore` keeps `.env` files, `tmp/`, logs and private data out of the image at any depth, not only at the root. The store and the pilot report send a storage token only to an `https://<account>.blob.core.windows.net/<container>` URL, the report ignores spaces around invite digests as the app does, also reads two joined digest files, and refuses any other file, and `pilot_invites` never replaces an earlier batch's digests and creates the codes file readable by the operator alone. CI keeps a result for every commit on `main` and keeps a container that stopped at startup until its logs are read. A test covers an invite removed from the configured digests.
+
+The changes were checked with the README's checks and the browser flows on a local server with scripted providers. The container could not be built in the audit's environment, so its HTTP check ran against the app started in production mode instead.
+
+Done when: the checks in the [README](../README.md#check-a-change) pass, including CI's container build and HTTP check, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check.
 
 ## T-06: Evaluation and submission
 
