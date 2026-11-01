@@ -20,7 +20,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-16](#t-16-fixes-from-the-repository-audit) Fixes from the repository audit | done | 2026-11-01 |
 | [T-17](#t-17-items-left-open-by-the-audit) Items left open by the audit | done | 2026-11-01 |
 | [T-18](#t-18-form-fixes-from-the-authors-test) Form fixes from the author's test | done | 2026-11-01 |
-| [T-19](#t-19-small-fixes-from-the-authors-test) Small fixes from the author's test | next | |
+| [T-19](#t-19-small-fixes-from-the-authors-test) Small fixes from the author's test | done | 2026-11-01 |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -72,7 +72,9 @@ In the T-06 comparison every plan passed the hard constraints, but plans mixed m
 
 The live T-06 run of 2026-10-30 on commit `dd8ba66` meets the second condition below: both approaches passed every hard check in all four cases ([EVALUATION.md](EVALUATION.md#2026-10-30)). The demo wearer's acceptance remains.
 
-On 2026-11-01 the author ran the steps on the deployed site at `8ba7fac`. A budget of 100 for each look was refused for free, with the reason. A budget of 200 gave three looks; keeping one item and lowering the budget to 150 gave looks of 124.88, 149.88 and 134.88; replacing an unlocked bottom changed only that position. Every result respected the stated men's line, trousers and sizes L, 32/32 and 43, with closed shoes. The author's answers to the acceptance questions are not recorded yet, and they will come after these edits, although [D-41](DECISIONS.md#d-41-the-demo-is-accepted-on-its-wearers-yes-or-no-answers-set-before-the-run) asks for them before any edit.
+On 2026-11-01 the author ran the steps on the deployed site at `8ba7fac`. A budget of 100 for each look was refused for free, with the reason. A budget of 200 gave three looks; keeping one item and lowering the budget to 150 gave looks of 124.88, 149.88 and 134.88; replacing an unlocked bottom changed only that position. Every result respected the stated men's line, trousers and sizes L, 32/32 and 43, with closed shoes. 
+
+The demo flow is not accepted. For the three looks of the first plan, the author answered "Is this what I asked for?" with yes, no, no and "Would I go and try this on?" with yes, no, yes, and [D-41](DECISIONS.md#d-41-the-demo-is-accepted-on-its-wearers-yes-or-no-answers-set-before-the-run) needs six yes answers. These answers came after the edits, although D-41 asks for them before any edit. The author said they would wear the looks indoors in winter but hardly outdoors, depending on the weather. The catalog's only men's outer layer is an overshirt at €159.90, and the cheapest complete look costs €124.88, so it did not fit the budget of 200 for each look. A new attempt needs another invite, because this one has no planning requests left.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass; a new T-06 run on this code, including the example-fit case ([D-40](DECISIONS.md#d-40-the-t-06-comparison-adds-a-case-with-an-example-fit)), records no hard-constraint violation for either approach, with the earlier run kept; and on the deployed site the demo wearer gets three looks for their stated fit, keeps an item, lowers the budget and replaces an unlocked item, every result respects the fit, and the wearer answers yes to both acceptance questions for each of the three looks of the first plan ([D-41](DECISIONS.md#d-41-the-demo-is-accepted-on-its-wearers-yes-or-no-answers-set-before-the-run)).
 
@@ -162,13 +164,15 @@ Done when: the checks in the [README](../README.md#check-a-change) pass, the bro
 
 The author used the deployed site on 2026-11-01 and found the form too long and its goal field forced. The goal is now optional, occasion, season and colors sit in a closed section, the button that sends the form stays at the bottom of the screen, and the waist field says how to write a waist and length ([D-72](DECISIONS.md#d-72-a-person-can-leave-the-style-goal-empty-and-the-forms-button-stays-on-screen)). A failure on CI also showed that a consent button pressed just after the try-on panel appeared lost the keyboard focus, which is fixed.
 
-The work was deployed on 2026-11-01 as `b192cbd`. The deployed site passed the HTTP smoke check and shows the shorter form ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). No plan ran with the new form there, so an empty goal ran only in unit tests with scripted responses.
+The work was deployed on 2026-11-01 as `b192cbd`. The deployed site passed the HTTP smoke check and shows the shorter form ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). No plan ran with the new form during that check. The author later ran one there with an empty goal, and it passed the catalog checks.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check and showing the shorter form.
 
 ## T-19: Small fixes from the author's test
 
 The author's test on 2026-11-01 also found four small defects. The answer "I can't judge it" broke over four lines and now stays on one. Two saved plans with one goal had the same name, and a later one now takes a number. A printed shopping list could break inside an item and now breaks between items. A heading or message that a script gives the focus to showed a ring, as if it were a control, and no longer does; controls keep their ring, and the next Tab still goes on from that place.
+
+The work was deployed on 2026-11-01 as `6c4a462` and checked on the deployed site ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)).
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check.
 
