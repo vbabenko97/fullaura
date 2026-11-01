@@ -15,7 +15,9 @@ from backend.app.store import (
     MemoryStore,
     StoreUnavailable,
     VersionConflict,
+    blob_container,
     managed_identity_token,
+    open_store,
 )
 
 
@@ -159,3 +161,36 @@ def test_a_missing_blob_reads_as_none_but_a_missing_container_is_an_outage() -> 
         store.read("invites/a.json")
     with pytest.raises(StoreUnavailable):
         store.create("invites/a.json", {})
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://stfullaura.blob.core.windows.net/pilot",
+        "https://stfullaura.blob.core.windows.net/pilot/",
+        "https://STFULLAURA.blob.core.windows.net/pilot",
+    ],
+)
+def test_a_blob_container_url_names_an_account_and_a_container(url: str) -> None:
+    assert blob_container(url) == ("https://stfullaura.blob.core.windows.net", "pilot")
+    assert isinstance(open_store(url), AzureBlobStore)
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "http://stfullaura.blob.core.windows.net/pilot",  # the token would travel in clear
+        "https://evil.example/.blob.core.windows.net/pilot",  # the account name is a path
+        "https://stfullaura.blob.core.windows.net.evil.example/pilot",
+        "https://stfullaura.blob.core.windows.net:8443/pilot",
+        "https://user@stfullaura.blob.core.windows.net/pilot",
+        "https://stfullaura.blob.core.windows.net/",
+        "https://stfullaura.blob.core.windows.net/pilot/invites",
+        "https://stfullaura.blob.core.windows.net/pilot?sv=2023",
+        "https://[::1.blob.core.windows.net/pilot",
+    ],
+)
+def test_no_other_url_gets_a_storage_token(url: str) -> None:
+    assert blob_container(url) is None
+    with pytest.raises(ValueError):
+        open_store(url)

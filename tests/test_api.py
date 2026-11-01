@@ -8,6 +8,7 @@ import logging
 import time
 import uuid
 from collections.abc import Iterator, Sequence
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -348,6 +349,25 @@ def test_after_a_restart_a_saved_plan_is_restored_without_a_model_call(
         ).json()
         assert failed["outcome"] == "restore_failed" and failed["plan"] is None
         assert any(violation["rule"] == "budget" for violation in failed["violations"])
+
+
+def test_a_cookie_stops_opening_the_beta_once_its_invite_is_removed(
+    tmp_path: Path, store: MemoryStore
+) -> None:
+    """Removing a leaked invite's digest and restarting revokes the sessions it opened, although
+    their cookies keep a valid signature."""
+    with TestClient(create_app(settings(tmp_path), spark=ScriptedSpark(), store=store)) as http:
+        join(http)
+        cookies = dict(http.cookies)
+
+    remaining = replace(settings(tmp_path), invite_hashes=frozenset({invite_hash(OTHER_CODE)}))
+    with TestClient(create_app(remaining, spark=ScriptedSpark(VALID), store=store)) as http:
+        http.cookies.update(cookies)
+        assert http.get("/api/session").json()["invited"] is False
+        assert http.get("/api/catalog").status_code == 401
+        refused = plan(http)
+        assert refused.status_code == 401 and refused.json()["reason"] == "invite_required"
+        assert http.delete(f"/api/feedback/{uuid.uuid4()}").status_code == 401
 
 
 def test_the_largest_plan_the_app_saves_is_restored(http: TestClient) -> None:

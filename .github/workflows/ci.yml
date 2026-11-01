@@ -10,7 +10,9 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # A newer push replaces a pull request's run; every other run has a group of its own event and
+  # commit, so each commit on main keeps the result that a deployment names (docs/DEPLOYMENT.md).
+  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -53,10 +55,11 @@ jobs:
         run: docker build --tag fullaura:ci .
       - name: Check container over HTTP
         run: |
-          docker run --detach --rm --name fullaura-ci --publish 127.0.0.1:8000:8000 fullaura:ci
+          docker run --detach --name fullaura-ci --publish 127.0.0.1:8000:8000 fullaura:ci
           uv run --frozen python scripts/smoke_http.py
       - name: Container logs and cleanup
         if: always()
         run: |
+          # Kept until here, so a container that stopped at startup still shows why.
           docker logs fullaura-ci 2>&1 || true
-          docker stop fullaura-ci 2>/dev/null || true
+          docker rm --force fullaura-ci 2>/dev/null || true
