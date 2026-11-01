@@ -61,6 +61,27 @@ def test_unknown_api_routes_never_return_the_frontend(tmp_path: Path, method: st
         assert response.json() == {"detail": "Not Found"}
 
 
+def test_every_response_limits_what_a_browser_may_do_with_it(tmp_path: Path) -> None:
+    (tmp_path / "index.html").write_text("<html>FullAura</html>", encoding="utf-8")
+    with TestClient(create_app(Settings(environment="production", web_dist=tmp_path))) as client:
+        page = client.get("/").headers
+        assert "frame-ancestors 'none'" in page["content-security-policy"]
+        assert "default-src 'self'" in page["content-security-policy"]
+        for response in (client.get("/"), client.get("/api/session"), client.get("/api/unknown")):
+            assert response.headers["x-frame-options"] == "DENY"
+            assert response.headers["x-content-type-options"] == "nosniff"
+            assert response.headers["referrer-policy"] == "no-referrer"
+            assert "max-age" in response.headers["strict-transport-security"]
+
+
+def test_development_keeps_its_api_docs_and_plain_http(tmp_path: Path) -> None:
+    (tmp_path / "index.html").write_text("<html>FullAura</html>", encoding="utf-8")
+    with TestClient(create_app(Settings(web_dist=tmp_path))) as client:
+        assert "strict-transport-security" not in client.get("/").headers
+        # The docs page loads its scripts from a CDN, which the page's policy would refuse.
+        assert "content-security-policy" not in client.get("/api/docs").headers
+
+
 def test_production_requires_a_frontend_build(tmp_path: Path) -> None:
     with pytest.raises(RuntimeError, match="Build the frontend"):
         create_app(Settings(environment="production", web_dist=tmp_path))

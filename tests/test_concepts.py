@@ -16,6 +16,7 @@ from backend.app.concepts import (
     RESERVED_HTTP_ATTEMPTS,
     Concept,
     Shoppable,
+    concept_json,
     concept_problems,
     concept_prompt,
     decide_matches,
@@ -423,6 +424,14 @@ def test_a_concept_that_breaks_a_rule_gets_one_repair_and_every_call_is_counted(
     assert result.outcome is Outcome.GENERATION_FAILED and result.concept is None
     assert result.usage.calls == 2 and "a top and a bottom" in (result.error or "")
     assert failing.outcomes == []  # no matching call for a concept that failed
+    assert "a top and a bottom" in concept_json(result, "catalog", None)["error"]
+
+
+def test_a_reply_that_is_not_a_concept_keeps_its_technical_error_on_the_server() -> None:
+    client = Scripted("not a concept", "still not a concept")
+    result = design_look(BRIEF, state(), CATALOG, client)
+    assert result.outcome is Outcome.GENERATION_FAILED and result.error
+    assert concept_json(result, "catalog", None)["error"] is None
 
 
 def test_a_failed_matching_call_keeps_the_concept_and_shows_no_match() -> None:

@@ -278,6 +278,32 @@ class Product(Record):
         return self
 
 
+# Words in a product title, English or German, that state the kind of a top, knit, outer layer or
+# shoe; the first that matches counts, so "Langarmshirt" is a long-sleeve top and not a shirt.
+_TITLE_KINDS = (
+    (re.compile(r"langarm|long-?sleeve"), "long-sleeve top"),
+    (re.compile(r"sweat-?shirt"), "sweatshirt"),
+    (re.compile(r"\bt-?shirt"), "t-shirt"),
+    (re.compile(r"overshirt"), "overshirt"),
+    (re.compile(r"strickjacke|cardigan"), "cardigan"),
+    (re.compile(r"pullover|sweater|jumper"), "sweater"),
+    (re.compile(r"boot|stiefel"), "boots"),
+    (re.compile(r"sneaker|runner"), "sneakers"),
+    (re.compile(r"slides?\b"), "slides"),
+    (re.compile(r"sandal"), "sandals"),
+    (re.compile(r"loafer"), "loafers"),
+)
+
+
+def stated_kind(product: Product) -> str | None:
+    """A product's kind as its record states it: a bottom's or one-piece's garment type, or else
+    a kind its title names."""
+    if product.garment_type:
+        return product.garment_type.value
+    title = product.title.lower()
+    return next((kind for words, kind in _TITLE_KINDS if words.search(title)), None)
+
+
 class Catalog(Record):
     """A catalog file. A synthetic catalog is invented test data and never shown as real."""
 

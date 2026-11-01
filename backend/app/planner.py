@@ -12,6 +12,7 @@ import asyncio
 import http.client
 import json
 import logging
+import math
 import time
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
@@ -27,12 +28,23 @@ from backend.app.constraints import (
     Check,
     Rule,
     Violation,
+    budget_text,
     cheapest_usable_offers,
     check_plan,
+    eur,
     lock_conflicts,
 )
 from backend.app.meta_images import RETRY_STATUS, error_detail, post_json_async
-from backend.app.state import FootwearChoice, ItemKind, ItemRef, Look, Plan, Slot, State
+from backend.app.state import (
+    FootwearChoice,
+    ItemKind,
+    ItemRef,
+    LockedPlacement,
+    Look,
+    Plan,
+    Slot,
+    State,
+)
 
 BASETEN_URL = "https://inference.baseten.co/v1"  # Baseten Model APIs docs, checked 2026-10-27
 SPARK_MODEL = "meta-models/muse-spark-open-1026"
@@ -300,8 +312,9 @@ SYSTEM_PROMPT = f"""You are FullAura's stylist. Propose exactly three different 
 Use only item IDs from "candidates" and "owned_items". Each look maps slots to item IDs; the
 slots are {", ".join(slot.value for slot in Slot)}. A look has a top and a bottom, or a
 one_piece, and usually footwear; when "footwear_required" is true, every look needs footwear.
-An item fills at most one slot in a look, and it may appear in several looks. Keep every
-entry of "locks" in its look and slot. Owned items cost nothing.
+An item fills at most one slot in a look, and it may appear in several looks. Candidates with
+the same title, brand and color are sizes of one product: use only one of them across the three
+looks. Keep every entry of "locks" in its look and slot. Owned items cost nothing.
 Stay within the budget: with mode "per_look" each look's distinct catalog items, and with mode
 "whole_plan" all distinct catalog items across the looks, must cost at most amount_eur.
 Suit the brief's occasion and season when they are given.
@@ -326,7 +339,7 @@ def plan_looks(
     """Three checked looks for the brief, or the reason there are none."""
     usage = Usage()
     offers = cheapest_usable_offers(catalog, state)
-    conflicts = infeasibility(state, catalog, offers)
+    conflicts = infeasibility(state, catalog, offers, replacement)
     if conflicts:
         return _logged(PlanResult(Outcome.INFEASIBLE, usage, conflicts=tuple(conflicts)), client, 0)
 
@@ -375,9 +388,9 @@ def plan_looks(
         else:
             plan = _preserve_replacement_positions(plan, state, replacement, catalog, offers)
             check = check_complete_plan(plan, state, catalog)
-            replaced = _replacement_violations(plan, state, replacement)
-            if replaced:
-                check = Check(tuple(replaced) + check.violations, check.notices)
+            planned = _replacement_violations(plan, state, replacement) + _repeated_looks(plan)
+            if planned:
+                check = Check(tuple(planned) + check.violations, check.notices)
             if check.passed:
                 result = PlanResult(Outcome.SUCCESS, usage, plan=plan, check=check)
             else:
@@ -415,13 +428,106 @@ def plan_looks(
 
 
 def infeasibility(
-    state: State, catalog: Catalog, offers: dict[str, Offer] | None = None
+    state: State,
+    catalog: Catalog,
+    offers: dict[str, Offer] | None = None,
+    replacement: Replacement | None = None,
 ) -> list[Violation]:
     """Violations that every plan for this state would have, so no plan can pass; empty when a
     plan may exist. Needs no model call."""
     if offers is None:
         offers = cheapest_usable_offers(catalog, state)
-    return lock_conflicts(state, catalog) + _base_outfit_conflicts(state, catalog, offers)
+    held = _holding_kept_positions(state, replacement)
+    conflicts = lock_conflicts(held, catalog) + _base_outfit_conflicts(state, catalog, offers)
+    if replacement is not None and state.plan is not None:
+        # A replacement leaves empty positions empty, so a look that needs more cannot get it.
+        conflicts += _look_violations(state.plan, state, catalog)
+    return conflicts or _cheapest_look_conflicts(held, catalog, offers)
+
+
+def _holding_kept_positions(state: State, replacement: Replacement | None) -> State:
+    """The state with every position a replacement keeps held like a locked item, because it
+    stays as it is. An owned item the person has since removed cannot be held; the plan's check
+    reports it."""
+    if replacement is None or state.plan is None:
+        return state
+    owned = {item.id for item in state.owned_items}
+    kept = tuple(
+        LockedPlacement(look_id=look.id, slot=slot, item=item)
+        for look in state.plan.looks
+        for slot, item in look.items.items()
+        if (look.id, slot) != (replacement.look_id, replacement.slot)
+        and (item.kind is ItemKind.CATALOG or item.id in owned)
+    )
+    return State.model_validate({**dict(state), "locks": kept})
+
+
+def _cheapest_look_conflicts(
+    state: State, catalog: Catalog, offers: dict[str, Offer]
+) -> list[Violation]:
+    """A budget violation when even the cheapest complete look costs more than the budget. A plan
+    costs at least as much as each of its looks under either budget mode, so no plan can pass
+    then. A look counts its locked items and, for each position it still needs, the cheapest
+    usable variant or owned item. Run after the other checks, so every locked item is usable."""
+    owned = {item.category for item in state.owned_items}
+    cheapest: dict[Slot, float] = {slot: math.inf for slot in Slot}
+    for slot, categories in SLOT_CATEGORIES.items():
+        prices = [
+            offers[variant.id].price_cents or 0
+            for product in catalog.products
+            if product.category in categories
+            for variant in product.variants
+            if variant.id in offers
+        ]
+        cheapest[slot] = min([*prices, *([0] if owned & categories else [])], default=math.inf)
+
+    def lowest_cost(locks: Sequence[LockedPlacement]) -> float:
+        kept = sum(
+            offers[lock.item.id].price_cents or 0
+            for lock in locks
+            if lock.item.kind is ItemKind.CATALOG and lock.item.id in offers
+        )
+        slots = {lock.slot for lock in locks}
+        if Slot.ONE_PIECE in slots:
+            base = 0.0
+        elif slots & {Slot.TOP, Slot.BOTTOM}:
+            base = sum(cheapest[slot] for slot in (Slot.TOP, Slot.BOTTOM) if slot not in slots)
+        else:
+            base = min(cheapest[Slot.TOP] + cheapest[Slot.BOTTOM], cheapest[Slot.ONE_PIECE])
+        shoes_needed = state.footwear is not FootwearChoice.ANY and Slot.FOOTWEAR not in slots
+        return kept + base + (cheapest[Slot.FOOTWEAR] if shoes_needed else 0)
+
+    budget = state.budget
+    free = lowest_cost(())
+    if budget.amount_cents < free < math.inf:
+        cents = int(free)
+        detail = f"The cheapest complete look costs {eur(cents)}, over the {budget_text(budget)}"
+        return [Violation(Rule.BUDGET, detail, cost_cents=cents)]
+    violations = []
+    for look_id in dict.fromkeys(lock.look_id for lock in state.locks):
+        lowest = lowest_cost([lock for lock in state.locks if lock.look_id == look_id])
+        if budget.amount_cents < lowest < math.inf:
+            cents = int(lowest)
+            label = look_id.replace("_", " ")
+            detail = (
+                f"The items kept in {label} and the cheapest items it still needs cost "
+                f"{eur(cents)}, over the {budget_text(budget)}"
+            )
+            violations.append(Violation(Rule.BUDGET, detail, look_id=look_id, cost_cents=cents))
+    return violations
+
+
+def _repeated_looks(plan: Plan) -> list[Violation]:
+    """A look with the same items in the same slots as an earlier look repeats it. Design My Look
+    checks its one look as three copies, so check_complete_plan cannot hold this rule."""
+    first_with: dict[frozenset[tuple[Slot, ItemRef]], str] = {}
+    violations = []
+    for look in plan.looks:
+        first = first_with.setdefault(frozenset(look.items.items()), look.id)
+        if first != look.id:
+            detail = f"{look.id} repeats {first}; make every look different"
+            violations.append(Violation(Rule.LOOK_COMPOSITION, detail, look_id=look.id))
+    return violations
 
 
 def check_complete_plan(plan: Plan, state: State, catalog: Catalog) -> Check:
@@ -746,7 +852,6 @@ def result_json(result: PlanResult) -> dict[str, Any]:
             for n in (check.notices if check else ())
         ],
         "conflicts": [violation(v) for v in result.conflicts],
-        "error": result.error,
         "usage": {
             "calls": result.usage.calls,
             "http_attempts": result.usage.http_attempts,

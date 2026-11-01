@@ -524,6 +524,73 @@ def test_a_try_on_is_written_from_the_checked_look(
     assert ledger is not None and ledger.data["spent"]["images"] == 10_000
 
 
+def test_a_budget_no_browser_can_send_costs_nothing(
+    http: TestClient, spark: ScriptedSpark, store: MemoryStore
+) -> None:
+    join(http)
+    too_large = plan(http, state=STATE | {"budget": {"amount_cents": 10**311}})
+    assert (too_large.status_code, too_large.json()["reason"]) == (422, "invalid")
+    assert spark.sent == [] and store.read("ledger.json") is None
+    assert http.get("/api/session").json()["plan_requests_used"] == 0
+
+    largest = plan(http, state=STATE | {"budget": {"amount_cents": 2**53 - 1}})
+    assert largest.json()["outcome"] == "success"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b'{"code":"\\ud800aaaaaaaa"}',
+        b'{"code":' + b"[" * 1000 + b"]" * 1000 + b"}",
+        b"[" * 3000 + b"]" * 3000,
+    ],
+    ids=["lone surrogate", "1000 levels", "3000 levels"],
+)
+def test_a_request_that_cannot_be_read_is_refused_without_an_invite(
+    http: TestClient, body: bytes
+) -> None:
+    response = http.post(
+        "/api/session/invite", content=body, headers={"Content-Type": "application/json"}
+    )
+    assert (response.status_code, response.json()["reason"]) == (422, "invalid")
+    assert isinstance(response.json()["detail"], str)
+
+
+def test_a_short_invite_code_is_an_unknown_invite(http: TestClient) -> None:
+    response = http.post("/api/session/invite", json={"code": "short"})
+    assert (response.status_code, response.json()["reason"]) == (403, "invite_invalid")
+
+
+def test_a_failed_plan_keeps_the_technical_error_on_the_server(
+    http: TestClient, spark: ScriptedSpark
+) -> None:
+    join(http)
+    spark.replies[:] = ["not a plan", "still not a plan"]
+    response = plan(http).json()
+    assert response["outcome"] == "generation_failed" and "error" not in response
+
+
+def test_a_replacement_the_kept_positions_rule_out_costs_no_quota(
+    http: TestClient, spark: ScriptedSpark
+) -> None:
+    join(http)
+    current = plan(http).json()
+    calls = len(spark.sent)
+    # Look 2 stays as it is and costs EUR 195.
+    response = plan(
+        http,
+        state=STATE | {"budget": {"amount_cents": 19499}},
+        plan_token=current["plan_token"],
+        replacement={
+            "look_id": "look_1",
+            "slot": "top",
+            "item": {"kind": "catalog", "id": "P01"},
+        },
+    )
+    assert response.json()["outcome"] == "infeasible" and len(spark.sent) == calls
+    assert http.get("/api/session").json()["plan_requests_used"] == 1
+
+
 def test_a_try_on_is_refused_before_its_body_is_read(http: TestClient) -> None:
     join(http)
     token = plan(http).json()["plan_token"]

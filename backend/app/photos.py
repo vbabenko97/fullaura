@@ -19,7 +19,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import Receive, Scope, Send
 
-from backend.app.catalog import Catalog, Category, CompositionStatus
+from backend.app.catalog import Catalog, Category, CompositionStatus, stated_kind
 from backend.app.meta_images import (
     ImageResult,
     InputImage,
@@ -389,7 +389,7 @@ def preview_prompt(look: Look, state: State, catalog: Catalog) -> str:
         variant, product = catalog.variant(item.id), catalog.product_of(item.id)
         if variant is None or product is None:
             continue
-        kind = (product.garment_type or _GARMENT[product.category]).replace("_", " ")
+        kind = (stated_kind(product) or _GARMENT[product.category]).replace("_", " ")
         if product.footwear_closure:
             kind = f"{product.footwear_closure} {kind}"
         materials = sorted({c.material for c in variant.composition.components})

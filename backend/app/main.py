@@ -16,10 +16,11 @@ import uuid
 from typing import Annotated, Any, Literal, Self
 
 from fastapi import FastAPI
+from fastapi.exceptions import RequestValidationError
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StrictBool, ValidationError, model_validator
-from starlette.datastructures import Headers
+from starlette.datastructures import Headers, MutableHeaders
 from starlette.requests import Request
 from starlette.responses import Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -104,12 +105,23 @@ IMAGE_ATTEMPTS = 3  # MuseImageClient.max_attempts
 # character of its text needs an escape (docs/DECISIONS.md, D-61).
 MAX_BODY_BYTES = 64 * 1024
 OWN_BODY_LIMIT = "/api/previews"  # reads its upload itself, after its access checks (photos.py)
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "X-Frame-Options": "DENY",
+    "Referrer-Policy": "no-referrer",
+}
+# Images may come from a shop's https host (T-11); a try-on result and a chosen photo are blobs.
+PAGE_POLICY = (
+    "default-src 'self'; img-src 'self' blob: https:; object-src 'none'; base-uri 'none'; "
+    "form-action 'self'; frame-ancestors 'none'"
+)
+HSTS = "max-age=31536000"
 
 logger = logging.getLogger(__name__)
 
 
 class InviteCode(BaseModel):
-    code: Annotated[str, Field(min_length=8, max_length=64)]
+    code: Annotated[str, Field(max_length=64)]
 
 
 class AgeConfirmation(BaseModel):
@@ -182,7 +194,7 @@ def _error(
     return JSONResponse(
         {"detail": detail, "reason": reason},
         status_code=status_code,
-        headers={**NO_STORE, "X-Content-Type-Options": "nosniff", **(headers or {})},
+        headers={**NO_STORE, **(headers or {})},
     )
 
 
@@ -249,6 +261,35 @@ class BodyLimit:
         await _error(detail, 413, "invalid", {"Connection": "close"})(scope, receive, send)
 
 
+class SecurityHeaders:
+    """Tells the browser what it may do with every response. Only the page gets the content
+    policy: the development API docs load their scripts from a CDN, and a JSON response runs no
+    content. HTTPS is enforced only in production, because development runs on plain HTTP."""
+
+    def __init__(self, app: ASGIApp, https: bool) -> None:
+        self.app = app
+        self.https = https
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+        added = dict(SECURITY_HEADERS)
+        if not scope["path"].startswith("/api/"):
+            added["Content-Security-Policy"] = PAGE_POLICY
+        if self.https:
+            added["Strict-Transport-Security"] = HSTS
+
+        async def with_headers(message: Message) -> None:
+            if message["type"] == "http.response.start":
+                headers = MutableHeaders(scope=message)
+                for name, value in added.items():
+                    headers[name] = value
+            await send(message)
+
+        await self.app(scope, receive, with_headers)
+
+
 def create_app(
     settings: Settings | None = None,
     spark: SparkClient | None = None,
@@ -283,6 +324,14 @@ def create_app(
         openapi_url="/api/openapi.json" if settings.environment == "development" else None,
     )
     app.add_middleware(BodyLimit, max_bytes=MAX_BODY_BYTES)
+    app.add_middleware(SecurityHeaders, https=production)  # the last added runs first
+
+    @app.exception_handler(RequestValidationError)
+    def unreadable_request(request: Request, error: RequestValidationError) -> JSONResponse:
+        # FastAPI's own answer echoes the input, and some input cannot be written back as JSON: a
+        # lone surrogate, or nesting too deep to encode. Either would end in a 500.
+        return _error("This request is not valid", 422, "invalid")
+
     secret = settings.session_secret.encode() or secrets.token_bytes(32)
     pilot = Pilot(
         store or open_store(settings.store_url),
@@ -527,7 +576,7 @@ def create_app(
             return _invalid(error)
 
         state = plan_request.state
-        conflicts = infeasibility(state, catalog)
+        conflicts = infeasibility(state, catalog, replacement=plan_request.replacement)
         if conflicts:  # no plan can pass, so no model call and no quota
             try:  # counted for the pilot report; the answer does not depend on it
                 rules = [str(c.rule) for c in conflicts]

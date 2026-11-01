@@ -568,6 +568,32 @@ def test_a_look_prompt_describes_catalog_facts_and_owned_items_without_brands() 
     assert not any(brand in prompt for brand in brands)
 
 
+@pytest.mark.parametrize(
+    ("title", "kind"),
+    [
+        ("LOUKAA STRICKPULLOVER", "sweater"),
+        ("Strickjacke mit Knopfleiste", "cardigan"),
+        ("Plain knit", "knitted top"),  # the title names no kind, so the category speaks
+    ],
+)
+def test_a_look_prompt_names_the_kind_a_title_states(title: str, kind: str) -> None:
+    catalog = Catalog.model_validate_json(FIXTURE.read_text(encoding="utf-8"))
+    products = [
+        product.model_copy(update={"title": title}) if product.id == "product_P06" else product
+        for product in catalog.products
+    ]
+    catalog = catalog.model_copy(update={"products": tuple(products)})
+    look = Look(
+        id="look_1",
+        items={
+            Slot.TOP: ItemRef(kind=ItemKind.CATALOG, id="P06"),
+            Slot.BOTTOM: ItemRef(kind=ItemKind.CATALOG, id="P05"),
+        },
+    )
+    prompt = preview_prompt(look, State(budget=Budget(amount_cents=10000)), catalog)
+    assert f"- top: burgundy {kind}, like the {title.lower()}" in prompt
+
+
 def test_an_owned_item_description_reaches_the_prompt_only_as_a_short_quoted_description() -> None:
     catalog = Catalog.model_validate_json(FIXTURE.read_text(encoding="utf-8"))
     attempt = OwnedItem(
