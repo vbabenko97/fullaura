@@ -16,7 +16,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-12](#t-12-design-my-look) Design My Look (experimental) | done | 2026-10-31 |
 | [T-13](#t-13-fixes-from-the-test-pass) Fixes from the test pass | done | 2026-11-01 |
 | [T-14](#t-14-fixes-from-the-second-test-pass) Fixes from the second test pass | done | 2026-11-01 |
-| [T-15](#t-15-fixes-before-the-human-test) Fixes before the human test | next | |
+| [T-15](#t-15-fixes-before-the-human-test) Fixes before the human test | done | 2026-11-01 |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -126,7 +126,7 @@ Done when: the checks in the [README](../README.md#check-a-change) pass, live ru
 
 An agent walked through the deployed site as a new person on 2026-11-01, and a second agent reviewed the result. Four things could change a participant's answers or lose their work, so they come before people test the product ([D-68](DECISIONS.md#d-68-the-page-says-what-the-checks-did-not-compare)). The page no longer says that sizes or stock were checked when some were not, and it names them. Restore asks before it replaces work that is not saved, including kept items and form changes, and answers beside the saved plans. "Try this look on" moves keyboard focus to the try-on panel, and a finished try-on says it is ready and comes into view unless the person moved the focus elsewhere. While an update is possible, each look explains why Replace is off after the form changes, also after a reload. A request or try-on that failed at the provider says that it still counts.
 
-The changes exist in the code and were checked on a local server with scripted providers, including by keyboard in Chromium and Firefox. They are not deployed, so the deployed site still behaves as before.
+The changes were checked on a local server with scripted providers, including by keyboard in Chromium and Firefox. The work was deployed on 2026-11-01 as `7267da0` and checked on the deployed site with one real try-on ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). No plan ran there, because no invite that may be used has planning requests left; the first such plan is the T-08 acceptance.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check and these four scenarios repeated on it.
 
