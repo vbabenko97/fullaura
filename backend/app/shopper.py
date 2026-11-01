@@ -18,10 +18,10 @@ from enum import StrEnum
 from typing import Annotated, Any, Protocol
 
 import httpx2
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from backend.app.photos import outfit_prompt, plain_words
-from backend.app.shops import Line, ShopIndex, ShopProduct
+from backend.app.shops import LOAD_WAIT_S, Line, ShopIndex, ShopProduct, ShopSearch
 
 logger = logging.getLogger(__name__)
 
@@ -36,10 +36,17 @@ HTTP_ATTEMPTS = 2
 TIMEOUT = httpx2.Timeout(45.0, connect=5.0)
 # List prices checked on 2026-11-01, in micro-USD per token (https://dev.meta.ai/docs/pricing-rate-limits).
 FRESH_MICRO_USD, CACHED_MICRO_USD, OUTPUT_MICRO_USD = 1.25, 0.15, 4.25
-# Every turn at a generous input and the output cap; live requests cost about 11 000 micro-USD.
+# Every HTTP attempt of every turn at a generous input and the output cap; live requests cost about
+# 11 000 micro-USD.
 FIND_RESERVE_MICRO_USD = round(
-    (MAX_TURNS + MAX_REPAIRS) * (12_000 * FRESH_MICRO_USD + MAX_OUTPUT_TOKENS * OUTPUT_MICRO_USD)
+    HTTP_ATTEMPTS
+    * (MAX_TURNS + MAX_REPAIRS)
+    * (12_000 * FRESH_MICRO_USD + MAX_OUTPUT_TOKENS * OUTPUT_MICRO_USD)
 )
+ATTEMPTS_KEY = "fullaura_http_attempts"
+_CONTROL = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_FOOTWEAR_WORDS = re.compile(r"sneaker|schuh|boots|stiefel|sandale|slipper|loafer|shoes", re.I)
+_BOTTOM_WORDS = re.compile(r"hose|jeans|chino|shorts|leggings|rock\b|skirt|trousers", re.I)
 
 
 class Scope(StrEnum):
@@ -70,6 +77,14 @@ class FindRequest(BaseModel):
         list[Annotated[str, Field(min_length=1, max_length=12)]], Field(max_length=6)
     ] = []
     budget_cents: Annotated[int, Field(gt=0, le=10_000_000)]
+
+    @field_validator("request")
+    @classmethod
+    def _says_something(cls, value: str) -> str:
+        cleaned = " ".join(_CONTROL.sub(" ", value).split())
+        if not cleaned:
+            raise ValueError("Say what you need")
+        return cleaned
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,7 +157,8 @@ class MetaResponses:
                     raise ShopModelError(type(error).__name__) from error
                 continue
             if response.status_code < 400:
-                return response.json()
+                # An earlier attempt may have been billed, so the caller cannot trust the usage.
+                return {**response.json(), ATTEMPTS_KEY: attempt}
             if attempt == HTTP_ATTEMPTS or (
                 response.status_code != 429 and response.status_code < 500
             ):
@@ -214,6 +230,15 @@ def _answer(body: dict[str, Any]) -> dict[str, Any] | None:
     return answer if isinstance(answer, dict) else None
 
 
+def _slot_problem(title: str, slot: FindSlot) -> str | None:
+    """Where the shop's title names the kind of garment, the slot the model gave must agree."""
+    if _FOOTWEAR_WORDS.search(title):
+        return None if slot is FindSlot.FOOTWEAR else f"{title} is footwear, not {slot.value}"
+    if _BOTTOM_WORDS.search(title):
+        return None if slot is FindSlot.BOTTOM else f"{title} is a bottom, not {slot.value}"
+    return None
+
+
 def _composition_problem(scope: Scope, slots: list[FindSlot]) -> str | None:
     if not slots:
         return "no item was chosen"
@@ -237,16 +262,25 @@ def _choice(
 ) -> tuple[list[Find], str | None]:
     """The chosen products as code knows them, and what is wrong with the choice, if anything."""
     finds: list[Find] = []
-    for item in answer.get("items") or []:
-        if not isinstance(item, dict):
-            return [], "an item could not be read"
+    items = answer.get("items") or []
+    if not isinstance(items, list):
+        return [], "items must be a list"
+    urls = [item.get("url") for item in items if isinstance(item, dict)]
+    if len(urls) != len(items):
+        return [], "an item could not be read"
+    if len({str(url) for url in urls}) != len(urls):
+        return [], "the same product was chosen twice"
+    for item in items:
         product = shown.get(str(item.get("url", "")))
         if product is None:
-            return [], f"{item.get('url')} was not returned by find_products"
+            return [], f"{plain_words(str(item.get('url')), 200)} was not returned by find_products"
         try:
             slot = FindSlot(item.get("slot"))
         except ValueError:
-            return [], f"{item.get('slot')} is not a slot"
+            return [], f"{plain_words(str(item.get('slot')), 40)} is not a slot"
+        problem = _slot_problem(product.title, slot)
+        if problem:
+            return [], plain_words(problem, 200)
         finds.append(Find(product, slot, plain_words(str(item.get("why", "")), 200)))
     problem = _composition_problem(request.scope, [find.slot for find in finds])
     if problem:
@@ -269,24 +303,35 @@ class ShopAgent:
         self._index = index
         self._clock = clock
 
+    def ready(self) -> bool:
+        """Whether any shop's list can be read; asked before a request is counted, so a person does
+        not spend one on shops that cannot be reached."""
+        return self._index.load(LOAD_WAIT_S) > 0
+
     def _search(
         self,
         call: dict[str, Any],
         request: FindRequest,
         shown: dict[str, ShopProduct],
         on_step: Callable[[str], None],
-    ) -> list[dict[str, Any]]:
+    ) -> tuple[list[dict[str, Any]], ShopSearch]:
         try:
-            words = json.loads(call.get("arguments") or "{}").get("words") or []
-        except json.JSONDecodeError:
-            words = []
-        words = [plain_words(str(word), 30) for word in words[:3]]
+            arguments = json.loads(call.get("arguments") or "{}")
+        except (json.JSONDecodeError, TypeError):
+            arguments = {}
+        words = arguments.get("words") if isinstance(arguments, dict) else None
+        words = (
+            [plain_words(str(word), 30) for word in words[:3]] if isinstance(words, list) else []
+        )
         on_step(f"Looking in the shops for: {', '.join(words)}")
-        products = self._index.search(words, request.line, request.sizes, request.budget_cents)
-        on_step(f"Read the shops' pages: {len(products)} on sale within your budget")
-        for product in products:
+        search = self._index.search(words, request.line, request.sizes, request.budget_cents)
+        if search.failed and not search.read:
+            on_step("The shops' pages could not be read")
+        else:
+            on_step(f"Read the shops' pages: {len(search.products)} on sale within your budget")
+        for product in search.products:
             shown[product.url] = product
-        return [
+        found = [
             {
                 "url": product.url,
                 "shop": product.shop,
@@ -296,20 +341,24 @@ class ShopAgent:
                 "material": plain_words(product.material or "", 80),
                 "size_checked": product.size_checked,
             }
-            for product in products
+            for product in search.products
         ]
+        return found, search
 
     def __call__(self, request: FindRequest, on_step: Callable[[str], None]) -> FindResult:
-        deadline = self._clock() + DEADLINE_S
         result = FindResult(FindOutcome.FAILED)
         shown: dict[str, ShopProduct] = {}
         searches = repairs = 0
         on_step("Opening the shops' product lists")
-        self._index.load()
+        if self._index.load(LOAD_WAIT_S) == 0:
+            result.message = "The shops could not be read right now. Try again later."
+            return result
+        deadline = self._clock() + DEADLINE_S
         payload: dict[str, Any] = {
             "model": SHOP_MODEL,
             "input": _PROMPT.format(
-                request=plain_words(request.request, 300),
+                # The person's own words in any language; the prompt quotes them as their request.
+                request=request.request,
                 what=_WHAT_TO_CHOOSE[request.scope],
                 line=request.line,
                 budget=f"{request.budget_cents / 100:.2f}",
@@ -329,17 +378,22 @@ class ShopAgent:
                 result.message = "The model could not be reached."
                 result.cost_known = False
                 return result
+            if body.get(ATTEMPTS_KEY, 1) > 1 or not body.get("usage"):
+                result.cost_known = False
             result.usage.add(body.get("usage") or {})
             calls = [item for item in body.get("output", []) if item.get("type") == "function_call"]
             if calls:
                 outputs = []
                 for call in calls:
                     searches += 1
-                    found = (
-                        self._search(call, request, shown, on_step)
-                        if searches <= MAX_SEARCHES
-                        else []
-                    )
+                    found: list[dict[str, Any]] = []
+                    if searches <= MAX_SEARCHES and self._clock() <= deadline:
+                        found, search = self._search(call, request, shown, on_step)
+                        if search.failed and not search.read and not shown:
+                            result.message = (
+                                "The shops could not be read right now. Try again later."
+                            )
+                            return result
                     outputs.append(
                         {
                             "type": "function_call_output",
@@ -364,7 +418,8 @@ class ShopAgent:
                     result.finds = finds
                     return result
             if repairs >= MAX_REPAIRS:
-                logger.info("shop choice refused: %s", problem)
+                # The reason can hold what the person or the model wrote, so it stays out of logs.
+                logger.info("shop choice refused twice")
                 result.outcome = FindOutcome.NO_MATCH
                 result.message = "No choice passed the checks. Try other words or a higher budget."
                 return result
@@ -412,15 +467,11 @@ def find_prompt(finds: list[Find]) -> str:
     title and color, as a description. Clothes that were not asked for stay as in the photo."""
     lines = []
     for find in finds:
-        if find.slot is FindSlot.ACCESSORY:
-            continue
         words = [find.product.color or "", find.product.title]
         described = plain_words(", ".join(word for word in words if word), 160)
         lines.append(f'- {find.slot.value}: described as "{described}"')
     slots = {find.slot for find in finds}
-    if (
-        FindSlot.ONE_PIECE not in slots
-        and not {FindSlot.TOP, FindSlot.BOTTOM, FindSlot.FOOTWEAR} <= slots
-    ):
+    dressed = FindSlot.ONE_PIECE in slots or {FindSlot.TOP, FindSlot.BOTTOM} <= slots
+    if not dressed or FindSlot.FOOTWEAR not in slots:
         lines.append("- everything else: the clothes they wear in the full-body photo")
     return outfit_prompt(lines)

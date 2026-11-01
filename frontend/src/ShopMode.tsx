@@ -32,13 +32,11 @@ interface ShopModeProps {
   remaining: number;
   onConsent: (consent: boolean) => Promise<string | null>;
   onFinished: () => void;
-  /** Hidden while the catalog is shown; only the panel on view may hold the try-on's fields. */
-  visible: boolean;
   children: ReactNode;
 }
 
 /** Say what you need: the agent chooses among real products that code read from the shops' pages. */
-export function ShopMode({ session, closedText, remaining, onConsent, onFinished, visible, children }: ShopModeProps) {
+export function ShopMode({ session, closedText, remaining, onConsent, onFinished, children }: ShopModeProps) {
   const [request, setRequest] = useState("");
   const [scope, setScope] = useState<FindScope>("look");
   const [line, setLine] = useState<(typeof LINES)[number]["value"]>("any");
@@ -67,12 +65,12 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
     }
     setRunning(true);
     setSteps([]);
-    setResult(null);
     setError(null);
     // The form can be long, so the steps may be out of view from its button.
     requestAnimationFrame(() => heading.current?.scrollIntoView?.({ block: "start" }));
     try {
       let answer: FindResponse | null = null;
+      let accepted = false;
       await postLines(
         "/api/finds",
         {
@@ -84,6 +82,12 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
         },
         { "X-Operation-Id": newOperationId() },
         (value) => {
+          // The earlier results stay until the server accepts this search: a refusal, such as a
+          // try-on of them still running, must not take them or that try-on away.
+          if (!accepted) {
+            accepted = true;
+            setResult(null);
+          }
           const parsed = parseFindLine(value);
           if (parsed.kind === "step") setSteps((current) => [...current, parsed.step]);
           else answer = parsed.result;
@@ -222,10 +226,10 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
 
           {result && result.finds.length > 0 && (
             <>
-              <p className="request-message is-success" role="status">Code read every price and stock below from the shop's page just now.</p>
+              <p className="request-message is-success" role="status">Code read every price and stock below from the shop's own page within the last hour.</p>
               {unchecked > 0 && (
                 <p className="plan-unchecked">
-                  Size not checked for {unchecked === result.finds.length ? "these items" : `${unchecked} item${unchecked === 1 ? "" : "s"}`}: the shop's page does not list sizes. Check yours there before you buy.
+                  Size not checked for {unchecked === result.finds.length ? "these items" : `${unchecked} item${unchecked === 1 ? "" : "s"}`}. Check yours on the shop's page before you buy.
                 </p>
               )}
               <ul className="find-list">
@@ -244,8 +248,9 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
                   </li>
                 ))}
               </ul>
-              {visible && result.find_token && (
+              {result.find_token && (
                 <TryOnPanel
+                  idPrefix="find-tryon"
                   key="find-try-on"
                   onConsent={onConsent}
                   onFinished={onFinished}

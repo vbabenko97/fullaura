@@ -387,6 +387,7 @@ def create_app(
         )
 
     live_agent: ShopAgent | None = None
+    live_agent_lock = threading.Lock()
 
     def find_agent() -> Callable[[FindRequest, Callable[[str], None]], FindResult] | None:
         nonlocal live_agent
@@ -396,12 +397,13 @@ def create_app(
             return shop_agent
         if not settings.model_api_key:
             return None
-        if live_agent is None:
-            index = ShopIndex()
-            # Read the shops' lists now, so a person's first search does not wait for them.
-            threading.Thread(target=index.load, daemon=True).start()
-            live_agent = ShopAgent(MetaResponses(settings.model_api_key), index)
-        return live_agent
+        with live_agent_lock:
+            if live_agent is None:
+                index = ShopIndex()
+                # Read the shops' lists now, so a person's first search does not wait for them.
+                threading.Thread(target=index.load, daemon=True).start()
+                live_agent = ShopAgent(MetaResponses(settings.model_api_key), index)
+            return live_agent
 
     def preview_editor() -> AsyncImageEditor | None:
         if image_editor is not None:
@@ -743,6 +745,9 @@ def create_app(
             lines.put({"result": {**current.payload, "find_token": current.token}})
             lines.put(None)
         else:
+            ready = getattr(agent, "ready", None)
+            if ready is not None and not ready():
+                return _error("The shops cannot be read right now", 503, "shops_unavailable")
             try:
                 operation = pilot.begin(
                     session.invite_id, OperationKind.PLAN, operation_id, FIND_RESERVE_MICRO_USD
@@ -774,12 +779,14 @@ def create_app(
                 except Exception:
                     logger.exception("shopping agent failed")
                 finally:
+                    # The answer goes out whatever the store does, so the page never waits forever.
                     try:
                         pilot.finish(operation, cost, outcome)
-                    except StoreUnavailable as error:
-                        logger.warning("find not settled: %s", error)
-                    lines.put({"result": answer})
-                    lines.put(None)
+                    except Exception as error:
+                        logger.warning("find not settled: %s", type(error).__name__)
+                    finally:
+                        lines.put({"result": answer})
+                        lines.put(None)
 
             threading.Thread(target=work, daemon=True).start()
 

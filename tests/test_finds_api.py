@@ -223,3 +223,48 @@ def test_a_new_search_retires_the_token(http: TestClient, editor: FakeEditor) ->
     assert response.status_code == 409
     assert response.json()["reason"] == "find_expired"
     assert editor.prompts == []
+
+
+class NotReadyAgent(FakeAgent):
+    def ready(self) -> bool:
+        return False
+
+
+def test_shops_that_cannot_be_read_count_nothing(tmp_path: Path) -> None:
+    agent = NotReadyAgent()
+    with TestClient(create_app(settings(tmp_path), shop_agent=agent)) as client:
+        join(client)
+        refused = find(client)
+        assert refused.status_code == 503
+        assert refused.json()["reason"] == "shops_unavailable"
+        assert session(client)["plan_requests_used"] == 0
+    assert agent.requests == []
+
+
+class BrokenStore(MemoryStore):
+    """Fails with an error that is not StoreUnavailable once the search is under way."""
+
+    broken = False
+
+    def replace(self, name: str, data: dict[str, Any], etag: str) -> str:
+        if self.broken:
+            raise OSError("disk")
+        return super().replace(name, data, etag)
+
+
+class BreakingAgent(FakeAgent):
+    def __init__(self, store: BrokenStore) -> None:
+        super().__init__()
+        self.store = store
+
+    def __call__(self, request: FindRequest, on_step: Callable[[str], None]) -> FindResult:
+        self.store.broken = True
+        return super().__call__(request, on_step)
+
+
+def test_the_answer_ends_even_when_settling_fails(tmp_path: Path) -> None:
+    store = BrokenStore()
+    app = create_app(settings(tmp_path), store=store, shop_agent=BreakingAgent(store))
+    with TestClient(app) as client:
+        join(client)
+        assert lines(find(client))[-1]["result"]["outcome"] == "success"
