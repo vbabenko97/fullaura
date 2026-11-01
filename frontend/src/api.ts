@@ -1,5 +1,6 @@
 import { CATEGORIES, GARMENT_TYPES, PRODUCT_LINES, SIZE_SYSTEMS, SLOTS } from "./types";
 import type {
+  FindResponse,
   Catalog,
   Category,
   Concept,
@@ -409,6 +410,8 @@ export function parseSession(value: unknown): Session {
     has_plan: readFlag(value.has_plan, "plan flag"),
     // minimal: a server from before Design my look sends no flag, which means the mode is off
     design_open: value.design_open === undefined ? false : readFlag(value.design_open, "design flag"),
+    // minimal: a server from before the shopping agent sends no flag, which means the mode is off
+    find_open: value.find_open === undefined ? false : readFlag(value.find_open, "find flag"),
   };
 }
 
@@ -425,6 +428,7 @@ const REASON_MESSAGES: Record<string, string> = {
   pilot_ended: "The beta has ended. Your saved plans and shopping list stay available.",
   plan_expired: "This plan is no longer current on the server.",
   concept_expired: "This concept was replaced. Try on the current one.",
+  find_expired: "A newer search replaced these products. Try on the current ones.",
   not_configured: "This feature is not configured on the server.",
   closed: "The beta is closed.",
   invalid: "This request is not valid. Check what you entered and try again.",
@@ -461,6 +465,70 @@ export async function postJson(
     body: JSON.stringify(body),
   });
   return readJson(response);
+}
+
+/** One line of the shopping agent's answer: what it is doing, or the result. */
+export function parseFindLine(value: unknown): { kind: "step"; step: string } | { kind: "result"; result: FindResponse } {
+  if (!isRecord(value)) throw new Error("Invalid find response");
+  if (value.step !== undefined) return { kind: "step", step: readString(value.step, "step") };
+  if (!isRecord(value.result)) throw new Error("Invalid find response");
+  const result = value.result;
+  return {
+    kind: "result",
+    result: {
+      outcome: readString(result.outcome, "outcome"),
+      message: readNullableString(result.message, "message"),
+      find_token: readNullableString(result.find_token, "find token"),
+      scope: readString(result.scope, "scope"),
+      budget_cents: readCount(result.budget_cents, "budget"),
+      total_cents: readCount(result.total_cents, "total"),
+      finds: readArray(result.finds, "finds").map((find) => {
+        if (!isRecord(find)) throw new Error("Invalid find");
+        return {
+          url: readString(find.url, "address"),
+          shop: readString(find.shop, "shop"),
+          title: readString(find.title, "title"),
+          color: readNullableString(find.color, "color"),
+          material: readNullableString(find.material, "material"),
+          price_cents: readCount(find.price_cents, "price"),
+          size_checked: readFlag(find.size_checked, "size flag"),
+          slot: readString(find.slot, "slot"),
+          why: readString(find.why, "reason"),
+        };
+      }),
+    },
+  };
+}
+
+/** Post, and hand each JSON line of the answer to onLine as it arrives. */
+export async function postLines(
+  url: string,
+  body: unknown,
+  headers: Record<string, string>,
+  onLine: (line: unknown) => void,
+): Promise<void> {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  });
+  if (!response.ok) {
+    await readJson(response);
+    return;
+  }
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("The answer could not be read");
+  const decoder = new TextDecoder();
+  let held = "";
+  for (;;) {
+    const { done, value } = await reader.read();
+    held += decoder.decode(value, { stream: !done });
+    const lines = held.split("\n");
+    held = lines.pop() ?? "";
+    for (const line of lines) if (line.trim()) onLine(JSON.parse(line));
+    if (done) break;
+  }
+  if (held.trim()) onLine(JSON.parse(held));
 }
 
 export async function readJson(response: Response): Promise<unknown> {

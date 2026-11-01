@@ -20,6 +20,7 @@ from typing import Any
 
 from backend.app.concepts import Concept
 from backend.app.planner import Brief
+from backend.app.shopper import Find
 from backend.app.state import State
 
 SESSION_COOKIE = "fullaura_session"
@@ -75,7 +76,17 @@ class ConceptRecord:
     operation_id: str
 
 
-class _SessionMemory[R: (PlanRecord, ConceptRecord)]:
+@dataclass(frozen=True, slots=True)
+class FindRecord:
+    """What the shopping agent found and the response that showed it, for a try-on and a repeat."""
+
+    token: str
+    finds: list[Find]
+    payload: dict[str, Any]  # the response body, without the token
+    operation_id: str
+
+
+class _SessionMemory[R: (PlanRecord, ConceptRecord, FindRecord)]:
     """The last record of each browser session, in process memory only, bounded per invite and
     in total. A new record gets a new token, and the previous token stops working."""
 
@@ -181,4 +192,17 @@ class ConceptMemory(_SessionMemory[ConceptRecord]):
         return self._put(
             session,
             lambda _: ConceptRecord(secrets.token_urlsafe(32), concept, payload, operation_id),
+        )
+
+
+class FindMemory(_SessionMemory[FindRecord]):
+    """The last finds of each browser session. New finds replace the previous ones, so a try-on can
+    name only what the page shows."""
+
+    def store(
+        self, session: Session, finds: list[Find], payload: dict[str, Any], operation_id: str
+    ) -> FindRecord:
+        return self._put(
+            session,
+            lambda _: FindRecord(secrets.token_urlsafe(32), finds, payload, operation_id),
         )

@@ -40,6 +40,8 @@ class Settings:
     meta_image_model: str = IMAGE_MODEL
     # The experimental Design My Look mode (backend/app/concepts.py); off unless set.
     design_mode: bool = False
+    # The shopping agent over real shops (backend/app/shopper.py); FULLAURA_SHOP_MODE=false ends it.
+    shop_mode: bool = True
 
     def __post_init__(self) -> None:
         if self.environment not in {"development", "production"}:
@@ -92,4 +94,5 @@ class Settings:
             model_api_key=os.getenv("MODEL_API_KEY", ""),
             meta_image_model=os.getenv("META_IMAGE_MODEL", IMAGE_MODEL),
             design_mode=os.getenv("FULLAURA_DESIGN_MODE", "").lower() == "true",
+            shop_mode=os.getenv("FULLAURA_SHOP_MODE", "").lower() != "false",
         )

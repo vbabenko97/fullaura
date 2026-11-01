@@ -33,16 +33,23 @@ async function shot(page: Page, project: string, step: string) {
   await page.screenshot({ path: `${SHOTS}/${project}-${step}.png`, fullPage: true });
 }
 
-async function openWorkspace(page: Page) {
+/** Open the invite, which shows the shopping agent first. */
+async function openAgent(page: Page) {
   await page.goto(`/#invite=${INVITE}`);
   const age = page.getByRole("checkbox", { name: "I confirm that I am 18 or older." });
-  const preferences = page.getByRole("heading", { name: "Your preferences" });
-  await expect(age.or(preferences)).toBeVisible();
+  const agent = page.getByRole("heading", { name: "What you need", exact: true });
+  await expect(age.or(agent)).toBeVisible();
   if (await age.isVisible()) {
     await age.check();
     await page.getByRole("button", { name: "Continue" }).click();
   }
-  await expect(preferences).toBeVisible();
+  await expect(agent).toBeVisible();
+}
+
+async function openWorkspace(page: Page) {
+  await openAgent(page);
+  await page.getByRole("button", { name: "Three looks from the catalog" }).click();
+  await expect(page.getByRole("heading", { name: "Your preferences" })).toBeVisible();
 }
 
 /** Press Tab until the target has focus, so it is reached in the page's own order. */
@@ -78,13 +85,16 @@ test("an invited person plans, tries on, edits, saves, restores, exports and giv
   await page.goto(`/#invite=${INVITE}`);
   const age = page.getByRole("checkbox", { name: "I confirm that I am 18 or older." });
   const preferences = page.getByRole("heading", { name: "Your preferences" });
-  await expect(age.or(preferences)).toBeVisible();
+  const agent = page.getByRole("heading", { name: "What you need", exact: true });
+  await expect(age.or(agent)).toBeVisible();
   expect(page.url()).not.toContain("invite=");
   if (await age.isVisible()) {
     await shot(page, project, "01-age");
     await age.check();
     await page.getByRole("button", { name: "Continue" }).click();
   }
+  await expect(agent).toBeVisible();
+  await page.getByRole("button", { name: "Three looks from the catalog" }).click();
   await expect(preferences).toBeVisible();
   if (project.endsWith("-design-off")) {
     // The closed beta's page: no mode switch and no Design my look control.
@@ -199,6 +209,51 @@ test("an invited person plans, tries on, edits, saves, restores, exports and giv
   expect(refusedByPolicy).toEqual([]);
 });
 
+test("the agent finds real products in steps, says what it did not check, and tries them on", async ({ page }) => {
+  await openAgent(page);
+  await page.getByLabel("What do you need?").fill("Something smart for a video call");
+  await page.getByRole("radio", { name: "Upper body" }).check();
+  await page.getByRole("radio", { name: "Men's", exact: true }).check();
+  await page.getByLabel("Spend up to (EUR)").fill("200");
+  await page.getByRole("button", { name: "Find it", exact: true }).click();
+  await expect(page.getByText(/Working\. This usually takes/)).toBeInViewport();
+  await expect(page.getByText("Looking in the shops for: scripted")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Synthetic Shirt" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Synthetic Jacket" })).toBeVisible();
+  await expect(page.getByText(/Working\. This usually takes/)).toBeHidden();
+  await expect(page.getByText(/Code read every price and stock/)).toBeVisible();
+  await expect(page.getByText(/Size not checked for 1 item/)).toBeVisible();
+  await expect(page.getByRole("link", { name: "Synthetic Shop" }).first()).toHaveAttribute("href", /synthetic\.example/);
+
+  // The catalog keeps its own page, and coming back shows the same results.
+  await page.getByRole("button", { name: "Three looks from the catalog" }).click();
+  await expect(page.getByRole("heading", { name: "Your preferences" })).toBeVisible();
+  await page.getByRole("button", { name: "Find it for me" }).click();
+  await expect(page.getByRole("heading", { name: "Synthetic Jacket" })).toBeVisible();
+
+  const consent = page.getByRole("button", { name: "I agree to this processing of my photos" });
+  if (await consent.isVisible()) await consent.click();
+  await expect(page.getByText("You agreed to this processing.")).toBeVisible();
+  await page.getByLabel("Portrait photo").setInputFiles({ name: "p.png", mimeType: "image/png", buffer: png(60, 80, [200, 170, 150]) });
+  await page.getByLabel("Full-body photo").setInputFiles({ name: "f.png", mimeType: "image/png", buffer: png(60, 120, [120, 140, 160]) });
+  const tryOn = page.getByRole("button", { name: "Try on these clothes" });
+  await expect(tryOn).toBeEnabled();
+  await tryOn.click();
+  await expect(page.getByText("Your try-on of these clothes is ready.")).toBeVisible();
+
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBe(0);
+});
+
+test("the agent says so when nothing suits, and the button stays on screen", async ({ page }) => {
+  await openAgent(page);
+  await expect(page.getByRole("button", { name: "Find it", exact: true })).toBeInViewport();
+  await page.getByLabel("What do you need?").fill("nothing at all");
+  await page.getByLabel("Spend up to (EUR)").fill("50");
+  await page.getByRole("button", { name: "Find it", exact: true }).click();
+  await expect(page.getByText(/Nothing scripted suits this request\. This request still counts/)).toBeVisible();
+});
+
 test("the button that sends the form stays on screen, and hides no field that has the focus", async ({ page }) => {
   await openWorkspace(page);
   const send = page.getByRole("button", { name: /three looks$/ });
@@ -211,10 +266,8 @@ test("the button that sends the form stays on screen, and hides no field that ha
     const field = page.getByLabel(label);
     await field.focus();
     await expect(send).toBeInViewport();
-    const hidden = await field.evaluate((element) => {
-      const button = document.querySelector(".form-submit")?.getBoundingClientRect();
-      return button ? element.getBoundingClientRect().bottom > button.top : true;
-    });
+    const buttonTop = await send.evaluate((button) => button.closest(".form-submit")?.getBoundingClientRect().top ?? 0);
+    const hidden = await field.evaluate((element, top) => element.getBoundingClientRect().bottom > top, buttonTop);
     expect(hidden, `${label} is under the button`).toBe(false);
   }
 });
@@ -273,7 +326,7 @@ test("an invite link pasted into an open tab opens the invite", async ({ page })
     window.location.hash = `#invite=${invite}`;
   }, INVITE);
   const age = page.getByRole("checkbox", { name: "I confirm that I am 18 or older." });
-  await expect(age.or(page.getByRole("heading", { name: "Your preferences" }))).toBeVisible();
+  await expect(age.or(page.getByRole("heading", { name: "What you need", exact: true }))).toBeVisible();
   expect(page.url()).not.toContain("invite=");
 });
 

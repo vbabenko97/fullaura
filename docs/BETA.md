@@ -20,6 +20,8 @@ Each invite has 8 planning requests and 12 try-ons; generating, updating and rep
 
 Planning and try-ons close at the end of the pilot, on 6 November 2026 at 23:59 Vienna time. On 9 November 2026 at 10:00 Vienna time the beta closes, and within a few minutes FullAura deletes your invite's records and your feedback. Plans you saved stay in your browser until you delete them.
 
+FullAura opens on "Find it for me". Say what you need, choose a whole outfit, the upper body or one item, and the most you will spend, then select "Find it". An agent looks through real shops while you watch its steps, and code reads every price and stock on the shop's page. Where a shop's page lists no sizes, FullAura says that your size was not checked. You can try the result on. Each search uses one planning request. The steps above describe "Three looks from the catalog", the other tab.
+
 ## Costs
 
 Every model call first reserves its largest possible cost in a shared ledger, at the providers' list prices checked on 2026-10-30: Muse Spark Open on Baseten at $1.25 per million input tokens and $4.25 per million output tokens ([Baseten pricing](https://www.baseten.co/pricing/)), and Muse Image on Meta at $0.01 per image ([Meta pricing](https://dev.meta.ai/docs/pricing-rate-limits)). A planning request can make four HTTP attempts, each counted at 24,000 input tokens and the 6,000-token output cap, so it reserves about $0.22. A try-on can make three attempts and reserves $0.03. After the call, the ledger records the cost from the tokens the provider reported, plus the full maximum for each attempt that reported nothing; a try-on counts $0.01 for each attempt. A call whose outcome is unknown, such as a timeout or a lost connection, keeps its whole reservation.

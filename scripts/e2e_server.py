@@ -15,8 +15,9 @@ import argparse
 import itertools
 import json
 import struct
+import time
 import zlib
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -28,6 +29,8 @@ from backend.app.main import create_app
 from backend.app.meta_images import ImageResult, InputImage
 from backend.app.pilot import invite_hash
 from backend.app.planner import SparkClient
+from backend.app.shopper import Find, FindOutcome, FindRequest, FindResult, FindSlot, Scope
+from backend.app.shops import ShopProduct
 
 E2E_INVITE = "e2e-invite-code-not-for-production"
 _SLOTS_FOR = {"top": ("top", "knitwear"), "bottom": ("bottom",), "footwear": ("footwear",)}
@@ -174,6 +177,38 @@ class ScriptedEditor:
         return ImageResult(_png(), "image/png", 1, 0.0, {}, None)
 
 
+def _product(name: str, cents: int, *, checked: bool = False) -> ShopProduct:
+    return ShopProduct(
+        f"https://shop.synthetic.example/p/{name.lower().replace(' ', '-')}",
+        "Synthetic Shop",
+        name,
+        cents,
+        "navy",
+        "100% cotton",
+        checked,
+    )
+
+
+def scripted_shop_agent(request: FindRequest, on_step: Callable[[str], None]) -> FindResult:
+    """Fixed synthetic products for each scope; no shop or model is called, and a request that
+    says "nothing" finds nothing."""
+    on_step("Looking in the shops for: scripted")
+    time.sleep(0.3)
+    on_step("Read the shops' pages: 3 on sale within your budget")
+    if "nothing" in request.request.lower():
+        return FindResult(FindOutcome.NO_MATCH, message="Nothing scripted suits this request.")
+    top = Find(_product("Synthetic Shirt", 4000), FindSlot.TOP, "A synthetic reason")
+    jacket = Find(_product("Synthetic Jacket", 9000, checked=True), FindSlot.OUTER_LAYER, "Warm")
+    bottom = Find(_product("Synthetic Trousers", 5000), FindSlot.BOTTOM, "Plain")
+    shoes = Find(_product("Synthetic Shoes", 6000), FindSlot.FOOTWEAR, "Closed")
+    finds = {
+        Scope.ITEM: [jacket],
+        Scope.UPPER_BODY: [top, jacket],
+        Scope.LOOK: [top, bottom, shoes],
+    }[request.scope]
+    return FindResult(FindOutcome.SUCCESS, finds)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--port", type=int, default=8765)
@@ -189,10 +224,15 @@ def main() -> None:
         invite_hashes=frozenset({invite_hash(E2E_INVITE)}),
         store_url=f"file://{args.store.resolve()}" if args.store else "memory://",
         # Every browser test and viewport shares the one invite; the quota rule still applies.
-        plan_requests_per_invite=24,
+        plan_requests_per_invite=48,
         design_mode=args.design_mode == "on",
     )
-    app = create_app(settings, spark=ScriptedSpark(), image_editor=ScriptedEditor())
+    app = create_app(
+        settings,
+        spark=ScriptedSpark(),
+        image_editor=ScriptedEditor(),
+        shop_agent=scripted_shop_agent,
+    )
     uvicorn.run(app, host="127.0.0.1", port=args.port, log_level="warning")
 
 

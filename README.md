@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/vbabenko97/fullaura/actions/workflows/ci.yml/badge.svg)](https://github.com/vbabenko97/fullaura/actions/workflows/ci.yml)
 
-Personal style plans built around your preferences, budget, and existing wardrobe.
+Say what you need, and an agent finds real products while code checks each price and stock on the shop's own page. FullAura also plans three looks from a small checked catalog, around your preferences, budget and existing wardrobe.
 
 FullAura aims to combine outfits, optional hair and beard previews, and links to real products. A plan should remain consistent when you keep an item, change a preference, or lower the budget.
 

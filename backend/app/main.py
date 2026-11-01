@@ -9,15 +9,19 @@ maximum cost in the shared ledger (backend/app/pilot.py).
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import queue
 import secrets
+import threading
 import time
 import uuid
+from collections.abc import Callable, Iterator
 from typing import Annotated, Any, Literal, Self
 
 from fastapi import FastAPI
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, StrictBool, ValidationError, model_validator
 from starlette.datastructures import Headers, MutableHeaders
@@ -75,12 +79,24 @@ from backend.app.sessions import (
     SESSION_COOKIE,
     SESSION_COOKIE_MAX_AGE_S,
     ConceptMemory,
+    FindMemory,
     PlanMemory,
     PlanRecord,
     Session,
     read_session,
     sign_session,
 )
+from backend.app.shopper import (
+    FIND_RESERVE_MICRO_USD,
+    FindOutcome,
+    FindRequest,
+    FindResult,
+    MetaResponses,
+    ShopAgent,
+    find_json,
+    find_prompt,
+)
+from backend.app.shops import ShopIndex
 from backend.app.state import Budget as LookBudget
 from backend.app.state import Fit, FootwearChoice, State
 from backend.app.store import Store, StoreUnavailable, open_store
@@ -88,6 +104,7 @@ from backend.app.store import Store, StoreUnavailable, open_store
 OPERATION_HEADER = "X-Operation-Id"
 PLAN_TOKEN_HEADER = "X-Plan-Token"
 CONCEPT_TOKEN_HEADER = "X-Concept-Token"
+FIND_TOKEN_HEADER = "X-Find-Token"
 LOOK_HEADER = "X-Look-Id"
 NO_STORE = {"Cache-Control": "no-store"}
 REFUSAL_STATUS = {
@@ -295,6 +312,7 @@ def create_app(
     spark: SparkClient | None = None,
     image_editor: AsyncImageEditor | None = None,
     store: Store | None = None,
+    shop_agent: Callable[[FindRequest, Callable[[str], None]], FindResult] | None = None,
 ) -> FastAPI:
     settings = settings or Settings.from_env()
     index_file = settings.web_dist / "index.html"
@@ -349,6 +367,7 @@ def create_app(
     )
     plans = PlanMemory()
     concepts = ConceptMemory()
+    finds = FindMemory()
     catalog = Catalog.model_validate_json(settings.catalog_file.read_text(encoding="utf-8"))
     plan_reserve = planning_reserve_micro_usd(
         GENERATION_ATTEMPTS * HTTP_ATTEMPTS_PER_CALL, MAX_TOKENS
@@ -366,6 +385,23 @@ def create_app(
             model=settings.baseten_model or SPARK_MODEL,
             base_url=settings.baseten_base_url or BASETEN_URL,
         )
+
+    live_agent: ShopAgent | None = None
+
+    def find_agent() -> Callable[[FindRequest, Callable[[str], None]], FindResult] | None:
+        nonlocal live_agent
+        if not settings.shop_mode:
+            return None
+        if shop_agent is not None:
+            return shop_agent
+        if not settings.model_api_key:
+            return None
+        if live_agent is None:
+            index = ShopIndex()
+            # Read the shops' lists now, so a person's first search does not wait for them.
+            threading.Thread(target=index.load, daemon=True).start()
+            live_agent = ShopAgent(MetaResponses(settings.model_api_key), index)
+        return live_agent
 
     def preview_editor() -> AsyncImageEditor | None:
         if image_editor is not None:
@@ -403,6 +439,7 @@ def create_app(
             "feedback_ids": [],
             "has_plan": False,
             "design_open": False,
+            "find_open": False,
         }
         if session is None or not beta_open():
             return payload
@@ -414,6 +451,7 @@ def create_app(
             design_budget = settings.design_mode and pilot.budget_open(
                 OperationKind.PLAN, concept_reserve
             )
+            find_budget = pilot.budget_open(OperationKind.PLAN, FIND_RESERVE_MICRO_USD)
         except StoreUnavailable:
             return payload
         open_window = not pilot.ended()
@@ -434,6 +472,12 @@ def create_app(
             feedback_ids=list(status.feedback_ids),
         )
         payload["design_open"] = bool(payload["planning_open"] and design_budget)
+        payload["find_open"] = bool(
+            open_window
+            and find_budget
+            and find_agent() is not None
+            and status.plan_requests_used < pilot.limits.plan_requests
+        )
         return payload
 
     def plan_payload(record: PlanRecord, result: PlanResult) -> dict[str, Any]:
@@ -674,6 +718,81 @@ def create_app(
         stored = concepts.store(session, result.concept, payload, operation_id)
         return JSONResponse({**payload, "concept_token": stored.token}, headers=NO_STORE)
 
+    @app.post("/api/finds", tags=["shopping"])
+    def create_find(submission: FindRequest, request: Request) -> Response:
+        """Real products for what a person asks for, chosen by the agent and checked by code. The
+        answer is a stream of JSON lines: what the agent is doing, then the result. It counts as
+        one planning request."""
+        if not beta_open():
+            return closed()
+        session = session_of(request)
+        if session is None:
+            return not_invited()
+        operation_id = operation_id_of(request)
+        if operation_id is None:
+            return _error(f"Send a UUID in {OPERATION_HEADER}", 400, "operation_id")
+        agent = find_agent()
+        if agent is None:
+            if not settings.shop_mode:
+                return closed()
+            return _error("The shopping agent is not configured", 503, "not_configured")
+        lines: queue.Queue[dict[str, Any] | None] = queue.Queue()
+        current = finds.get(session)
+        if current is not None and current.operation_id == operation_id:
+            # A repeat of the request that produced the current finds: answer it again for free.
+            lines.put({"result": {**current.payload, "find_token": current.token}})
+            lines.put(None)
+        else:
+            try:
+                operation = pilot.begin(
+                    session.invite_id, OperationKind.PLAN, operation_id, FIND_RESERVE_MICRO_USD
+                )
+            except Refused as refused:
+                return _refusal(refused)
+
+            def work() -> None:
+                # In its own thread, so a person who leaves does not stop the settling of the cost.
+                cost: int | None = None
+                outcome = "error"
+                answer: dict[str, Any] = {
+                    "outcome": FindOutcome.FAILED.value,
+                    "message": "The search could not be finished.",
+                    "find_token": None,
+                    "finds": [],
+                    "scope": submission.scope.value,
+                    "budget_cents": submission.budget_cents,
+                    "total_cents": 0,
+                }
+                try:
+                    result = agent(submission, lambda step: lines.put({"step": step}))
+                    cost = result.usage.cost_micro_usd if result.cost_known else None
+                    outcome = result.outcome.value
+                    answer = find_json(result, submission, None)
+                    if result.finds:
+                        stored = finds.store(session, result.finds, answer, operation_id)
+                        answer = {**answer, "find_token": stored.token}
+                except Exception:
+                    logger.exception("shopping agent failed")
+                finally:
+                    try:
+                        pilot.finish(operation, cost, outcome)
+                    except StoreUnavailable as error:
+                        logger.warning("find not settled: %s", error)
+                    lines.put({"result": answer})
+                    lines.put(None)
+
+            threading.Thread(target=work, daemon=True).start()
+
+        def stream() -> Iterator[bytes]:
+            while (line := lines.get()) is not None:
+                yield json.dumps(line, ensure_ascii=False).encode() + b"\n"
+
+        return StreamingResponse(
+            stream(),
+            media_type="application/x-ndjson",
+            headers={**NO_STORE, "X-Accel-Buffering": "no"},
+        )
+
     @app.post("/api/plans/restore", tags=["planning"])
     def restore_plan(saved: RestoreRequest, request: Request) -> JSONResponse:
         """Check a saved plan again against the current catalog and constraints, with offers
@@ -735,8 +854,17 @@ def create_app(
         if operation_id is None:
             return _error(f"Send a UUID in {OPERATION_HEADER}", 400, "operation_id")
         concept_token = request.headers.get(CONCEPT_TOKEN_HEADER)
+        find_token = request.headers.get(FIND_TOKEN_HEADER)
         try:
-            if concept_token is not None:
+            if find_token is not None:
+                # What the shopping agent found: only what this page shows now
+                if not settings.shop_mode:
+                    return closed()
+                found = finds.current(session, find_token)
+                if found is None:
+                    return _error("These finds were replaced; search again", 409, "find_expired")
+                prompt = find_prompt(found.finds)
+            elif concept_token is not None:
                 # A Design My Look concept: only the one this page shows now
                 if not settings.design_mode:
                     return closed()

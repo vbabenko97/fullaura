@@ -243,6 +243,32 @@ export interface Session {
   has_plan: boolean;
   /** Design my look is switched on and planning is open for this invite. */
   design_open: boolean;
+  find_open: boolean;
+}
+
+export type FindScope = "look" | "upper_body" | "item";
+
+/** A product the shopping agent chose, with the facts code read from the shop's page. */
+export interface Find {
+  url: string;
+  shop: string;
+  title: string;
+  color: string | null;
+  material: string | null;
+  price_cents: number;
+  size_checked: boolean;
+  slot: string;
+  why: string;
+}
+
+export interface FindResponse {
+  outcome: string;
+  message: string | null;
+  find_token: string | null;
+  scope: string;
+  budget_cents: number;
+  total_cents: number;
+  finds: Find[];
 }
 
 export interface OwnedNotice {
