@@ -13,6 +13,8 @@ interface SavedPlansProps {
   canSave?: boolean;
   onSave?: () => void;
   onRestore?: (plan: SavedPlan) => void;
+  /** Whether a restore would replace a working plan that no saved copy holds. */
+  replacesUnsaved?: boolean;
 }
 
 function savedDate(value: string): string {
@@ -22,8 +24,18 @@ function savedDate(value: string): string {
     : new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
-export function SavedPlans({ saved, canSave = false, busy, message, onSave, onRestore, onDelete }: SavedPlansProps) {
+export function SavedPlans({
+  saved,
+  canSave = false,
+  replacesUnsaved = false,
+  busy,
+  message,
+  onSave,
+  onRestore,
+  onDelete,
+}: SavedPlansProps) {
   const [confirming, setConfirming] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const opened = saved.find((plan) => plan.id === open);
 
@@ -40,7 +52,7 @@ export function SavedPlans({ saved, canSave = false, busy, message, onSave, onRe
           </button>
         )}
       </div>
-      {message && <p className="field-help" role="status">{message}</p>}
+      {message && <p className="field-help" id="saved-message" role="status" tabIndex={-1}>{message}</p>}
       {saved.length === 0 ? (
         <p className="field-help">Nothing saved yet. Saved plans stay in this browser until you delete them.</p>
       ) : (
@@ -55,7 +67,13 @@ export function SavedPlans({ saved, canSave = false, busy, message, onSave, onRe
               </div>
               <div className="look-item-actions">
                 {onRestore && (
-                  <button className="secondary-button" disabled={busy} onClick={() => onRestore(plan)} type="button">
+                  <button
+                    className="secondary-button"
+                    disabled={busy}
+                    id={`restore-${plan.id}`}
+                    onClick={() => (replacesUnsaved ? setRestoring(plan.id) : onRestore(plan))}
+                    type="button"
+                  >
                     Restore
                   </button>
                 )}
@@ -85,6 +103,37 @@ export function SavedPlans({ saved, canSave = false, busy, message, onSave, onRe
                   </button>
                 )}
               </div>
+              {onRestore && replacesUnsaved && restoring === plan.id && (
+                <div className="saved-confirm">
+                  <p className="field-help" role="alert">
+                    Your current plan is not saved, and restoring replaces it. Save it first if you want to keep it.
+                  </p>
+                  <div className="look-item-actions">
+                    <button
+                      autoFocus
+                      className="secondary-button"
+                      onClick={() => {
+                        setRestoring(null);
+                        document.getElementById(`restore-${plan.id}`)?.focus();
+                      }}
+                      type="button"
+                    >
+                      Keep current plan
+                    </button>
+                    <button
+                      className="secondary-button is-danger"
+                      disabled={busy}
+                      onClick={() => {
+                        setRestoring(null);
+                        onRestore(plan);
+                      }}
+                      type="button"
+                    >
+                      Replace current plan
+                    </button>
+                  </div>
+                </div>
+              )}
             </li>
           ))}
         </ul>

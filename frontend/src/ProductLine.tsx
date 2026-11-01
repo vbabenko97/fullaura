@@ -10,7 +10,7 @@ import {
   stockText,
   variantFacts,
 } from "./format";
-import { catalogItem, hasReplacementAlternative, selectedOffer } from "./plan";
+import { catalogItem, hasReplacementAlternative, selectedOffer, sizeCompared } from "./plan";
 import type {
   Catalog,
   Fit,
@@ -184,6 +184,7 @@ export function ProductLine({
         <div className="item-details">
           <h3>{entry.product.title}</h3>
           {facts && <p className="item-facts">{facts}</p>}
+          {!sizeCompared(entry.product, entry.variant, fit) && <p className="item-facts">Size not checked against yours</p>}
           <p className="item-facts">{composition}</p>
           {offer && <p className="item-facts">{stockText(offer.stock)}</p>}
           <div className="item-source">

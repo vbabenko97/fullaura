@@ -26,6 +26,7 @@ interface LookCardProps {
   locks: LockedPlacement[];
   lockDisabled: boolean;
   replaceDisabled: boolean;
+  preferencesChanged: boolean;
   onToggleLock: (lookId: string, slot: Slot, item: ItemRef) => void;
   onReplaceItem: (lookId: string, slot: Slot, item: ItemRef) => void;
   onTryOn: ((lookId: string) => void) | null;
@@ -42,6 +43,7 @@ export function LookCard({
   locks,
   lockDisabled,
   replaceDisabled,
+  preferencesChanged,
   onToggleLock,
   onReplaceItem,
   onTryOn,
@@ -61,6 +63,11 @@ export function LookCard({
         <button className="text-button no-print" onClick={() => onTryOn(look.id)} type="button">
           Try this look on
         </button>
+      )}
+      {preferencesChanged && (
+        <p className="item-facts replace-off no-print">
+          Replace is off until you select "Update three looks", because your preferences changed.
+        </p>
       )}
       <ul className="look-items">
         {items.map(({ slot, item }) => {

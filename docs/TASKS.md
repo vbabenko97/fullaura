@@ -16,6 +16,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-12](#t-12-design-my-look) Design My Look (experimental) | done | 2026-10-31 |
 | [T-13](#t-13-fixes-from-the-test-pass) Fixes from the test pass | done | 2026-11-01 |
 | [T-14](#t-14-fixes-from-the-second-test-pass) Fixes from the second test pass | done | 2026-11-01 |
+| [T-15](#t-15-fixes-before-the-human-test) Fixes before the human test | next | |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -120,6 +121,14 @@ The catalog now holds 104 variants of 37 products: women's M has tops and trouse
 The work was deployed on 2026-11-01 as `33e4fe3` and checked on the deployed site ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)).
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, live runs with the real providers and synthetic personas show the refused budgets using no planning request and the two descriptions above drawn as plain garments, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check.
+
+## T-15: Fixes before the human test
+
+An agent walked through the deployed site as a new person on 2026-11-01, and a second agent reviewed the result. Four things could change a participant's answers or lose their work, so they come before people test the product ([D-68](DECISIONS.md#d-68-the-page-says-what-the-checks-did-not-compare)). The page no longer says that sizes or stock were checked when some were not, and it names them. Restore asks before it replaces a plan that is not saved, and answers beside the saved plans. "Try this look on" moves keyboard focus to the try-on panel, and a finished try-on says it is ready and comes into view. Each look explains why Replace is off after the form changes, also after a reload. A request or try-on that failed at the provider says that it still counts.
+
+The changes exist in the code and were checked on a local server with scripted providers, including by keyboard in Chromium and Firefox. They are not deployed, so the deployed site still behaves as before.
+
+Done when: the checks in the [README](../README.md#check-a-change) pass, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check and these four scenarios repeated on it.
 
 ## T-06: Evaluation and submission
 

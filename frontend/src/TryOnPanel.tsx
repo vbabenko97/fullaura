@@ -50,6 +50,8 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
   const epoch = useRef(0);
   // Photos of this epoch still being prepared; the panel stays "preparing" until none is left.
   const preparing = useRef(0);
+  // Set when a try-on finishes, so only a new result moves focus, not coming back to a look.
+  const revealResult = useRef(false);
 
   useEffect(() => () => controller.current?.abort(), []);
   useEffect(() => {
@@ -170,13 +172,20 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
         image = await send(token, operationId, abort.signal);
       }
       if (abort.signal.aborted) return;
+      revealResult.current = true;
       setResult({ url: URL.createObjectURL(image), token, lookId });
       setState("idle");
       setMessage(null);
     } catch (error) {
       if (abort.signal.aborted) return;
       setState("error");
-      setMessage(error instanceof ApiResponseError ? errorMessage(error) : error instanceof Error ? error.message : "The try-on failed.");
+      setMessage(
+        error instanceof ApiResponseError
+          ? `${errorMessage(error)}${error.reason === "provider" ? " This try-on still counts against this invite." : ""}`
+          : error instanceof Error
+            ? error.message
+            : "The try-on failed.",
+      );
     } finally {
       if (controller.current === abort) controller.current = null;
       // After a withdrawal, the consent request returns the session; a refresh racing it could
@@ -197,8 +206,10 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
   return (
     <section className="tryon-panel" aria-labelledby="tryon-title">
       <div className="panel-heading">
-        <h2 id="tryon-title">Try a look on</h2>
-        <p>An experimental drawing of you in the chosen look, made from your photos and the look's colors and garment kinds.</p>
+        <h2 aria-describedby="tryon-description" id="tryon-title" tabIndex={-1}>Try a look on</h2>
+        <p id="tryon-description">
+          An experimental drawing of you in {label}, made from your photos and the look's colors and garment kinds.
+        </p>
       </div>
 
       <div className="tryon-notice">
@@ -300,13 +311,28 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
         </p>
       )}
       {shown && (
-        <figure className="tryon-result">
-          <img alt={`Experimental try-on of ${label}`} src={shown.url} />
-          <figcaption>
-            Experimental visualization. Colors, shapes and combinations are approximate: it does not show the exact
-            products, their fit or your size. It is not saved; download it from your browser if you want to keep it.
-          </figcaption>
-        </figure>
+        <div
+          className="tryon-outcome"
+          ref={(node) => {
+            if (!node || !revealResult.current) return;
+            revealResult.current = false;
+            // A person who moved on while the drawing ran keeps their place.
+            const active = document.activeElement;
+            if (active !== document.body && !node.closest(".tryon-panel")?.contains(active)) return;
+            node.scrollIntoView?.({ block: "start" });
+            node.focus({ preventScroll: true });
+          }}
+          tabIndex={-1}
+        >
+          <p className="preview-status" role="status">Your try-on of {label} is ready.</p>
+          <figure className="tryon-result">
+            <img alt={`Experimental try-on of ${label}`} src={shown.url} />
+            <figcaption>
+              Experimental visualization. Colors, shapes and combinations are approximate: it does not show the exact
+              products, their fit or your size. It is not saved; download it from your browser if you want to keep it.
+            </figcaption>
+          </figure>
+        </div>
       )}
     </section>
   );

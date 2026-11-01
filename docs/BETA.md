@@ -8,15 +8,15 @@ You need the invite link you were sent, a phone or computer with a current brows
 
 1. Open the invite link. FullAura asks you to confirm that you are 18 or older.
 2. Describe what the looks are for, and set an occasion, season and colors if you like. Enter a budget and choose whether it applies to each look or to all three together; the line above the button says what the amount limits.
-3. Choose closed, open or any shoes, and enter your clothing line and sizes. FullAura never reads sizes from photos, so enter the sizes you buy. Under "Avoid materials" and "Items you already own" you can exclude materials and add up to three of your own items.
+3. Choose closed, open or any shoes, and enter your clothing line and sizes. FullAura never reads sizes from photos, so enter the sizes you buy. It compares a size only with one you gave in the same system and does not convert between them, so give a letter size, a waist and a shoe size if you use all three; above the looks it says which sizes it did not compare. Under "Avoid materials" and "Items you already own" you can exclude materials and add up to three of your own items.
 4. Select "Generate three looks". Each look shows real products from shops that deliver to Austria, with their price, the date the price was checked, and a link to the shop.
 5. To try a look on, read the photo notice and agree to it, choose your two photos, pick a look and select "Try on". The result is an experimental drawing: it shows approximate colors and combinations, not the exact products, their fit or your size. It is not saved. "Withdraw consent" stops a try-on in progress and removes your photos and the result from the page; photos already sent to Meta cannot be called back.
 6. Select "Keep item" on anything you want to hold, change your budget or other preferences, and select "Update three looks". Kept items stay in place. To swap one item, select "Replace" next to it; everything else stays.
 7. The shopping list counts each product once, however many looks use it, and your own items at no cost. Copy it or print it. Prices exclude delivery and returns, and stock can change.
-8. Select "Save this plan" to keep it in this browser. "Restore" checks a saved plan against today's catalog; "Delete" removes it.
+8. Select "Save this plan" to keep it in this browser. "Restore" checks a saved plan against today's catalog and replaces the plan on the page, so it asks first when that plan is not saved; "Delete" removes it.
 9. Answer the feedback questions at the bottom. If you gave the try-on a score, you can also say what you noticed in it. You can answer again later, and your latest answer counts; you can delete your answers.
 
-Each invite has 8 planning requests and 12 try-ons; generating, updating and replacing each use a planning request, and a cancelled try-on still counts. The beta can also pause model requests early when its shared budget is used up. Your plans and shopping lists keep working when that happens.
+Each invite has 8 planning requests and 12 try-ons; generating, updating and replacing each use a planning request, a request that fails at the provider still counts, and so does a cancelled try-on. The beta can also pause model requests early when its shared budget is used up. Your plans and shopping lists keep working when that happens.
 
 Planning and try-ons close at the end of the pilot, on 6 November 2026 at 23:59 Vienna time. On 9 November 2026 at 10:00 Vienna time the beta closes, and within a few minutes FullAura deletes your invite's records and your feedback. Plans you saved stay in your browser until you delete them.
 

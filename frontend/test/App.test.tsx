@@ -51,7 +51,7 @@ interface Server {
   session: Body;
   token: number;
   expireToken: () => void;
-  previewOutcome: "image" | "budget";
+  previewOutcome: "image" | "budget" | "provider";
   restoreFails: boolean;
   /** A restore never reaches the server, as when the connection drops. */
   restoreOffline: boolean;
@@ -240,6 +240,10 @@ function installServer(
         return json({ detail: "expired", reason: "plan_expired" }, 409);
       }
       if (server.previewOutcome === "budget") return json({ detail: "budget", reason: "budget" }, 503);
+      if (server.previewOutcome === "provider") {
+        session.preview_requests_used = Number(session.preview_requests_used) + 1;
+        return json({ detail: "The image provider could not complete this try-on", reason: "provider" }, 502);
+      }
       if (server.previewGate) await server.previewGate;
       server.previewsAnswered += 1;
       session.preview_requests_used = Number(session.preview_requests_used) + 1;
@@ -415,6 +419,43 @@ describe(`${FIXTURE_LABEL}: access`, () => {
     fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
     expect(await screen.findByText(/No plan passed the catalog checks/)).toBeTruthy();
     expect(screen.queryByText(/pydantic/)).toBeNull();
+  });
+
+  it.each(["provider_error", "provider_timeout", "generation_failed"])(
+    "says that a failed %s request still counts against the invite",
+    async (outcome) => {
+      installServer({
+        plans: [{ outcome, plan: null, conflicts: [], violations: [], notices: [], error: null }],
+      });
+      render(<App />);
+      await screen.findByText(/products\. Prices checked/);
+      fireEvent.change(screen.getByLabelText("What should the looks work for?"), { target: { value: "Office" } });
+      fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "250" } });
+      fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+      expect(await screen.findByText(/still counts against your invite/)).toBeTruthy();
+    },
+  );
+
+  it("does not say that a refused request counts, because no plan could pass and it uses no quota", async () => {
+    installServer({
+      plans: [
+        {
+          outcome: "infeasible",
+          plan: null,
+          conflicts: [{ rule: "budget", detail: "The cheapest complete look costs more" }],
+          violations: [],
+          notices: [],
+          error: null,
+        },
+      ],
+    });
+    render(<App />);
+    await screen.findByText(/products\. Prices checked/);
+    fireEvent.change(screen.getByLabelText("What should the looks work for?"), { target: { value: "Office" } });
+    fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "10" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+    await screen.findByText(/No plan can meet these constraints/);
+    expect(screen.queryByText(/still counts against your invite/)).toBeNull();
   });
 
   it.each([
@@ -782,8 +823,51 @@ describe(`${FIXTURE_LABEL}: shopping list and saved plans`, () => {
 
     fireEvent.click(await releaseTShirt());
     fireEvent.click(screen.getByRole("button", { name: "Restore" }));
-    await screen.findByText("The saved plan still passes every check.");
+    await screen.findByText("The saved plan still passes the catalog checks.");
     expect(await releaseTShirt()).toBeTruthy();
+  });
+
+  it("asks before a restore replaces a plan that is not saved, and answers beside the saved plans", async () => {
+    const server = installServer({ plans: [firstPlan, reducedBudgetPlan] });
+    const restores = () => server.requests.filter((entry) => entry.url === "/api/plans/restore").length;
+    render(<App />);
+    await generate();
+    fireEvent.click(screen.getByRole("button", { name: "Save this plan" }));
+    await screen.findByText(/Saved "Relaxed office outfits" on this device/);
+    fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "160" } });
+    fireEvent.click(screen.getByRole("button", { name: "Update three looks" }));
+    await screen.findAllByText("REHMAA LEGGINGS");
+    expect(screen.queryByText(/^Saved "Relaxed office outfits"/)).toBeNull(); // this plan is not the saved one
+
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    expect(screen.getByRole("alert").textContent).toMatch(/not saved/);
+    expect(restores()).toBe(0);
+    const keepCurrent = screen.getByRole("button", { name: "Keep current plan" });
+    expect(document.activeElement).toBe(keepCurrent); // the safe choice comes first
+    fireEvent.click(keepCurrent);
+    expect(screen.queryByRole("button", { name: "Replace current plan" })).toBeNull();
+    expect(document.activeElement).toBe(screen.getByRole("button", { name: "Restore" }));
+    expect(restores()).toBe(0);
+    expect(screen.getAllByText("REHMAA LEGGINGS").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    fireEvent.click(screen.getByRole("button", { name: "Replace current plan" }));
+    const message = await screen.findByText(/^Restored "Relaxed office outfits"/);
+    expect(document.activeElement).toBe(message);
+    expect(restores()).toBe(1);
+    expect(screen.queryByText(/^Saved "Relaxed office outfits"/)).toBeNull();
+    expect(screen.queryByText("REHMAA LEGGINGS")).toBeNull();
+  });
+
+  it("says beside the saved plans when a saved plan cannot be restored", async () => {
+    const server = installServer({ plans: [firstPlan] });
+    render(<App />);
+    await generate();
+    fireEvent.click(screen.getByRole("button", { name: "Save this plan" }));
+    await screen.findByText(/Saved "Relaxed office outfits" on this device/);
+    server.restoreFails = true;
+    fireEvent.click(screen.getByRole("button", { name: "Restore" }));
+    expect(await screen.findByText(/^"Relaxed office outfits" was not restored/)).toBeTruthy();
   });
 
   it("keeps a kept item through a reload, and forgets it once released", async () => {
@@ -839,7 +923,7 @@ describe(`${FIXTURE_LABEL}: shopping list and saved plans`, () => {
     expect(stored).not.toMatch(/blob:|image\/|photo/i);
 
     fireEvent.click(screen.getByRole("button", { name: "Restore" }));
-    expect(await screen.findByText("The saved plan still passes every check.")).toBeTruthy();
+    expect(await screen.findByText("The saved plan still passes the catalog checks.")).toBeTruthy();
     const restore = server.requests.find((entry) => entry.url === "/api/plans/restore");
     expect(object(object(restore?.body).state).plan).toBeTruthy();
 
@@ -939,6 +1023,62 @@ describe(`${FIXTURE_LABEL}: product photos`, () => {
   });
 });
 
+describe(`${FIXTURE_LABEL}: what the checks and buttons tell a person`, () => {
+  /* The first plan holds three products in letter sizes and two in waist and length; the catalog's
+   * shops report no stock for four of the five. */
+  it("does not claim a size or stock it could not check, and names them", async () => {
+    installServer({ plans: [firstPlan] });
+    render(<App />);
+    await screen.findByText(/products\. Prices checked/);
+    fireEvent.change(screen.getByLabelText("What should the looks work for?"), { target: { value: "Office" } });
+    fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "250" } });
+    fireEvent.change(screen.getByLabelText("Waist sizes"), { target: { value: "50" } });
+    fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+    const passed = await screen.findByText(/The three looks passed the catalog checks/);
+    expect(passed.textContent).not.toMatch(/sizes|stock/);
+    const note = screen.getByText(/Sizes not checked/);
+    expect(note.textContent).toContain("letter sizes on 3 items");
+    expect(note.textContent).toContain("does not convert");
+    expect(note.textContent).toContain("Stock not reported for 4 items");
+    expect(note.textContent).not.toContain("waist and length on");
+    // Each product in a letter size says so where it is shown; MAARKOS is in two looks.
+    expect(screen.getAllByText("Size not checked against yours")).toHaveLength(4);
+    expect(within(screen.getByRole("table")).getAllByText(/size not checked/)).toHaveLength(3);
+  });
+
+  it("keeps naming what it did not check after a reload", async () => {
+    installServer({ plans: [firstPlan] });
+    render(<App />);
+    await generate();
+    cleanup();
+    render(<App />);
+    expect(await screen.findByText(/Sizes not checked/)).toBeTruthy();
+  });
+
+  it("explains in each look why Replace is off once preferences changed, and takes it back", async () => {
+    installServer({ plans: [firstPlan] });
+    render(<App />);
+    await generate();
+    const replace = () => screen.getAllByRole("button", { name: /^Replace .* in look 1$/ })[0] as HTMLButtonElement;
+    expect(replace().disabled).toBe(false);
+    fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "249" } });
+    expect(replace().disabled).toBe(true);
+    expect(screen.getAllByText(/Replace is off until you select "Update three looks"/)).toHaveLength(3);
+    fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "250" } });
+    expect(replace().disabled).toBe(false);
+    expect(screen.queryByText(/Replace is off until/)).toBeNull();
+  });
+
+  it("explains why Replace is off after a reload too, when no request has run on the page", async () => {
+    installServer();
+    storeWorkingPlan(firstPlan);
+    render(<App />);
+    await screen.findAllByRole("button", { name: /^Replace .* in look 1$/ });
+    fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "249" } });
+    expect(screen.getAllByText(/Replace is off until you select "Update three looks"/)).toHaveLength(3);
+  });
+});
+
 describe(`${FIXTURE_LABEL}: try-on`, () => {
   async function prepareTryOn(server: Server) {
     render(<App />);
@@ -975,6 +1115,62 @@ describe(`${FIXTURE_LABEL}: try-on`, () => {
     fireEvent.click(screen.getByRole("button", { name: "Update three looks" }));
     await screen.findAllByText("REHMAA LEGGINGS");
     expect(screen.queryByRole("img", { name: /Experimental try-on/ })).toBeNull();
+    expect(screen.queryByText(/is ready/)).toBeNull();
+  });
+
+  it("takes focus from a look's button to the try-on panel, which names that look", async () => {
+    installServer({ plans: [firstPlan] });
+    render(<App />);
+    await generate();
+    fireEvent.click(screen.getAllByRole("button", { name: "Try this look on" })[2]);
+    const heading = screen.getByRole("heading", { name: "Try a look on" });
+    expect(document.activeElement).toBe(heading);
+    const description = document.getElementById(heading.getAttribute("aria-describedby") ?? "");
+    expect(description?.textContent).toContain("look 3");
+  });
+
+  it("says a finished try-on is ready and moves focus to it", async () => {
+    await prepareTryOn(installServer({ plans: [firstPlan] }));
+    const button = await screen.findByRole("button", { name: "Try on look 1" });
+    button.focus();
+    fireEvent.click(button);
+    const image = await screen.findByRole("img", { name: "Experimental try-on of look 1" });
+    expect(screen.getByText("Your try-on of look 1 is ready.").getAttribute("role")).toBe("status");
+    expect(document.activeElement?.contains(image)).toBe(true);
+  });
+
+  it("leaves focus alone when the person moved on while the try-on ran", async () => {
+    const server = await prepareTryOn(installServer({ plans: [firstPlan] }));
+    const provider = deferred();
+    server.previewGate = provider.promise;
+    fireEvent.click(await screen.findByRole("button", { name: "Try on look 1" }));
+    await screen.findByRole("button", { name: "Cancel try-on" });
+    const comment = screen.getByLabelText("Anything else (optional)");
+    comment.focus();
+    await act(async () => provider.resolve());
+    await screen.findByRole("img", { name: "Experimental try-on of look 1" });
+    expect(screen.getByText("Your try-on of look 1 is ready.")).toBeTruthy();
+    expect(document.activeElement).toBe(comment);
+  });
+
+  it("does not move focus again when a person comes back to a look with a try-on", async () => {
+    await prepareTryOn(installServer({ plans: [firstPlan] }));
+    fireEvent.click(await screen.findByRole("button", { name: "Try on look 1" }));
+    await screen.findByRole("img", { name: "Experimental try-on of look 1" });
+    fireEvent.click(screen.getByRole("radio", { name: "look 2" }));
+    expect(screen.queryByText(/is ready/)).toBeNull();
+    const first = screen.getByRole("radio", { name: "look 1" });
+    first.focus();
+    fireEvent.click(first);
+    await screen.findByRole("img", { name: "Experimental try-on of look 1" });
+    expect(document.activeElement).toBe(first);
+  });
+
+  it("says that a try-on the provider could not finish still counts", async () => {
+    const server = await prepareTryOn(installServer({ plans: [firstPlan] }));
+    server.previewOutcome = "provider";
+    fireEvent.click(await screen.findByRole("button", { name: "Try on look 1" }));
+    expect(await screen.findByText(/still counts against this invite/)).toBeTruthy();
   });
 
   it("explains an unsupported photo format", async () => {

@@ -154,7 +154,7 @@ test("an invited person plans, tries on, edits, saves, restores, exports and giv
   await page.reload();
   await expect(page.getByRole("heading", { name: "look 1" })).toBeVisible();
   await page.getByRole("button", { name: "Restore" }).first().click();
-  await expect(page.getByText("The saved plan still passes every check.")).toBeVisible();
+  await expect(page.getByText("The saved plan still passes the catalog checks.")).toBeVisible();
 
   const table = page.getByRole("table");
   await expect(table).toBeVisible();
@@ -235,6 +235,79 @@ test("an invite link pasted into an open tab opens the invite", async ({ page })
   const age = page.getByRole("checkbox", { name: "I confirm that I am 18 or older." });
   await expect(age.or(page.getByRole("heading", { name: "Your preferences" }))).toBeVisible();
   expect(page.url()).not.toContain("invite=");
+});
+
+test("the question before a restore stays inside its panel at every width", async ({ page }) => {
+  await openWorkspace(page);
+  await page.getByLabel("What should the looks work for?").fill("Office days");
+  await page.getByLabel("Budget in EUR").fill("300");
+  await page.getByRole("button", { name: "Generate three looks" }).click();
+  await expect(page.getByText(/The three looks passed the catalog checks/)).toBeVisible();
+  await page.getByRole("button", { name: "Save this plan" }).click();
+  // A saved copy with other looks, so that the working plan counts as not saved.
+  await page.evaluate(() => {
+    const saved = JSON.parse(localStorage.getItem("fullaura.saved-plans.v1") ?? "[]");
+    saved[0].state.plan.looks.reverse();
+    localStorage.setItem("fullaura.saved-plans.v1", JSON.stringify(saved));
+  });
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "look 1" })).toBeVisible();
+  await page.getByRole("button", { name: "Restore" }).first().click();
+  const panel = page.locator(".saved-panel");
+  const parts = [
+    page.locator(".saved-confirm [role=alert]"),
+    page.getByRole("button", { name: "Keep current plan" }),
+    page.getByRole("button", { name: "Replace current plan" }),
+  ];
+  for (const width of [320, 412, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    const outer = await panel.boundingBox();
+    for (const part of parts) {
+      const inner = await part.boundingBox();
+      expect(inner && outer && inner.x + inner.width <= outer.x + outer.width, `at ${width} px`).toBe(true);
+    }
+  }
+});
+
+test("Try this look on takes the keyboard into the try-on panel, and a finished try-on is in view", async ({ page }) => {
+  await openWorkspace(page);
+  await page.getByLabel("What should the looks work for?").fill("Keyboard check, not a real request");
+  await page.getByLabel("Budget in EUR").fill("300");
+  await page.getByRole("button", { name: "Generate three looks" }).click();
+  await expect(page.getByText(/The three looks passed the catalog checks/)).toBeVisible();
+
+  await page.getByRole("button", { name: "Try this look on" }).nth(2).focus();
+  await page.keyboard.press("Enter");
+  const heading = page.getByRole("heading", { name: "Try a look on" });
+  await expect(heading).toBeFocused();
+  await expect(heading).toBeInViewport();
+  await expect(page.locator("#tryon-description")).toContainText("look 3");
+  await page.keyboard.press("Tab");
+  await expect(page.locator(".tryon-panel :focus")).toBeInViewport(); // not back in the look's card
+
+  const consent = page.getByRole("button", { name: "I agree to this processing of my photos" });
+  if (await consent.isVisible()) {
+    await consent.focus();
+    await page.keyboard.press("Enter");
+  }
+  await expect(page.getByText("You agreed to this processing.")).toBeVisible();
+  await page.getByLabel("Portrait photo").setInputFiles({
+    name: "portrait.png",
+    mimeType: "image/png",
+    buffer: png(60, 80, [200, 170, 150]),
+  });
+  await page.getByLabel("Full-body photo").setInputFiles({
+    name: "full-body.png",
+    mimeType: "image/png",
+    buffer: png(60, 120, [120, 140, 160]),
+  });
+  const tryOn = page.getByRole("button", { name: "Try on look 3" });
+  await expect(tryOn).toBeEnabled();
+  await tryOn.focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByText("Your try-on of look 3 is ready.")).toBeInViewport();
+  await expect(page.locator(".tryon-outcome")).toBeFocused();
+  await expect(page.getByRole("img", { name: "Experimental try-on of look 3" })).toBeInViewport();
 });
 
 /* The real catalog has no photo FullAura may show, so this test gives every variant an invented
