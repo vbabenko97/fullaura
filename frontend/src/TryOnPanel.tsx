@@ -69,13 +69,18 @@ export function TryOnPanel({ session, target, onConsent, onFinished }: TryOnPane
   // server answers, so focus comes back to whichever is shown if the person was on the first one.
   const consentButton = useRef<HTMLButtonElement>(null);
   const refocusConsent = useRef(false);
+  const consentWasBusy = useRef(false);
 
   useEffect(() => () => controller.current?.abort(), []);
   useEffect(() => {
-    if (!refocusConsent.current || consentBusy) return;
+    // Only the end of a consent request may use the flag: an effect still pending from the first
+    // render runs when the button is pressed, after the flag is set, and would lose it.
+    const finished = consentWasBusy.current && !consentBusy;
+    consentWasBusy.current = consentBusy;
+    if (!finished || !refocusConsent.current) return;
     refocusConsent.current = false;
     if (document.activeElement === document.body || document.activeElement === null) consentButton.current?.focus();
-  }, [consentBusy, session.photo_consent]);
+  }, [consentBusy]);
   useEffect(() => {
     return () => {
       if (result) URL.revokeObjectURL(result.url);

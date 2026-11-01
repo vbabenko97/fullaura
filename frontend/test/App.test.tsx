@@ -1,4 +1,4 @@
-import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -7,6 +7,10 @@ import { normalizePhoto } from "../src/photos";
 import firstPlanJson from "./fixtures/plan-success-initial.fixture.json?raw";
 import replacementPlanJson from "./fixtures/plan-success-replacement.fixture.json?raw";
 import reducedBudgetPlanJson from "./fixtures/plan-success-reduced-budget.fixture.json?raw";
+
+// A role query on this page can take much of the library's default second on a busy CI machine.
+configure({ asyncUtilTimeout: 4000 });
+vi.setConfig({ testTimeout: 20000 });
 
 vi.mock("../src/photos", async (importOriginal) => {
   const original = await importOriginal<typeof import("../src/photos")>();
@@ -1577,7 +1581,10 @@ describe(`${FIXTURE_LABEL}: try-on`, () => {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("button", { name: "Withdraw consent" })));
     fireEvent.click(document.activeElement as HTMLElement);
     await screen.findByText(/Consent withdrawn/);
-    expect(document.activeElement).toBe(screen.getByRole("button", { name: "I agree to this processing of my photos" }));
+    // The focus moves in an effect, just after the message appears.
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "I agree to this processing of my photos" })),
+    );
   });
 
   it("says that a try-on that ran out of time may still count", async () => {
