@@ -51,6 +51,17 @@ export function savePlan(plan: SavedPlan): boolean {
   return write(() => localStorage, SAVED_KEY, plans.slice(0, MAX_SAVED));
 }
 
+/** The name to save a plan under. Plans with one style goal would read the same in the list, so a
+ * later one takes a number; a plan saved again keeps the name it has. */
+export function savedName(plan: SavedPlan, saved: SavedPlan[]): string {
+  const same = saved.find((entry) => entry.id === plan.id);
+  if (same) return same.name;
+  const taken = new Set(saved.map((entry) => entry.name));
+  let name = plan.name;
+  for (let number = 2; taken.has(name); number += 1) name = `${plan.name} (${number})`;
+  return name;
+}
+
 export function deleteSavedPlan(id: string): boolean {
   return write(
     () => localStorage,

@@ -927,6 +927,24 @@ describe(`${FIXTURE_LABEL}: shopping list and saved plans`, () => {
     fireEvent.click(screen.getByRole("button", { name: "Keep MAARKOS HEAVY WEIGHT T-SHIRT in look 1" }));
   const releaseTShirt = () => screen.findByRole("button", { name: "Release MAARKOS HEAVY WEIGHT T-SHIRT in look 1" });
 
+  it("names a second saved plan with the same goal apart from the first", async () => {
+    installServer({ plans: [firstPlan, reducedBudgetPlan] });
+    render(<App />);
+    await generate();
+    fireEvent.click(screen.getByRole("button", { name: "Save this plan" }));
+    await screen.findByText(/Saved "Relaxed office outfits" on this device/);
+    fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "160" } });
+    fireEvent.click(screen.getByRole("button", { name: "Update three looks" }));
+    await screen.findAllByText("REHMAA LEGGINGS");
+    fireEvent.click(screen.getByRole("button", { name: "Save this plan" }));
+    await screen.findByText(/Saved "Relaxed office outfits \(2\)" on this device/);
+    // Saving the same plan again replaces it and keeps its name.
+    fireEvent.click(screen.getByRole("button", { name: "Save this plan" }));
+    await screen.findByText(/Saved "Relaxed office outfits \(2\)" on this device/);
+    const names = JSON.parse(localStorage.getItem("fullaura.saved-plans.v1") ?? "[]").map((plan: Body) => plan.name);
+    expect(names).toEqual(["Relaxed office outfits (2)", "Relaxed office outfits"]);
+  });
+
   it("keeps a kept item through saving and restoring", async () => {
     installServer({ plans: [firstPlan] });
     render(<App />);

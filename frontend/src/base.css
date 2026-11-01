@@ -37,6 +37,11 @@ body {
   outline-offset: 2px;
 }
 
+/* A heading or message that a script gives the focus to is not a control, so it shows no ring. */
+[tabindex="-1"]:focus-visible {
+  outline: none;
+}
+
 a {
   color: var(--color-accent);
   text-decoration-thickness: 1px;

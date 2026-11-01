@@ -169,6 +169,8 @@ test("an invited person plans, tries on, edits, saves, restores, exports and giv
   await page.emulateMedia({ media: "print" });
   await expect(page.getByRole("heading", { name: "Your preferences" })).toBeHidden();
   await expect(page.getByRole("heading", { name: "Try a look on" })).toBeHidden();
+  // A row of the list stays whole across two printed pages.
+  await expect(page.locator(".shopping-table tbody tr").first()).toHaveCSS("break-inside", "avoid");
   await shot(page, project, "06-print");
   await page.emulateMedia({ media: "screen" });
   // An opened saved list prints from its own Print button, without the saved plans' controls.
@@ -215,6 +217,15 @@ test("the button that sends the form stays on screen, and hides no field that ha
     });
     expect(hidden, `${label} is under the button`).toBe(false);
   }
+});
+
+test("the answer I can't judge it stays on one line", async ({ page }) => {
+  await openWorkspace(page);
+  const label = page.locator("label", { has: page.getByRole("radio", { name: "I can't judge it" }) }).locator("span");
+  const box = await label.boundingBox();
+  expect(box?.height).toBeLessThan(30);
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBe(0);
 });
 
 test("sending the form opens the closed section that holds an empty required field", async ({ page }) => {
@@ -309,6 +320,7 @@ test("Try this look on takes the keyboard into the try-on panel, and a finished 
   await page.keyboard.press("Enter");
   const heading = page.getByRole("heading", { name: "Try a look on" });
   await expect(heading).toBeFocused();
+  await expect(heading).toHaveCSS("outline-style", "none"); // a heading is not a control
   await expect(heading).toBeInViewport();
   await expect(page.locator("#tryon-description")).toContainText("look 3");
   await page.keyboard.press("Tab");
