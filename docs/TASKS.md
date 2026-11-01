@@ -18,7 +18,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-14](#t-14-fixes-from-the-second-test-pass) Fixes from the second test pass | done | 2026-11-01 |
 | [T-15](#t-15-fixes-before-the-human-test) Fixes before the human test | done | 2026-11-01 |
 | [T-16](#t-16-fixes-from-the-repository-audit) Fixes from the repository audit | done | 2026-11-01 |
-| [T-17](#t-17-items-left-open-by-the-audit) Items left open by the audit | next | |
+| [T-17](#t-17-items-left-open-by-the-audit) Items left open by the audit | done | 2026-11-01 |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -149,6 +149,8 @@ A try-on no longer starts while a plan request runs, and one that finds its plan
 In WebKit, the engine of Safari, a required field in a closed section now takes the focus when the browser refuses the form; before, the section opened with the focus on nothing. The browser flow ran locally in Firefox and in WebKit, the latter with a clipboard stand-in and Option+Tab, because Playwright's WebKit cannot read the clipboard and its plain Tab skips buttons. CI runs Chromium only.
 
 CI still does not publish the image it builds; the operator builds the deployed image from the commit CI checked.
+
+The work was deployed on 2026-11-01 as `8ba7fac`, and the purge job's timeout was raised on the live job. The deployed site passed the HTTP smoke check and a check of the changed behavior with one real try-on ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). No plan ran there, so a try-on that finds its plan replaced by an update ran only in unit tests.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, the browser flow also passes in Firefox and WebKit, the purge job runs with the new timeout and otherwise unchanged settings, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check and a check of the changed behavior.
 
