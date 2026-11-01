@@ -99,10 +99,18 @@ export function PreferencesForm({
   }
 
   /** The browser cannot focus a required field in a closed section, so it refuses the submit
-   * without saying why. Opening the section lets it point at the field. */
+   * without saying why. Opening the section lets it point at the field; WebKit still focuses
+   * nothing, so the field takes the focus unless the browser gave it to an invalid field. */
   function openSectionOfInvalidField(event: FormEvent<HTMLFormElement>) {
-    const section = event.target instanceof Element ? event.target.closest("details") : null;
-    if (section) section.open = true;
+    const field = event.target;
+    if (!(field instanceof HTMLElement)) return;
+    const section = field.closest("details");
+    if (!section || section.open) return;
+    section.open = true;
+    setTimeout(() => {
+      const focused = document.activeElement as Partial<HTMLInputElement> | null;
+      if (focused?.validity?.valid !== false) field.focus();
+    });
   }
 
   return (

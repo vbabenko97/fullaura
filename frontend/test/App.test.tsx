@@ -63,6 +63,8 @@ interface Server {
   consentFails: boolean;
   /** When set, a try-on answers only once this settles, as a slow provider would. */
   previewGate: Promise<void> | null;
+  /** When set, a try-on reaches the token check only once this settles, as on a slow connection. */
+  previewEntryGate: Promise<void> | null;
   previewsAnswered: number;
   concepts: unknown[];
   /** The token of the concept the server holds now; a try-on with another one is refused. */
@@ -126,6 +128,7 @@ function installServer(
     catalogFailures: 0,
     consentFails: false,
     previewGate: null,
+    previewEntryGate: null,
     previewsAnswered: 0,
   };
   const currentToken = () => `token-${server.token}`;
@@ -240,6 +243,7 @@ function installServer(
       return json({ ...object(next), concept_token: server.conceptToken });
     }
     if (url === "/api/previews") {
+      if (server.previewEntryGate) await server.previewEntryGate;
       const conceptToken = headers["x-concept-token"];
       if (conceptToken !== undefined && conceptToken !== server.conceptToken) {
         return json({ detail: "replaced", reason: "concept_expired" }, 409);
@@ -538,6 +542,21 @@ describe(`${FIXTURE_LABEL}: access`, () => {
     fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
     expect(section?.open).toBe(true);
     expect(planRequests(server)).toEqual([]);
+    // Like WebKit, jsdom focuses nothing itself, so the field takes the focus.
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByLabelText("Color")));
+  });
+
+  it("leaves the focus on an invalid field the browser chose over one in a closed section", async () => {
+    installServer();
+    render(<App />);
+    await screen.findByText(/products\. Prices checked/);
+    fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "250" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add item" }));
+    const goal = screen.getByLabelText("What should the looks work for?");
+    goal.focus();
+    fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+    await act(async () => new Promise((resolve) => setTimeout(resolve)));
+    expect(document.activeElement).toBe(goal);
   });
 
   it("keeps an accepted invite when the catalog fails once, and loads it again on request", async () => {
@@ -1373,22 +1392,60 @@ describe(`${FIXTURE_LABEL}: try-on`, () => {
     expect(screen.queryByRole("heading", { name: "Try a look on" })).toBeNull();
   });
 
-  it("leaves an update running when a try-on meanwhile finds the plan expired and gone", async () => {
+  it("holds a new try-on while an update runs, and says why", async () => {
     const server = await prepareTryOn(installServer({ plans: [firstPlan, reducedBudgetPlan] }));
+    const model = deferred();
+    server.planGate = model.promise;
+    const tryOn = (await screen.findByRole("button", { name: "Try on look 1" })) as HTMLButtonElement;
+    expect(tryOn.disabled).toBe(false);
+    fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "160" } });
+    fireEvent.click(screen.getByRole("button", { name: "Update three looks" }));
+    await screen.findByRole("button", { name: "Planning looks…" });
+    expect(tryOn.disabled).toBe(true);
+    expect(screen.getByText(/Try-ons wait until the plan request finishes\./)).toBeTruthy();
+
+    await act(async () => model.resolve());
+    expect(await screen.findAllByText("REHMAA LEGGINGS")).not.toHaveLength(0);
+    expect(tryOn.disabled).toBe(false);
+    expect(screen.queryByText(/Try-ons wait until the plan request finishes\./)).toBeNull();
+  });
+
+  it("does not restore the old plan when a try-on finds it expired during an update", async () => {
+    const server = await prepareTryOn(installServer({ plans: [firstPlan, reducedBudgetPlan] }));
+    const connection = deferred();
+    server.previewEntryGate = connection.promise;
+    fireEvent.click(await screen.findByRole("button", { name: "Try on look 1" }));
+    await screen.findByRole("button", { name: "Cancel try-on" });
     const model = deferred();
     server.planGate = model.promise;
     fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "160" } });
     fireEvent.click(screen.getByRole("button", { name: "Update three looks" }));
     await screen.findByRole("button", { name: "Planning looks…" });
+
     server.expireToken();
-    server.restoreFails = true;
-    fireEvent.click(await screen.findByRole("button", { name: "Try on look 1" }));
-    await waitFor(() => expect(screen.queryByRole("heading", { name: "Try a look on" })).toBeNull());
-    // The update still runs, so nothing may start a second model request.
+    await act(async () => connection.resolve());
+    await screen.findByText("This plan is no longer current on the server.");
+    expect(server.requests.filter((request) => request.url === "/api/plans/restore")).toHaveLength(0);
     expect((screen.getByRole("button", { name: "Planning looks…" }) as HTMLButtonElement).disabled).toBe(true);
 
     await act(async () => model.resolve());
     expect(await screen.findAllByText("REHMAA LEGGINGS")).not.toHaveLength(0);
+  });
+
+  it("keeps the updated plan when a try-on started earlier finds its plan replaced", async () => {
+    const server = await prepareTryOn(installServer({ plans: [firstPlan, reducedBudgetPlan] }));
+    const connection = deferred();
+    server.previewEntryGate = connection.promise;
+    fireEvent.click(await screen.findByRole("button", { name: "Try on look 1" }));
+    await screen.findByRole("button", { name: "Cancel try-on" });
+    fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "160" } });
+    fireEvent.click(screen.getByRole("button", { name: "Update three looks" }));
+    await screen.findAllByText("REHMAA LEGGINGS");
+
+    await act(async () => connection.resolve());
+    await screen.findByText("This plan is no longer current on the server.");
+    expect(server.requests.filter((request) => request.url === "/api/plans/restore")).toHaveLength(0);
+    expect(screen.getAllByText("REHMAA LEGGINGS")).not.toHaveLength(0);
   });
 
   it("keeps Replace available after a try-on brings back an expired plan written as 249.90", async () => {
