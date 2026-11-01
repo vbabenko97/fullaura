@@ -24,7 +24,7 @@ import {
   preferenceKey,
   readableDetail,
   sameItem,
-  sameLooks,
+  sameWork,
   shoppingList,
   shoppingTotal,
   uncheckedText,
@@ -602,6 +602,18 @@ export function App() {
   const canDesign = canSubmit && session.design_open;
   const lines = current && catalog ? shoppingList(current.plan, catalog, current.state.owned_items, current.state.fit) : [];
   const unchecked = current && catalog ? uncheckedText(current.plan, catalog, current.state.fit) : null;
+  // A restore replaces the plan, its kept items and the form, so it asks while any of them would be lost.
+  const working = current && catalog ? savedFrom(current, catalog, locks) : null;
+  const restoreWarning = [
+    working && !saved.some((entry) => sameWork(entry, working))
+      ? "Your current plan and its kept items are not saved, and restoring replaces them. Save them first if you want to keep them."
+      : null,
+    (current ? !planCurrent : currentKey !== preferenceKey(INITIAL_PREFERENCES))
+      ? "Your changes to the preferences are not applied or saved, and restoring replaces them."
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
   const remainingPlans = session ? Math.max(0, session.plan_requests_limit - session.plan_requests_used) : 0;
   const closedText = !session
     ? null
@@ -857,7 +869,7 @@ export function App() {
                             ownedItems={current.state.owned_items}
                             ownedNotices={current.notices}
                             plan={current.plan}
-                            preferencesChanged={!planCurrent && !loading}
+                            preferencesChanged={!planCurrent && canSubmit}
                             replaceDisabled={!planCurrent || !canSubmit}
                           />
                         ))}
@@ -902,7 +914,7 @@ export function App() {
                   onDelete={deleteSaved}
                   onRestore={(entry) => void restoreSaved(entry)}
                   onSave={saveCurrent}
-                  replacesUnsaved={current !== null && !saved.some((entry) => sameLooks(entry.state.plan, current.plan))}
+                  restoreWarning={restoreWarning}
                   saved={saved}
                 />
               )}

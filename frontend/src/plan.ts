@@ -16,6 +16,7 @@ import type {
   Plan,
   Product,
   ReplacementTarget,
+  SavedPlan,
   ShoppingLine,
   Slot,
   Variant,
@@ -125,9 +126,23 @@ export function uncheckedText(plan: Plan, catalog: Catalog, fit: Fit | undefined
   return parts.length ? `${parts.join(" ")} Check these on the shop's page before you buy.` : null;
 }
 
-/** Whether two plans hold the same items in the same positions. */
-export function sameLooks(left: Plan, right: Plan): boolean {
-  return JSON.stringify(left.looks) === JSON.stringify(right.looks);
+type PlanCopy = Pick<SavedPlan, "brief" | "state">;
+
+/** Whether two copies of a plan hold the same work: its request, looks and kept items. The offers
+ * are left out, because a check can choose them again and the person did not. */
+export function sameWork(left: PlanCopy, right: PlanCopy): boolean {
+  const work = ({ brief, state }: PlanCopy) =>
+    JSON.stringify([
+      brief,
+      state.budget,
+      state.material_exclusions,
+      state.fit,
+      state.footwear,
+      state.owned_items,
+      state.locks,
+      state.plan.looks,
+    ]);
+  return work(left) === work(right);
 }
 
 /** The footwear choice from SPEC.md: with closed or open, a shoe of the other kind or with no
