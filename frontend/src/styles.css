@@ -103,10 +103,29 @@
   font-size: var(--text-sm);
 }
 
+/* A column of flex items, because a grid item could stick only inside its own row. */
 .preferences-form {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: var(--space-md);
   margin-top: var(--space-lg);
+}
+
+.form-submit {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  display: grid;
+  gap: var(--space-xs);
+  border-top: 1px solid var(--color-rule);
+  padding-block: var(--space-sm);
+  background: var(--color-sheet);
+}
+
+.disclosure-fields {
+  display: grid;
+  gap: var(--space-md);
+  margin-top: var(--space-xs);
 }
 
 .form-field {
@@ -405,10 +424,6 @@
 .primary-button.is-success {
   border-color: var(--color-success);
   background: var(--color-success);
-}
-
-.submit-help {
-  margin-top: calc(-1 * var(--space-xs));
 }
 
 .notice-error {

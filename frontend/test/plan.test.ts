@@ -179,6 +179,7 @@ describe("preferenceKey", () => {
   });
 
   it("changes when the budget, a size or another sent preference changes", () => {
+    expect(preferenceKey({ ...base, styleGoal: "" })).toBe(preferenceKey({ ...base, styleGoal: "Everyday outfits" }));
     expect(preferenceKey({ ...base, budgetAmount: "249.91" })).not.toBe(preferenceKey(base));
     expect(preferenceKey({ ...base, fit: { ...base.fit, shoeSizes: "39" } })).not.toBe(preferenceKey(base));
     expect(preferenceKey({ ...base, budgetMode: "whole_plan" })).not.toBe(preferenceKey(base));

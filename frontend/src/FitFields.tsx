@@ -107,7 +107,7 @@ export function FitFields({ fitDraft, setFitDraft }: FitFieldsProps) {
           value={fitDraft.waistSizes}
         />
         <p className="field-help">
-          Separate sizes with commas. A waist without a length, such as 33, matches every length.
+          Separate sizes with commas. Write a waist and length as 32/32; a waist alone, such as 33, matches every length.
         </p>
       </div>
 
