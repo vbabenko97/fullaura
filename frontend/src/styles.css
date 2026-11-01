@@ -291,8 +291,13 @@
 }
 
 .choice-row {
-  grid-template-columns: repeat(auto-fill, minmax(4.5rem, max-content));
+  display: flex;
+  flex-wrap: wrap;
   column-gap: var(--space-lg);
+}
+
+.choice-row .radio-choice {
+  min-width: 4.5rem;
 }
 
 .choice-row .radio-choice > span {
@@ -367,7 +372,7 @@
 }
 
 .choice-row > .field-help {
-  grid-column: 1 / -1;
+  flex-basis: 100%;
 }
 
 .feedback-issues .choice-grid {
