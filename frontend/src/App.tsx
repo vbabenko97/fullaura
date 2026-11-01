@@ -21,6 +21,7 @@ import {
   locksForReplacement,
   parseFit,
   preferenceKey,
+  readableDetail,
   sameItem,
   shoppingList,
   shoppingTotal,
@@ -226,7 +227,7 @@ export function App() {
     if (!current) return { plan: null, response: null, error: null };
     const result = await restore({
       brief: current.brief,
-      state: { ...current.state, plan: current.plan },
+      state: { ...current.state, locks, plan: current.plan },
       catalog_id: current.catalogId,
     });
     if (!result.plan && result.response) {
@@ -356,18 +357,22 @@ export function App() {
     }
   }
 
+  /** The kept items, also in the tab's working plan, so a reload keeps them. */
+  function changeLocks(next: LockedPlacement[]) {
+    setLocks(next);
+    if (current && catalog) keepCurrentPlan(savedFrom(current, catalog, next));
+  }
+
   function removeOwnedItem(id: string) {
     setPreferences((value) => ({ ...value, ownedItems: value.ownedItems.filter((item) => item.id !== id) }));
-    setLocks((value) => value.filter((lock) => !(lock.item.kind === "owned" && lock.item.id === id)));
+    changeLocks(locks.filter((lock) => !(lock.item.kind === "owned" && lock.item.id === id)));
   }
 
   function toggleLock(lookId: string, slot: Slot, item: ItemRef) {
     if (requestState === "loading") return;
-    setLocks((value) => {
-      const matches = (lock: LockedPlacement) =>
-        lock.look_id === lookId && lock.slot === slot && sameItem(lock.item, item);
-      return value.some(matches) ? value.filter((lock) => !matches(lock)) : [...value, { look_id: lookId, slot, item }];
-    });
+    const matches = (lock: LockedPlacement) =>
+      lock.look_id === lookId && lock.slot === slot && sameItem(lock.item, item);
+    changeLocks(locks.some(matches) ? locks.filter((lock) => !matches(lock)) : [...locks, { look_id: lookId, slot, item }]);
   }
 
   /** The brief and the checked fields both modes send, or what to fix first. */
@@ -467,7 +472,11 @@ export function App() {
         );
       } else {
         setRequestState("error");
-        setRequestMessage(failureMessage(result, replacement !== null, request.state.locks.length > 0));
+        setRequestMessage(
+          failureMessage(result, replacement !== null, request.state.locks.length > 0, (check) =>
+            readableDetail(check, catalog, request.state.owned_items),
+          ),
+        );
       }
     } catch (error) {
       setRequestState("error");
@@ -520,7 +529,7 @@ export function App() {
 
   function saveCurrent() {
     if (!current || !catalog) return;
-    const entry = savedFrom(current, catalog);
+    const entry = savedFrom(current, catalog, locks);
     const before = loadSavedPlans();
     if (!savePlan(entry)) {
       setSavedMessage("This browser did not allow saving.");
@@ -555,7 +564,7 @@ export function App() {
       result.response
         ? `The saved plan no longer passes today's checks: ${result.response.violations
             .slice(0, 3)
-            .map((violation) => violation.detail)
+            .map((violation) => readableDetail(violation, catalog, entry.state.owned_items))
             .join(" ")} Its saved shopping list is still available below.`
         : errorMessage(result.error),
     );
@@ -571,7 +580,9 @@ export function App() {
   const design = mode === "design";
   const currentKey = preferenceKey(preferences);
   const planCurrent = Boolean(current && current.preferenceKey === currentKey);
-  const ready = session !== null && session.beta && session.invited && session.age_confirmed;
+  // While the store cannot be read, the server cannot say the age was confirmed. Model calls are
+  // closed then, so the page stays and plans remain available, as docs/SPEC.md promises.
+  const ready = session !== null && session.beta && session.invited && (session.age_confirmed || !session.accounting);
   // One model request at a time per invite, so neither mode submits while the other runs.
   const canSubmit = ready && catalogState === "ready" && !loading && !designLoading && session.planning_open;
   const canDesign = canSubmit && session.design_open;
@@ -623,6 +634,8 @@ export function App() {
             onInvite={(code) => void openInvite(code)}
             session={session}
           />
+          {/* A saved plan stays on this device, so it can be read and deleted without the beta. */}
+          {saved.length > 0 && <SavedPlans busy={false} message={savedMessage} onDelete={deleteSaved} saved={saved} />}
         </div>
       ) : (
         <div className="workspace">
@@ -888,8 +901,13 @@ export function App() {
   );
 }
 
-function failureMessage(result: PlanResponse, replacement: boolean, hadLocks: boolean): string {
-  const details = (items: { detail: string }[]) => items.map((item) => item.detail).join("; ");
+function failureMessage(
+  result: PlanResponse,
+  replacement: boolean,
+  hadLocks: boolean,
+  readable: (check: { rule: string | null; detail: string }) => string,
+): string {
+  const details = (items: { rule: string | null; detail: string }[]) => items.map(readable).join("; ");
   if (result.outcome === "infeasible") {
     if (replacement) {
       return result.conflicts.length
@@ -914,14 +932,14 @@ function failureMessage(result: PlanResponse, replacement: boolean, hadLocks: bo
   }
   const summary = replacement
     ? "No replacement passed the catalog checks."
-    : "No plan passed the catalog checks. Adjust your preferences and try again.";
+    : "No plan passed the catalog checks. Try a higher budget or fewer limits.";
   // Fit violations come first, so a stated fit that no item meets is always explained.
   const violations = [
     ...result.violations.filter((item) => item.rule === "fit"),
     ...result.violations.filter((item) => item.rule !== "fit"),
   ]
     .slice(0, 3)
-    .map((item) => item.detail)
+    .map(readable)
     .join(" ");
   return violations ? `${summary} ${violations}` : summary;
 }
@@ -944,7 +962,7 @@ function revealResults(headingId = "results-title") {
   if (top < 0 || top > window.innerHeight) heading.scrollIntoView?.({ block: "start" });
 }
 
-function savedFrom(plan: CurrentPlan, catalog: Catalog): SavedPlan {
+function savedFrom(plan: CurrentPlan, catalog: Catalog, locks: LockedPlacement[] = plan.state.locks): SavedPlan {
   const looks = plan.plan.looks.map((look) => lookLabel(look.id));
   const name = plan.brief.style_goal.slice(0, 60) || `Plan with ${looks.length} looks`;
   return {
@@ -952,7 +970,7 @@ function savedFrom(plan: CurrentPlan, catalog: Catalog): SavedPlan {
     saved_at: new Date().toISOString(),
     name,
     brief: plan.brief,
-    state: { ...plan.state, locks: plan.state.locks, plan: plan.plan },
+    state: { ...plan.state, locks, plan: plan.plan },
     catalog_id: plan.catalogId,
     shopping_list: shoppingList(plan.plan, catalog, plan.state.owned_items),
   };

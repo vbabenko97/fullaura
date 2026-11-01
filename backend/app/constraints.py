@@ -42,6 +42,12 @@ from backend.app.state import (
 )
 
 DELIVERY_COUNTRY = "AT"
+_LETTER_SIZES = ("XXS", "XS", "S", "M", "L", "XL", "XXL", "3XL")
+_SIZE_NAMES = {
+    SizeSystem.LETTER: "Clothing sizes",
+    SizeSystem.WAIST_LENGTH: "Waist sizes",
+    SizeSystem.EU_SHOE: "EU shoe sizes",
+}
 _WORD = re.compile(r"[a-z]+(?:'[a-z]+)*")
 _NEGATIONS = frozenset({"no", "non", "not", "without"})
 # Every listed name as words, split like a description, longest first, so "synthetic rubber"
@@ -217,6 +223,37 @@ def _fit_violations(product: Product, variant: Variant, fit: Fit) -> list[Violat
             reasons.append(f"is {size.system} size {size.value}, not {sizes}")
     item = ItemRef(kind=ItemKind.CATALOG, id=variant.id)
     return [Violation(Rule.FIT, f"{variant.id} {reason}", item) for reason in reasons]
+
+
+def missing_sizes_text(state: State, catalog: Catalog, categories: Iterable[Category]) -> str:
+    """For a refusal, the sizes the catalog has for these categories and the person's line, in
+    each sizing system where it has none of the sizes the person gave. Empty when no stated size
+    explains the refusal."""
+    any_size = Fit(lines=state.fit.lines, garment_types=state.fit.garment_types)
+    available: dict[SizeSystem, list[Size]] = {}
+    for product in catalog.products:
+        if product.category in categories:
+            for variant in product.variants:
+                size = variant.normalized_size
+                if size is not None and not (
+                    fit_violations(product, variant, any_size)
+                    or footwear_violations(product, variant, state.footwear)
+                ):
+                    available.setdefault(size.system, []).append(size)
+    scope = " for your line" if state.fit.lines else ""
+    sentences = []
+    for system, name in _SIZE_NAMES.items():
+        given = [size for size in state.fit.sizes if size.system is system]
+        sizes = available.get(system, [])
+        if given and sizes and not any(_size_matches(s, g) for s in sizes for g in given):
+            values = sorted({s.value for s in sizes}, key=_size_order)
+            sentences.append(f"{name} in the catalog{scope}: {', '.join(values)}.")
+    return " ".join(sentences)
+
+
+def _size_order(value: str) -> tuple[int, str]:
+    """Letter sizes from small to large; numbers sort as text because they have equal widths."""
+    return (_LETTER_SIZES.index(value) if value in _LETTER_SIZES else 0, value)
 
 
 def footwear_violations(

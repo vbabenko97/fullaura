@@ -75,6 +75,7 @@ export function hasReplacementAlternative(
   footwear: FootwearChoice,
 ): boolean {
   const categories = SLOT_CATEGORIES[slot];
+  const current = currentItem.kind === "catalog" ? catalogItem(catalog, currentItem.id) : null;
   return (
     ownedItems.some((item) => item.id !== currentItem.id && categories.includes(item.category)) ||
     catalog.products.some(
@@ -84,11 +85,40 @@ export function hasReplacementAlternative(
         product.variants.some(
           (variant) =>
             variant.id !== currentItem.id &&
+            // Another size of the same product and color is not another item.
+            !(current?.product.id === product.id && current.variant.color === variant.color) &&
             variant.offers.length > 0 &&
             fitsCatalogVariant(product, variant, fit),
         ),
     )
   );
+}
+
+/** A check's text for a person: product names for catalog IDs, and looks and positions in words.
+ * The server's text keeps the IDs because a repair prompt needs them. */
+export function readableDetail(
+  check: { rule: string | null; detail: string },
+  catalog: Catalog | null,
+  ownedItems: OwnedItem[] = [],
+): string {
+  if (check.rule === "unknown_item") return "An item in this plan is no longer in the catalog.";
+  const names = new Map<string, string>(ownedItems.map((item) => [item.id, `your ${item.description}`]));
+  for (const product of catalog?.products ?? []) {
+    for (const variant of product.variants) {
+      names.set(variant.id, product.title);
+      for (const offer of variant.offers) names.set(offer.id, `The offer for ${product.title}`);
+    }
+  }
+  // Longest first, because an offer's ID starts with its variant's.
+  let text = check.detail;
+  for (const id of [...names.keys()].sort((a, b) => b.length - a.length)) {
+    text = text.replaceAll(id, names.get(id) ?? id);
+  }
+  return text
+    .replace(/\blook look_(\d)/g, "look $1")
+    .replace(/\blook_(\d)/g, "look $1")
+    .replace(/\b(one|mid|outer)_(piece|layer)\b/g, "$1 $2")
+    .replace(" is locked in ", " is kept in ");
 }
 
 function sizeList(text: string): string[] {

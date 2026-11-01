@@ -6,12 +6,13 @@ import type { SavedPlan } from "./types";
 
 interface SavedPlansProps {
   saved: SavedPlan[];
-  canSave: boolean;
   busy: boolean;
   message: string | null;
-  onSave: () => void;
-  onRestore: (plan: SavedPlan) => void;
   onDelete: (id: string) => void;
+  /** Left out where no plan can be saved or checked, as once the beta has closed. */
+  canSave?: boolean;
+  onSave?: () => void;
+  onRestore?: (plan: SavedPlan) => void;
 }
 
 function savedDate(value: string): string {
@@ -21,7 +22,7 @@ function savedDate(value: string): string {
     : new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short" }).format(date);
 }
 
-export function SavedPlans({ saved, canSave, busy, message, onSave, onRestore, onDelete }: SavedPlansProps) {
+export function SavedPlans({ saved, canSave = false, busy, message, onSave, onRestore, onDelete }: SavedPlansProps) {
   const [confirming, setConfirming] = useState<string | null>(null);
   const [open, setOpen] = useState<string | null>(null);
   const opened = saved.find((plan) => plan.id === open);
@@ -33,9 +34,11 @@ export function SavedPlans({ saved, canSave, busy, message, onSave, onRestore, o
           <h2 id="saved-title">Saved on this device</h2>
           <p className="field-help">Plans and shopping lists only; photos and try-ons are never saved.</p>
         </div>
-        <button className="secondary-button" disabled={!canSave || busy} onClick={onSave} type="button">
-          Save this plan
-        </button>
+        {onSave && (
+          <button className="secondary-button" disabled={!canSave || busy} onClick={onSave} type="button">
+            Save this plan
+          </button>
+        )}
       </div>
       {message && <p className="field-help" role="status">{message}</p>}
       {saved.length === 0 ? (
@@ -51,9 +54,11 @@ export function SavedPlans({ saved, canSave, busy, message, onSave, onRestore, o
                 </span>
               </div>
               <div className="look-item-actions">
-                <button className="secondary-button" disabled={busy} onClick={() => onRestore(plan)} type="button">
-                  Restore
-                </button>
+                {onRestore && (
+                  <button className="secondary-button" disabled={busy} onClick={() => onRestore(plan)} type="button">
+                    Restore
+                  </button>
+                )}
                 <button
                   aria-expanded={open === plan.id}
                   className="secondary-button"

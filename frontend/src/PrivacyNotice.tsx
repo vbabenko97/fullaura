@@ -32,7 +32,7 @@ export function PrivacyNotice({ recordsPurgeAt, designOpen }: PrivacyNoticeProps
             A try-on sends your two photos, redrawn without metadata, and a description of the look
             {designOpen && ", or of your concept in Design my look,"} to Meta's Muse Image model in Standard mode. If
             the look includes an item you own, the
-            description includes the color and words you entered for it. FullAura keeps photos and results only in
+            description includes the words you entered for it that describe clothes. FullAura keeps photos and results only in
             memory for that request. Meta does not train on Standard-mode content but may keep it for safety and abuse
             review under its <a href={META_TERMS} rel="noreferrer" target="_blank">terms</a>. FullAura turns off the
             image model's own web and image search, so it works only from your photos and that text.
