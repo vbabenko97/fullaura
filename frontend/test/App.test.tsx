@@ -63,6 +63,10 @@ interface Server {
   restoreGate: Promise<void> | null;
   /** When set, a plan request answers only once this settles, as a slow model would. */
   planGate: Promise<void> | null;
+  /** The scope each invite code opens, for tests that switch invites. */
+  inviteScopes: Partial<Record<string, string>>;
+  /** When set for a code, opening it answers only once this settles. */
+  inviteGates: Partial<Record<string, Promise<void>>>;
   /** When set, a plan request reaches the token check only once this settles, as on a slow connection. */
   planEntryGate: Promise<void> | null;
   catalogFailures: number;
@@ -132,6 +136,8 @@ function installServer(
     restoreOffline: false,
     restoreGate: null,
     planGate: null,
+    inviteScopes: {},
+    inviteGates: {},
     planEntryGate: null,
     catalogFailures: 0,
     consentFails: false,
@@ -159,9 +165,13 @@ function installServer(
     const session = server.session;
     if (url === "/api/session") return json(session);
     if (url === "/api/session/invite") {
-      if (String(object(body).code).length > 64) return json({ detail: "not valid", reason: "invalid" }, 422);
-      if (object(body).code !== "good-invite") return json({ detail: "invalid", reason: "invite_invalid" }, 403);
+      const code = String(object(body).code);
+      if (code.length > 64) return json({ detail: "not valid", reason: "invalid" }, 422);
+      const scope = server.inviteScopes[code];
+      if (code !== "good-invite" && scope === undefined) return json({ detail: "invalid", reason: "invite_invalid" }, 403);
+      if (server.inviteGates[code]) await server.inviteGates[code];
       session.invited = true;
+      if (scope !== undefined) session.invite_scope = scope;
       return json(session);
     }
     if (url === "/api/session/confirm-age") {
@@ -518,6 +528,26 @@ describe(`${FIXTURE_LABEL}: access`, () => {
       expect(screen.queryByRole("heading", { name: "look 3" })).toBeNull();
       expect(goal()).toBe("");
       expect(restores(server)).toBe(0);
+    });
+
+    it("lets the link pasted last decide when an earlier link answers late", async () => {
+      const server = tabWithPlan("invite-a", "invite-a");
+      server.inviteScopes = { "good-invite": "invite-a", "other-invite": "invite-b" };
+      render(<App />);
+      await screen.findByRole("heading", { name: "look 3" });
+      const slow = deferred();
+      server.inviteGates["good-invite"] = slow.promise;
+
+      window.location.hash = "#invite=good-invite";
+      await waitFor(() => expect(window.location.hash).toBe(""));
+      window.location.hash = "#invite=other-invite";
+      await waitFor(() => expect(window.location.hash).toBe(""));
+      await answerLate(slow);
+
+      await waitFor(() => expect(screen.queryByRole("heading", { name: "look 3" })).toBeNull());
+      await generate("The next person's goal");
+      expect(server.session.invite_scope).toBe("invite-b");
+      expect(object(JSON.parse(sessionStorage.getItem(CURRENT_PLAN_KEY) ?? "{}")).invite_scope).toBe("invite-b");
     });
 
     it.each([
