@@ -6,6 +6,8 @@ The closed beta lets a small group of invited people use the whole FullAura flow
 
 You need the invite link you were sent, a phone or computer with a current browser, and, for a try-on, two photos of yourself: a portrait and a full-body photo, upright, as JPEG, PNG or WebP. You must be 18 or older.
 
+If another participant uses the same computer, each of you must use a separate browser profile. The tabs of one browser share one invite, so a tab left open could otherwise use the other person's requests and photo consent ([D-86](DECISIONS.md#d-86-a-tabs-working-plan-stays-with-the-invite-it-was-made-under)).
+
 1. Open the invite link. FullAura asks you to confirm that you are 18 or older.
 2. If you like, describe what the looks are for, and set an occasion, season and colors under "Occasion, season and colors". Enter a budget and choose whether it applies to each look or to all three together; the line above the button says what the amount limits.
 3. Choose closed, open or any shoes, and enter your clothing line and sizes. FullAura never reads sizes from photos, so enter the sizes you buy. It compares a size only with one you gave in the same system and does not convert between them, so give a letter size, a waist and a shoe size if you use all three; above the looks it says which sizes it did not compare. Under "Avoid materials" and "Items you already own" you can exclude materials and add up to three of your own items.
