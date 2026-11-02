@@ -15,6 +15,7 @@ import re
 import threading
 import time
 import zlib
+from collections import deque
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -30,9 +31,13 @@ AGENT_TOKEN = "fullaura"
 INDEX_TTL_S = 24 * 60 * 60
 PAGE_TTL_S = 60 * 60
 RETRY_FAILED_SHOP_S = 10 * 60
+RETRY_FAILED_PAGES_S = 2 * 60  # how long a shop that keeps failing on its pages is left alone
 LOAD_WAIT_S = 60.0
 MAX_SITEMAP_FILES = 12
-PAGES_PER_SHOP = 6
+PRODUCTS_PER_SHOP = 6  # a search stops reading a shop once this many can be bought
+MAX_PAGES_PER_SEARCH = 18  # across all shops
+SEARCH_BUDGET_S = 20.0  # no new pages after this; the ones being read still finish
+FAILURES_TO_STOP = 3  # failed reads in a row that show a shop is failing, not just one page
 READERS = 4
 MAX_CACHED_PAGES = 2000
 MAX_REDIRECTS = 3
@@ -57,12 +62,16 @@ _THIS_LINE: dict[str, re.Pattern[str]] = {
     "any": re.compile(r"$^"),
 }
 _JSON_LD = re.compile(r"<script[^>]+application/ld\+json[^>]*>(.*?)</script>", re.S | re.I)
+_CANONICAL_LINK = re.compile(r"<link\b[^>]*\brel=[\"']?canonical\b[^>]*>", re.I)
+_LINK_ADDRESS = re.compile(r"\bhref=[\"']([^\"']+)", re.I)
+_IN_STOCK = re.compile(r"(?:https?://(?:www\.)?schema\.org/|schema:)?InStock")
 _LOCATION = re.compile(r"<loc>\s*(.*?)\s*</loc>")
 _SITEMAP_LINE = re.compile(r"(?im)^sitemap:\s*(\S+)")
 # A price in euros and cents; "1.299" could be either 1299 or 1.30, so it is not read as a price.
 _PRICE = re.compile(r"\d+([.,]\d{1,2})?")
 _REDIRECTS = {301, 302, 303, 307, 308}
 _ONE_SIZE = {"one size", "onesize", "einheitsgröße", "einheitsgroesse", "os"}
+_PAGE_ADDRESS_KEYS = ("url", "mainEntityOfPage")
 
 
 class ShopReadError(Exception):
@@ -124,7 +133,8 @@ class ShopProduct:
 
 @dataclass(frozen=True, slots=True)
 class ShopSearch:
-    """What a search found, and how many pages could not be read, which is not "nothing on sale"."""
+    """What a search found, and how many pages could not be read, which is not "nothing on sale". A
+    shop left alone because it keeps failing counts as one such page."""
 
     products: list[ShopProduct]
     read: int = 0
@@ -188,19 +198,119 @@ def _text(value: Any) -> str | None:
     return None
 
 
-def _products_in(data: Any) -> list[dict[str, Any]]:
+@dataclass(frozen=True, slots=True)
+class _Described:
+    """A product in a page's structured data, with the group of variants it belongs to, if any."""
+
+    product: dict[str, Any]
+    group: dict[str, Any] | None
+    main: bool  # a page's mainEntity holds it
+
+    @property
+    def family(self) -> str | None:
+        """What it is sold as: a variant takes its group's name, and each size may add to that."""
+        return _text((self.group or {}).get("name")) or _text(self.product.get("name"))
+
+
+def _products_in(
+    data: Any, main_ids: set[str], group: dict[str, Any] | None = None, main: bool = False
+) -> list[_Described]:
     if isinstance(data, list):
-        return [product for entry in data for product in _products_in(entry)]
+        return [product for entry in data for product in _products_in(entry, main_ids, group, main)]
     if not isinstance(data, dict):
         return []
     found = []
     kind = data.get("@type")
-    if kind == "Product" or (isinstance(kind, list) and "Product" in kind):
-        found.append(data)
-    for key in ("@graph", "mainEntity", "hasVariant"):
-        if key in data:
-            found.extend(_products_in(data[key]))
+    kinds = kind if isinstance(kind, list) else [kind]
+    if "Product" in kinds:
+        found.append(_Described(data, group, main))
+    if "@graph" in data:
+        found.extend(_products_in(data["@graph"], main_ids))
+    if "mainEntity" in data:
+        entity = data["mainEntity"]
+        if isinstance(entity, dict) and "@type" not in entity and "@id" in entity:
+            main_ids.add(str(entity["@id"]))
+        found.extend(_products_in(entity, main_ids, main=True))
+    if "hasVariant" in data:
+        parent = data if "Product" in kinds or "ProductGroup" in kinds else group
+        found.extend(_products_in(data["hasVariant"], main_ids, parent, main))
     return found
+
+
+def _page_key(address: Any, base: str) -> str | None:
+    """What makes two addresses one page: host and path, whatever the scheme or size chosen."""
+    if isinstance(address, dict):
+        address = address.get("@id")
+    if not isinstance(address, str) or not address.strip():
+        return None
+    try:
+        parts = urlsplit(urljoin(base, address.strip()))
+    except ValueError:
+        return None
+    host = (parts.hostname or "").removeprefix("www.")
+    return f"{host}{parts.path.rstrip('/').lower()}" if host else None
+
+
+def _names_this_page(entry: _Described, pages: set[str], base: str) -> bool | None:
+    """Whether a product says it is the one this page sells: True, False when it names another
+    page, None when it says nothing. Its page addresses decide, each of which must be this page,
+    and a variant without any is where its group is. Only without them can an @id or an offer's
+    address confirm this; neither can deny it, as neither has to be a page's address."""
+    product = entry.product
+    named = [_page_key(product.get(key), base) for key in _PAGE_ADDRESS_KEYS]
+    if not any(named) and entry.group:
+        named = [_page_key(entry.group.get(key), base) for key in _PAGE_ADDRESS_KEYS]
+    stated = {key for key in named if key}
+    if stated:
+        return stated <= pages
+    listed = product.get("offers")
+    offers = listed if isinstance(listed, list) else [listed]
+    confirming = [
+        _page_key(product.get("@id"), base),
+        *(_page_key(offer.get("url"), base) for offer in offers if isinstance(offer, dict)),
+    ]
+    return True if pages.intersection(confirming) else None
+
+
+def _main_product(html: str, addresses: tuple[str, ...]) -> tuple[str, list[_Described]] | None:
+    """What this page sells, and each variant of it, or None when the data does not say. A product
+    that names this page or its canonical address, or a mainEntity, decides, and then only what it
+    decided counts; a product that names another page is never this one. When nothing decides,
+    every product left must share one name and every block must be readable, as an unreadable one
+    may hold the real product."""
+    described: list[_Described] = []
+    main_ids: set[str] = set()
+    whole = True
+    for block in _JSON_LD.findall(html):
+        try:
+            described.extend(_products_in(json.loads(block.strip()), main_ids))
+        except (json.JSONDecodeError, RecursionError):
+            whole = False
+    base = addresses[0] if addresses else ""
+    link = _CANONICAL_LINK.search(html)
+    canonical = _LINK_ADDRESS.search(link.group(0)) if link else None
+    keys = [_page_key(address, base) for address in addresses]
+    keys.append(_page_key(canonical.group(1), base) if canonical else None)
+    pages = {key for key in keys if key}
+
+    kept: list[tuple[str, _Described]] = []
+    decided: list[tuple[str, _Described]] = []
+    for entry in described:
+        family = entry.family
+        says = _names_this_page(entry, pages, base)
+        if family is None or says is False:
+            continue
+        kept.append((family, entry))
+        ids = {str(source.get("@id")) for source in (entry.product, entry.group or {})}
+        if says or entry.main or ids & main_ids:
+            decided.append((family, entry))
+    if not decided and not whole:
+        return None
+    chosen = decided or kept
+    families = {family for family, _ in chosen}
+    if len(families) != 1:
+        return None
+    return families.pop(), [entry for _, entry in chosen]
 
 
 def _offer_sizes(product: dict[str, Any], offer: dict[str, Any]) -> tuple[str, ...]:
@@ -224,40 +334,37 @@ def _offer_price(offer: dict[str, Any]) -> int | None:
     return cents if cents > 0 else None
 
 
-def read_page(html: str) -> PageFacts | None:
-    """The facts in a page's structured data, or None when it describes no product with a price.
-    Each size can be its own product with its own offer, so every product with the first one's name
-    is read; another name is another product, such as a recommendation on the same page."""
+def read_page(html: str, *addresses: str) -> PageFacts | None:
+    """The facts in a page's structured data about the product it sells, or None when it has no
+    price for that product or does not say which one that is. A page holds other products too, such
+    as recommendations; addresses are where the page was asked for and where it was answered from.
+    Each size can be its own product with its own offer, so every variant is read."""
+    main = _main_product(html, addresses)
+    if main is None:
+        return None
+    title, variants = main
     offers: list[Offer] = []
-    title = material = None
-    for block in _JSON_LD.findall(html):
-        try:
-            products = _products_in(json.loads(block.strip()))
-        except (json.JSONDecodeError, RecursionError):
-            continue
-        for product in products:
-            name = _text(product.get("name"))
-            if name is None or (title is not None and name != title):
+    material = None
+    for entry in variants:
+        product = entry.product
+        listed = product.get("offers") or []
+        for offer in listed if isinstance(listed, list) else [listed]:
+            if not isinstance(offer, dict):
                 continue
-            listed = product.get("offers") or []
-            for offer in listed if isinstance(listed, list) else [listed]:
-                if not isinstance(offer, dict):
-                    continue
-                cents = _offer_price(offer)
-                if cents is None:
-                    continue
-                title = name
-                material = material or _text(product.get("material"))
-                offers.append(
-                    Offer(
-                        cents,
-                        _text(offer.get("priceCurrency")),
-                        str(offer.get("availability", "")).endswith("InStock"),
-                        _offer_sizes(product, offer),
-                        _text(product.get("color")) or _text(offer.get("color")),
-                    )
+            cents = _offer_price(offer)
+            if cents is None:
+                continue
+            material = material or _text(product.get("material"))
+            offers.append(
+                Offer(
+                    cents,
+                    _text(offer.get("priceCurrency")),
+                    _IN_STOCK.fullmatch(str(offer.get("availability", "")).strip()) is not None,
+                    _offer_sizes(product, offer),
+                    _text(product.get("color")) or _text(offer.get("color")),
                 )
-    return PageFacts(title, material, tuple(offers)) if title and offers else None
+            )
+    return PageFacts(title, material, tuple(offers)) if offers else None
 
 
 def buyable(url: str, shop: str, facts: PageFacts, sizes: Iterable[str]) -> ShopProduct | None:
@@ -282,6 +389,37 @@ def buyable(url: str, shop: str, facts: PageFacts, sizes: Iterable[str]) -> Shop
     return ShopProduct(
         url, shop, facts.title, cheapest.price_cents, cheapest.color, facts.material, checked
     )
+
+
+@dataclass(slots=True)
+class _Reading:
+    """One shop's part in a search: what is left to read, and how that has gone so far."""
+
+    shop: Shop
+    robots: Robots
+    addresses: deque[str]
+    found: int = 0
+    failures: int = 0  # in a row
+
+
+def _next_portion(readings: list[_Reading], pages_left: int) -> list[tuple[_Reading, str]]:
+    """The next pages to read: an equal share from each shop that still needs some, and no more at
+    once than there are readers, so that the time limit is looked at often."""
+    needing = [
+        reading
+        for reading in readings
+        if reading.addresses
+        and reading.found < PRODUCTS_PER_SHOP
+        and reading.failures < FAILURES_TO_STOP
+    ]
+    portion: list[tuple[_Reading, str]] = []
+    for reading in needing:
+        share = max(1, READERS // len(needing))
+        count = min(share, PRODUCTS_PER_SHOP - reading.found, pages_left - len(portion))
+        while count > 0 and reading.addresses:
+            portion.append((reading, reading.addresses.popleft()))
+            count -= 1
+    return portion
 
 
 def _unzipped(content: bytes) -> bytes:
@@ -317,12 +455,14 @@ class ShopIndex:
         self._addresses: dict[str, tuple[float, list[str]]] = {}
         self._robots: dict[str, Robots] = {}
         self._pages: dict[str, tuple[float, PageFacts | None]] = {}
+        self._down_until: dict[str, float] = {}
 
     def _get(
         self, shop: Shop, url: str, robots: Robots | None, limit: int
-    ) -> tuple[int, str, bytes]:
-        """Status, content type and body of an address on the shop's own host, following redirects
-        only to pages it owns and robots.txt allows, and reading at most limit bytes."""
+    ) -> tuple[int, str, bytes, str]:
+        """Status, content type, body and final address of an address on the shop's own host,
+        following redirects only to pages it owns and robots.txt allows, and reading at most limit
+        bytes."""
         started = time.monotonic()
         for _ in range(MAX_REDIRECTS + 1):
             if not shop.owns(url) or (robots is not None and not robots.allows(url)):
@@ -337,11 +477,11 @@ class ShopIndex:
                     if len(body) > limit or time.monotonic() - started > READ_BUDGET_S:
                         raise ShopReadError("answer too large or too slow")
                 kind = response.headers.get("content-type", "").lower()
-                return response.status_code, kind, bytes(body)
+                return response.status_code, kind, bytes(body), url
         raise ShopReadError("too many redirects")
 
     def _load_shop(self, shop: Shop) -> tuple[Robots, list[str]]:
-        status, kind, body = self._get(shop, f"{shop.base}/robots.txt", None, MAX_PAGE_BYTES)
+        status, kind, body, _ = self._get(shop, f"{shop.base}/robots.txt", None, MAX_PAGE_BYTES)
         text = body.decode("utf-8", "ignore")
         robots = Robots.parse(text) if status < 400 and "html" not in kind else None
         if robots is None:
@@ -358,7 +498,7 @@ class ShopIndex:
                 continue
             seen.add(url)
             files += 1
-            status, _, content = self._get(shop, url, robots, MAX_SITEMAP_BYTES)
+            status, _, content, _ = self._get(shop, url, robots, MAX_SITEMAP_BYTES)
             if status >= 400:
                 continue
             sitemap = _unzipped(content).decode("utf-8", "ignore")
@@ -414,31 +554,46 @@ class ShopIndex:
             cached = self._pages.get(url)
         if cached and cached[0] > now:
             return cached[1]
-        status, _, body = self._get(shop, url, robots, MAX_PAGE_BYTES)
+        status, _, body, final = self._get(shop, url, robots, MAX_PAGE_BYTES)
         if status not in (200, 404, 410):
             raise ShopReadError(f"page answered {status}")
-        facts = read_page(body.decode("utf-8", "ignore")) if status == 200 else None
+        facts = read_page(body.decode("utf-8", "ignore"), url, final) if status == 200 else None
+        if status == 200 and facts is None:
+            logger.info("shop page names no single priced product: %s", shop.name)
         with self._lock:
             if len(self._pages) >= MAX_CACHED_PAGES:
                 self._pages.clear()
             self._pages[url] = (now + PAGE_TTL_S, facts)
         return facts
 
+    def pages_down(self) -> bool:
+        """Whether every shop with a list keeps failing on its pages, so no search can read any."""
+        now = self._clock()
+        with self._lock:
+            listed = [name for name, entry in self._addresses.items() if entry[1]]
+            return bool(listed) and all(now < self._down_until.get(name, 0.0) for name in listed)
+
     def search(
         self, words: Iterable[str], line: Line, sizes: Iterable[str], budget_cents: int
     ) -> ShopSearch:
         """Products whose address holds every word, read from their pages, that can be bought now
-        within the budget. The person's clothing line comes first, and the others stay out."""
+        within the budget. The person's clothing line comes first, and the others stay out. Pages
+        are read a few at a time until each shop has enough products, has no address left or keeps
+        failing, or until the search reaches its limit of pages or of time. A shop that keeps
+        failing is then left alone for a while, and the other shops are read as usual."""
         self.load(wait_s=0)
         wanted = [word.strip().lower() for word in words if len(word.strip()) >= 3]
         if not wanted:
             return ShopSearch([])
         sizes = list(sizes)
-        chosen: list[tuple[Shop, str, Robots]] = []
+        readings: list[_Reading] = []
+        left_alone = 0
         for shop in self._shops:
+            now = self._clock()
             with self._lock:
                 entry = self._addresses.get(shop.name)
                 robots = self._robots.get(shop.name)
+                down = now < self._down_until.get(shop.name, 0.0)
             if entry is None or robots is None:
                 continue
             matches = [
@@ -448,27 +603,41 @@ class ShopIndex:
                 and not _OTHER_LINE[line].search(url.lower())
                 and robots.allows(url)
             ]
+            if down:
+                left_alone += bool(matches)
+                continue
             matches.sort(key=lambda url: not _THIS_LINE[line].search(url.lower()))
-            chosen.extend((shop, url, robots) for url in matches[:PAGES_PER_SHOP])
-        if not chosen:
-            return ShopSearch([])
+            readings.append(_Reading(shop, robots, deque(matches)))
 
-        def read(entry: tuple[Shop, str, Robots]) -> PageFacts | None | ShopReadError:
+        def read(entry: tuple[_Reading, str]) -> PageFacts | None | ShopReadError:
             try:
-                return self._facts(*entry)
+                return self._facts(entry[0].shop, entry[1], entry[0].robots)
             except Exception as error:  # a page's bad answer leaves the other pages to read
                 logger.warning("shop page not read: %s", type(error).__name__)
                 return ShopReadError()
 
+        products: list[ShopProduct] = []
+        read_count = failed = 0
+        deadline = self._clock() + SEARCH_BUDGET_S
         with ThreadPoolExecutor(READERS) as readers:
-            pages = list(readers.map(read, chosen))
-        products = []
-        failed = 0
-        for (shop, url, _), facts in zip(chosen, pages, strict=True):
-            if isinstance(facts, ShopReadError):
-                failed += 1
-                continue
-            product = buyable(url, shop.name, facts, sizes) if facts else None
-            if product and product.price_cents <= budget_cents:
-                products.append(product)
-        return ShopSearch(products, len(chosen) - failed, failed)
+            while self._clock() < deadline:
+                portion = _next_portion(readings, MAX_PAGES_PER_SEARCH - read_count - failed)
+                if not portion:
+                    break
+                for (reading, url), facts in zip(portion, readers.map(read, portion), strict=True):
+                    if isinstance(facts, ShopReadError):
+                        failed += 1
+                        reading.failures += 1
+                        continue
+                    read_count += 1
+                    reading.failures = 0
+                    product = buyable(url, reading.shop.name, facts, sizes) if facts else None
+                    if product and product.price_cents <= budget_cents:
+                        products.append(product)
+                        reading.found += 1
+        back_at = self._clock() + RETRY_FAILED_PAGES_S
+        with self._lock:
+            for reading in readings:
+                if reading.failures >= FAILURES_TO_STOP:
+                    self._down_until[reading.shop.name] = back_at
+        return ShopSearch(products, read_count, failed + left_alone)

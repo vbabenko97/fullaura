@@ -10,6 +10,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.main import create_app
+from backend.app.pilot import MAX_RECENT_RETURNS
 from backend.app.shopper import (
     FIND_RESERVE_MICRO_USD,
     Find,
@@ -18,10 +19,20 @@ from backend.app.shopper import (
     FindResult,
     FindSlot,
     FindUsage,
+    ShopAgent,
 )
-from backend.app.shops import ShopProduct
+from backend.app.shops import (
+    FAILURES_TO_STOP,
+    RETRY_FAILED_PAGES_S,
+    Shop,
+    ShopIndex,
+    ShopProduct,
+)
 from backend.app.store import MemoryStore
+from scripts.pilot_report import OUTCOME_CATEGORY
 from tests.test_api import OTHER_CODE, FakeEditor, join, jpeg, settings
+from tests.test_shopper import FakeModel, answer, call
+from tests.test_shops import SHOP, listing, offer, page, product, serve
 
 JACKET = ShopProduct(
     "https://shop.example/p/jacke", "Shop", "Winterjacke", 9000, "schwarz", None, False
@@ -239,6 +250,169 @@ def test_shops_that_cannot_be_read_count_nothing(tmp_path: Path) -> None:
         assert refused.json()["reason"] == "shops_unavailable"
         assert session(client)["plan_requests_used"] == 0
     assert agent.requests == []
+
+
+SHOPS_DOWN = FindResult(
+    FindOutcome.SHOPS_UNAVAILABLE,
+    message="The shops could not be read right now. Try again later.",
+    usage=FindUsage(fresh_tokens=100, output_tokens=10),
+)
+
+
+def test_shop_pages_that_all_fail_give_the_request_back_and_keep_the_cost(
+    tmp_path: Path, store: MemoryStore
+) -> None:
+    app = create_app(settings(tmp_path), store=store, shop_agent=FakeAgent(SHOPS_DOWN))
+    operation = str(uuid.uuid4())
+    with TestClient(app) as client:
+        join(client)
+        result = lines(find(client, operation=operation))[-1]["result"]
+        assert result["outcome"] == "shops_unavailable"
+        assert result["counted"] is False
+        assert result["find_token"] is None
+        assert session(client)["plan_requests_used"] == 0
+    cost = SHOPS_DOWN.usage.cost_micro_usd
+    ledger = store.read("ledger.json")
+    assert ledger is not None
+    assert ledger.data["spent"]["planning"] == cost
+    assert ledger.data["reserved"]["planning"] == 0
+    assert ledger.data["running"] == {}
+    record = store.read(f"operations/{operation}.json")
+    assert record is not None
+    assert (record.data["outcome"], record.data["cost"]) == ("shops_unavailable", cost)
+
+
+def test_a_search_of_unknown_cost_gives_the_request_back_and_keeps_its_reservation(
+    tmp_path: Path, store: MemoryStore
+) -> None:
+    unknown = FindResult(FindOutcome.SHOPS_UNAVAILABLE, cost_known=False)
+    app = create_app(settings(tmp_path), store=store, shop_agent=FakeAgent(unknown))
+    with TestClient(app) as client:
+        join(client)
+        assert lines(find(client))[-1]["result"]["counted"] is False
+        assert session(client)["plan_requests_used"] == 0
+    ledger = store.read("ledger.json")
+    assert ledger is not None and ledger.data["spent"]["planning"] == FIND_RESERVE_MICRO_USD
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        FindResult(FindOutcome.NO_MATCH, message="Nothing suits."),
+        FindResult(FindOutcome.NO_MATCH, message="Nothing. Some shop pages could not be read."),
+        FindResult(FindOutcome.FAILED, message="The shops could not be read right now."),
+    ],
+)
+def test_an_empty_result_or_a_partial_failure_still_counts(
+    tmp_path: Path, result: FindResult
+) -> None:
+    with TestClient(create_app(settings(tmp_path), shop_agent=FakeAgent(result))) as client:
+        join(client)
+        assert lines(find(client))[-1]["result"]["counted"] is True
+        assert session(client)["plan_requests_used"] == 1
+
+
+def test_a_repeated_operation_after_a_failure_calls_nothing_and_gives_back_once(
+    tmp_path: Path,
+) -> None:
+    agent = FakeAgent(SHOPS_DOWN)
+    operation = str(uuid.uuid4())
+    with TestClient(create_app(settings(tmp_path), shop_agent=agent)) as client:
+        join(client)
+        agent.result = FindResult(FindOutcome.NO_MATCH, message="Nothing.")
+        lines(find(client))  # so that a second return would show in the count
+        assert session(client)["plan_requests_used"] == 1
+        agent.result = SHOPS_DOWN
+        assert lines(find(client, operation=operation))[-1]["result"]["counted"] is False
+        assert session(client)["plan_requests_used"] == 1
+        calls = len(agent.requests)
+        repeat = find(client, operation=operation)
+        assert repeat.status_code == 409
+        assert repeat.json()["reason"] == "duplicate"
+        assert len(agent.requests) == calls
+        assert session(client)["plan_requests_used"] == 1
+
+
+def test_shops_that_cannot_be_read_never_use_up_a_request(tmp_path: Path) -> None:
+    agent = FakeAgent(SHOPS_DOWN)
+    with TestClient(create_app(settings(tmp_path), shop_agent=agent)) as client:
+        join(client)
+        counted = [lines(find(client))[-1]["result"]["counted"] for _ in range(MAX_RECENT_RETURNS)]
+        assert counted == [False] * MAX_RECENT_RETURNS
+        assert session(client)["plan_requests_used"] == 0
+
+        # Refused instead of charged, before any model call.
+        calls = len(agent.requests)
+        refused = find(client)
+        assert refused.status_code == 503
+        assert refused.json()["reason"] == "shops_unavailable"
+        assert len(agent.requests) == calls
+        assert session(client)["plan_requests_used"] == 0
+
+
+def test_a_failing_shop_leaves_other_invites_and_other_shops_working(tmp_path: Path) -> None:
+    shoes = "https://shop.example/p/schuh-0"
+    model = FakeModel(
+        call("jacke"), call("schuh"), answer([{"url": shoes, "slot": "footwear", "why": "Closed"}])
+    )
+    all_routes = {
+        **listing("https://down.example", [503] * FAILURES_TO_STOP),
+        **listing("https://shop.example", [page(product("Schuh", offer("50.00")))], word="schuh"),
+    }
+    down = Shop("Down", "https://down.example", "/p/")
+    agent = ShopAgent(model, ShopIndex((down, SHOP), serve(all_routes)))
+    with TestClient(create_app(settings(tmp_path), shop_agent=agent)) as client:
+        join(client)
+        first = lines(find(client))[-1]["result"]
+        assert (first["outcome"], first["counted"]) == ("shops_unavailable", False)
+        client.cookies.clear()
+        join(client, OTHER_CODE)
+        second = lines(find(client))[-1]["result"]
+        assert second["outcome"] == "success"
+        assert [found["url"] for found in second["finds"]] == [shoes]
+
+
+def test_real_pages_failing_behind_a_readable_sitemap_stop_further_paid_calls(
+    tmp_path: Path, store: MemoryStore
+) -> None:
+    now = [0.0]
+    model = FakeModel(call("jacke"))
+    all_routes = listing("https://shop.example", [503] * FAILURES_TO_STOP)
+    index = ShopIndex((SHOP,), serve(all_routes), clock=lambda: now[0])
+    app = create_app(settings(tmp_path), store=store, shop_agent=ShopAgent(model, index))
+    operation = str(uuid.uuid4())
+    with TestClient(app) as client:
+        join(client)
+        result = lines(find(client, operation=operation))[-1]["result"]
+        assert (result["outcome"], result["counted"]) == ("shops_unavailable", False)
+        assert session(client)["plan_requests_used"] == 0
+        ledger = store.read("ledger.json")
+        assert ledger is not None and ledger.data["spent"]["planning"] > 0
+
+        # While the pages are known to be down, a new search is refused before anything is spent.
+        refused = find(client)
+        assert refused.status_code == 503
+        assert refused.json()["reason"] == "shops_unavailable"
+        assert len(model.payloads) == 1
+
+        # Later the same operation is still a duplicate, so it never pays for a second call.
+        now[0] += RETRY_FAILED_PAGES_S + 1
+        assert find(client, operation=operation).json()["reason"] == "duplicate"
+        assert len(model.payloads) == 1
+        assert session(client)["plan_requests_used"] == 0
+
+
+def test_a_failed_settling_leaves_the_request_counted(tmp_path: Path) -> None:
+    store = BrokenStore()
+    agent = BreakingAgent(store)
+    agent.result = SHOPS_DOWN
+    with TestClient(create_app(settings(tmp_path), store=store, shop_agent=agent)) as client:
+        join(client)
+        assert lines(find(client))[-1]["result"]["counted"] is True
+
+
+def test_every_outcome_of_a_search_has_its_place_in_the_pilot_report() -> None:
+    assert {OUTCOME_CATEGORY[outcome.value] for outcome in FindOutcome} == {"succeeded", "failed"}
 
 
 class BrokenStore(MemoryStore):

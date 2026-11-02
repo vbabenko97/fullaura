@@ -32,6 +32,7 @@ const FIND = {
   price_cents: 9000,
   size_checked: false,
   slot: "outer_layer",
+  slot_checked: true,
   why: "Warm enough",
 };
 const RESULT = {
@@ -41,6 +42,7 @@ const RESULT = {
   scope: "item",
   budget_cents: 15000,
   total_cents: 9000,
+  counted: true,
   finds: [FIND],
 };
 
@@ -163,6 +165,51 @@ describe("the shopping agent's page", () => {
     fireEvent.click(screen.getByRole("button", { name: "Find it" }));
     expect((await screen.findByRole("alert")).textContent).toBe("Nothing warm enough. This request still counts against your invite.");
     expect(screen.queryByRole("heading", { name: "Try a look on" })).toBeNull();
+  });
+
+  it("says that a request did not count when no shop page could be read", async () => {
+    vi.stubGlobal("fetch", async () => stream({ result: { ...RESULT, outcome: "shops_unavailable", message: "The shops could not be read right now. Try again later.", find_token: null, finds: [], total_cents: 0, counted: false } }));
+    const onFinished = show();
+    fill();
+    fireEvent.click(screen.getByRole("button", { name: "Find it" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("The shops could not be read right now. Try again later. This request did not count against your invite.");
+    expect(onFinished).toHaveBeenCalled();
+  });
+
+  it("keeps the agent's judgment and the code's checks apart", async () => {
+    vi.stubGlobal("fetch", async () => stream({ result: RESULT }));
+    show();
+    expect(screen.getByText(/Tom Tailor, Tchibo and Giesswein by words in their product addresses/)).toBeTruthy();
+    expect(screen.queryByText(/ship to Austria/)).toBeNull();
+    fill();
+    fireEvent.click(screen.getByRole("button", { name: "Find it" }));
+    await screen.findByRole("heading", { name: "Winterjacke" });
+    expect(screen.getByText(/It did not check warmth, whether the items go together or your style/)).toBeTruthy();
+    expect(screen.getByText("Agent's reason: Warm enough")).toBeTruthy();
+    expect(screen.queryByText(/Kind of item not confirmed/)).toBeNull();
+    expect(screen.getByText("Outer layer")).toBeTruthy();
+  });
+
+  it("says when a shop's title does not confirm the kind of item", async () => {
+    vi.stubGlobal("fetch", async () => stream({ result: { ...RESULT, finds: [{ ...FIND, title: "Beach", slot: "footwear", slot_checked: false }] } }));
+    show();
+    fill();
+    fireEvent.click(screen.getByRole("button", { name: "Find it" }));
+    await screen.findByRole("heading", { name: "Beach" });
+    expect(screen.getByText(/Kind of item not confirmed for these items/)).toBeTruthy();
+    expect(screen.getByText("Footwear (not confirmed)")).toBeTruthy();
+  });
+
+  it("says what the upper body changes, and what the try-on is made from", async () => {
+    vi.stubGlobal("fetch", async () => stream({ result: RESULT }));
+    show();
+    expect(screen.queryByText(/Upper body limits what the agent chooses/)).toBeNull();
+    fireEvent.click(screen.getByRole("radio", { name: "Upper body" }));
+    expect(screen.getByText(/A try-on still needs a full-body photo and draws you from head to toe/)).toBeTruthy();
+    fill();
+    fireEvent.click(screen.getByRole("button", { name: "Find it" }));
+    await screen.findByRole("heading", { name: "Winterjacke" });
+    expect(screen.getByText(/each product's title and color\. No photo of the product is used/)).toBeTruthy();
   });
 
   it("explains a refusal from the server", async () => {

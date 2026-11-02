@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 import httpx2
 import pytest
 
+from backend.app.catalog import Catalog, Category
 from backend.app.shopper import (
     ATTEMPTS_KEY,
     FIND_RESERVE_MICRO_USD,
@@ -21,6 +23,8 @@ from backend.app.shopper import (
     Scope,
     ShopAgent,
     ShopModelError,
+    _slot_problem,
+    find_json,
     find_prompt,
 )
 from backend.app.shops import ShopProduct, ShopSearch
@@ -38,6 +42,9 @@ class FakeIndex:
 
     def load(self, wait_s: float = 0) -> int:
         return len(ALL)
+
+    def pages_down(self) -> bool:
+        return False
 
     def search(self, words: Any, line: Any, sizes: Any, budget_cents: int) -> ShopSearch:
         self.searches.append(list(words))
@@ -299,9 +306,10 @@ def test_shops_that_cannot_be_read_are_not_called_nothing_on_sale() -> None:
     model = FakeModel(call("hemd"), answer(why_not="Nothing is on sale."))
     steps: list[str] = []
     result = ShopAgent(model, DownIndex())(request(), steps.append)  # type: ignore[arg-type]
-    assert result.outcome is FindOutcome.FAILED
+    assert result.outcome is FindOutcome.SHOPS_UNAVAILABLE
     assert "could not be read" in str(result.message)
     assert len(model.payloads) == 1  # no more paid calls
+    assert result.usage.fresh_tokens == 100  # the call that was made is still its cost
     assert not any("on sale within your budget" in step for step in steps)
 
 
@@ -310,8 +318,238 @@ def test_no_shop_list_means_no_model_call() -> None:
     agent = ShopAgent(model, NoListIndex())  # type: ignore[arg-type]
     assert agent.ready() is False
     result = agent(request(), lambda _: None)
-    assert result.outcome is FindOutcome.FAILED
+    assert result.outcome is FindOutcome.SHOPS_UNAVAILABLE
     assert model.payloads == []
+
+
+class PagesDownIndex(FakeIndex):
+    def pages_down(self) -> bool:
+        return True
+
+
+def test_shops_whose_pages_just_failed_are_not_ready() -> None:
+    agent = ShopAgent(FakeModel(), PagesDownIndex())  # type: ignore[arg-type]
+    assert agent.ready() is False
+
+
+class ScriptedIndex(FakeIndex):
+    def __init__(self, *searches: ShopSearch) -> None:
+        super().__init__()
+        self.answers = list(searches)
+
+    def search(self, words: Any, line: Any, sizes: Any, budget_cents: int) -> ShopSearch:
+        return self.answers.pop(0)
+
+
+def run_on(model: FakeModel, index: FakeIndex) -> tuple[Any, list[str]]:
+    steps: list[str] = []
+    return ShopAgent(model, index)(request(), steps.append), steps  # type: ignore[arg-type]
+
+
+def test_nothing_on_sale_is_not_a_shop_failure() -> None:
+    model = FakeModel(call("hemd"), answer(why_not="Nothing suits."))
+    result, _ = run_on(model, ScriptedIndex(ShopSearch([], 6, 0)))
+    assert result.outcome is FindOutcome.NO_MATCH
+    assert result.message == "Nothing suits."
+
+
+def test_some_pages_failing_is_not_a_shop_failure_and_is_said() -> None:
+    model = FakeModel(call("hemd"), answer(why_not="Nothing suits."))
+    result, steps = run_on(model, ScriptedIndex(ShopSearch([], 2, 4)))
+    assert result.outcome is FindOutcome.NO_MATCH
+    assert result.message == "Nothing suits. Some shop pages could not be read."
+    assert (
+        "Read the shops' pages: 0 on sale within your budget; some pages could not be read" in steps
+    )
+
+
+def test_a_product_found_while_some_pages_fail_is_still_chosen() -> None:
+    model = FakeModel(call("hemd"), answer([item(SHIRT, "top")]))
+    result, _ = run_on(model, ScriptedIndex(ShopSearch([SHIRT], 1, 5)))
+    assert result.outcome is FindOutcome.SUCCESS
+    assert result.message is None
+
+
+def test_pages_read_earlier_mean_the_shops_were_not_wholly_unavailable() -> None:
+    model = FakeModel(call("hemd"), call("hose"))
+    result, _ = run_on(model, ScriptedIndex(ShopSearch([], 3, 0), ShopSearch([], 0, 3)))
+    assert result.outcome is FindOutcome.FAILED
+    assert "could not be read" in str(result.message)
+
+
+def test_a_failed_search_after_products_were_shown_leaves_the_choice_open() -> None:
+    model = FakeModel(call("hemd"), call("hose"), answer([item(SHIRT, "top")]))
+    result, _ = run_on(model, ScriptedIndex(ShopSearch([SHIRT], 1, 0), ShopSearch([], 0, 3)))
+    assert result.outcome is FindOutcome.SUCCESS
+
+
+def titled(title: str) -> ShopProduct:
+    return ShopProduct(f"https://shop.example/p/{title}", "Shop", title, 1000, None, None, False)
+
+
+class TitledIndex(FakeIndex):
+    def __init__(self, *products: ShopProduct) -> None:
+        super().__init__()
+        self.products = list(products)
+
+    def search(self, words: Any, line: Any, sizes: Any, budget_cents: int) -> ShopSearch:
+        return ShopSearch(self.products, len(self.products))
+
+
+def choose(scope: Scope, *chosen: tuple[str, str]) -> tuple[Any, FakeModel]:
+    """Offer these titles and have the model choose them in these slots, then give up."""
+    products = {title: titled(title) for title, _ in chosen}
+    picks = [item(products[title], slot) for title, slot in chosen]
+    model = FakeModel(call("x"), answer(picks), answer(why_not="Given up."))
+    index = TitledIndex(*products.values())
+    return ShopAgent(model, index)(request(scope), lambda _: None), model  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize(
+    ("title", "slot"),
+    [
+        ("CORD-MINI-KLEID MIT RUNDHALS", "top"),
+        ("Hemdblusenkleid in blau von Tom Tailor", "top"),
+        ("Kleid, rot", "top"),
+        ("Kleid", "mid_layer"),
+        ("Winterjacke", "top"),
+        ("Strickjacke", "bottom"),
+        ("Parka", "footwear"),
+        ("Basic T-Shirt mit Rundhalsausschnitt", "outer_layer"),
+        ("Hemd", "footwear"),
+        ("Strickpullover", "bottom"),
+        ("Relaxed Chino Hose in schwarz von Tom Tailor", "top"),
+        ("LENOVAA SATIN-ROCK", "one_piece"),
+        ("Tom Tailor Sneaker", "accessory"),
+        ("Schneestiefeletten mit Stickerei", "top"),
+        ("Handschuhe aus Leder", "footwear"),
+        ("Sneakersocken", "footwear"),
+        ("Schal", "top"),
+    ],
+)
+def test_a_slot_the_title_rules_out_is_refused(title: str, slot: str) -> None:
+    result, model = choose(Scope.ITEM, (title, slot))
+    assert ", not " in model.payloads[-1]["input"]
+    assert result.outcome is FindOutcome.NO_MATCH
+
+
+@pytest.mark.parametrize(
+    ("title", "slot"),
+    [
+        ("CORD-MINI-KLEID MIT RUNDHALS", "one_piece"),
+        ("Hemd (blau)", "top"),
+        ("Jeanshemd", "top"),
+        ("Jeansjacke", "outer_layer"),
+        ("Hose mit Gürtel", "bottom"),
+        ("T-Shirt mit Rock-Print", "top"),
+        ("Kleid mit Gürtel", "one_piece"),
+        ("Handschuhe aus Leder", "accessory"),
+        ("Sneakersocken", "accessory"),
+        ("Pullover", "top"),
+        ("Pullover", "mid_layer"),
+        ("Strickjacke", "mid_layer"),
+        ("Strickjacke", "outer_layer"),
+        ("SELVEDGE JEANS-OVERSHIRT", "top"),
+        ("SELVEDGE JEANS-OVERSHIRT", "outer_layer"),
+        ("Merino Runners MEN", "footwear"),
+    ],
+)
+def test_a_slot_the_title_allows_is_confirmed(title: str, slot: str) -> None:
+    result, _ = choose(Scope.ITEM, (title, slot))
+    assert result.outcome is FindOutcome.SUCCESS
+    assert result.finds[0].slot_checked is True
+
+
+@pytest.mark.parametrize(("title", "slot"), [("Beach", "footwear"), ("Kommod Classic", "top")])
+def test_a_title_that_names_no_kind_is_shown_as_not_confirmed(title: str, slot: str) -> None:
+    result, _ = choose(Scope.ITEM, (title, slot))
+    assert result.outcome is FindOutcome.SUCCESS
+    assert result.finds[0].slot_checked is False
+    wanted = request(Scope.ITEM)
+    assert find_json(result, wanted, None)["finds"][0]["slot_checked"] is False
+
+
+def test_a_title_that_names_two_kinds_cannot_fill_one_position() -> None:
+    result, model = choose(Scope.ITEM, ("Bluse und Rock", "top"))
+    assert "more than one kind" in model.payloads[-1]["input"]
+    assert result.outcome is FindOutcome.NO_MATCH
+
+
+def test_two_things_of_one_kind_can_fill_one_position() -> None:
+    result, _ = choose(Scope.ITEM, ("Mütze und Schal", "accessory"))
+    assert result.outcome is FindOutcome.SUCCESS
+    assert result.finds[0].slot_checked is True
+
+
+@pytest.mark.parametrize(
+    ("scope", "chosen"),
+    [
+        (Scope.UPPER_BODY, [("T-Shirt", "top")]),
+        (Scope.UPPER_BODY, [("Pullover", "top"), ("Winterjacke", "outer_layer")]),
+        (
+            Scope.UPPER_BODY,
+            [("Hemd", "top"), ("Pullover", "mid_layer"), ("Parka", "outer_layer")],
+        ),
+        (Scope.ITEM, [("Sneaker", "footwear")]),
+        (Scope.ITEM, [("Kleid", "one_piece")]),
+        (Scope.LOOK, [("T-Shirt", "top"), ("Jeans", "bottom"), ("Sneaker", "footwear")]),
+        (Scope.LOOK, [("Kleid", "one_piece"), ("Boots", "footwear")]),
+        (
+            Scope.LOOK,
+            [("Hemd", "top"), ("Hose", "bottom"), ("Schuhe", "footwear"), ("Parka", "outer_layer")],
+        ),
+    ],
+)
+def test_each_scope_accepts_what_it_asks_for(scope: Scope, chosen: list[tuple[str, str]]) -> None:
+    result, _ = choose(scope, *chosen)
+    assert result.outcome is FindOutcome.SUCCESS
+    assert all(find.slot_checked for find in result.finds)
+
+
+@pytest.mark.parametrize(
+    ("scope", "chosen", "problem"),
+    [
+        (Scope.UPPER_BODY, [("Kleid", "top")], "is a one-piece, not top"),
+        (Scope.UPPER_BODY, [("Kleid", "one_piece")], "only upper-body"),
+        (Scope.UPPER_BODY, [("Pullover", "mid_layer")], "a top is missing"),
+        (Scope.UPPER_BODY, [("T-Shirt", "top"), ("Hose", "bottom")], "only upper-body"),
+        (Scope.ITEM, [("T-Shirt", "top"), ("Hose", "bottom")], "exactly one"),
+        (Scope.LOOK, [("Kleid", "top"), ("Hose", "bottom"), ("Boots", "footwear")], "one-piece"),
+        (Scope.LOOK, [("T-Shirt", "top"), ("Hose", "bottom")], "a complete outfit"),
+        (
+            Scope.LOOK,
+            [("Kleid", "one_piece"), ("Hose", "bottom"), ("Boots", "footwear")],
+            "a one-piece replaces",
+        ),
+    ],
+)
+def test_each_scope_refuses_what_it_does_not_ask_for(
+    scope: Scope, chosen: list[tuple[str, str]], problem: str
+) -> None:
+    result, model = choose(scope, *chosen)
+    assert problem in model.payloads[-1]["input"]
+    assert result.outcome is FindOutcome.NO_MATCH
+
+
+def test_no_catalog_title_is_refused_for_its_own_category() -> None:
+    """The real titles of the shops this mode reads, with the position their record gives them."""
+    positions = {
+        Category.TOP: FindSlot.TOP,
+        Category.KNITWEAR: FindSlot.MID_LAYER,
+        Category.OUTERWEAR: FindSlot.OUTER_LAYER,
+        Category.BOTTOM: FindSlot.BOTTOM,
+        Category.ONE_PIECE: FindSlot.ONE_PIECE,
+        Category.FOOTWEAR: FindSlot.FOOTWEAR,
+    }
+    catalog = Catalog.model_validate_json(Path("backend/data/catalog.json").read_text("utf-8"))
+    unconfirmed = set()
+    for record in catalog.products:
+        slot = positions[record.category]
+        assert _slot_problem(record.title, slot) is None, record.title
+        if not Find(titled(record.title), slot, "").slot_checked:
+            unconfirmed.add(record.title)
+    # Shoes whose names state no kind, so the page says that the position is not confirmed.
+    assert unconfirmed == {"Beach", "Kommod Classic", "Tramper Flex"}
 
 
 def test_the_request_keeps_the_persons_words_in_any_script() -> None:

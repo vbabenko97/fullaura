@@ -45,6 +45,10 @@ MAX_WRITE_ATTEMPTS = 8
 PURGE_MARKER = "purge-marker.json"
 WRITE_WINDOW_S = 5.0  # how long a check that found no marker allows a write to start
 INFEASIBLE_OPERATIONS_KEPT = 20  # recent operation IDs, so a repeated request counts once
+# A returned request no longer counts, so the quota cannot bound these paid calls. An invite that
+# got this many back within this time is refused, without charge, until the oldest has passed.
+MAX_RECENT_RETURNS = 3
+RETURN_WINDOW_S = 10 * 60
 
 # List prices, checked 2026-10-30 (docs/BETA.md#costs). Costs are in micro-dollars.
 PLANNING_INPUT_MICRO_USD_PER_TOKEN = 1.25  # Baseten, Muse Spark Open: $1.25 per million
@@ -89,6 +93,7 @@ class Refusal(StrEnum):
     DUPLICATE = "duplicate"
     PILOT_ENDED = "pilot_ended"
     ACCOUNTING_UNAVAILABLE = "accounting_unavailable"
+    SHOPS_UNAVAILABLE = "shops_unavailable"
 
 
 class Refused(Exception):
@@ -363,14 +368,21 @@ class Pilot:
             raise Refused(Refusal.BUDGET, f"The pilot's {budget} budget is used up")
 
     def begin(
-        self, invite_id: str, kind: OperationKind, operation_id: str, reserve_micro_usd: int
+        self,
+        invite_id: str,
+        kind: OperationKind,
+        operation_id: str,
+        reserve_micro_usd: int,
+        *,
+        returnable: bool = False,
     ) -> Operation:
         """Reserve one model call, or raise Refused. The operation ID makes a repeated request
-        a duplicate rather than a second paid call."""
+        a duplicate rather than a second paid call. A returnable request is one that finish() may
+        return, so it is also refused while the invite has had too many returned just now."""
         if self.ended():
             raise Refused(Refusal.PILOT_ENDED, "The pilot has ended; model calls are closed")
         try:
-            return self._begin(invite_id, kind, operation_id, reserve_micro_usd)
+            return self._begin(invite_id, kind, operation_id, reserve_micro_usd, returnable)
         except StoreUnavailable as error:
             logger.warning("pilot accounting unavailable during begin: %s", error)
             raise Refused(
@@ -379,9 +391,11 @@ class Pilot:
             ) from None
 
     def _begin(
-        self, invite_id: str, kind: OperationKind, operation_id: str, reserve: int
+        self, invite_id: str, kind: OperationKind, operation_id: str, reserve: int, returnable: bool
     ) -> Operation:
         self._check_invite(kind, self.status(invite_id))
+        if returnable and self._too_many_returned(invite_id):
+            raise Refused(Refusal.SHOPS_UNAVAILABLE, "The shops keep failing; try again later")
         started_at = self._stamp()
         try:
             self._store.create(
@@ -441,28 +455,72 @@ class Pilot:
             raise
         return operation
 
-    def finish(self, operation: Operation, cost_micro_usd: int | None, outcome: str) -> None:
+    def finish(
+        self,
+        operation: Operation,
+        cost_micro_usd: int | None,
+        outcome: str,
+        *,
+        return_request: bool = False,
+    ) -> bool:
         """Replace the reservation with the actual cost; None keeps the whole reservation.
 
         The record keeps the outcome apart from the cost: its status is "unknown" whenever the
-        cost is, as before, and its outcome says what happened to the request."""
+        cost is, as before, and its outcome says what happened to the request.
+
+        With return_request, a planning request stops counting against the invite's quota, and
+        the money stays spent. Only the write that settles the call can return it, so it happens
+        once and never for a call already interrupted. The answer says whether it was returned."""
         budget = BUDGET_OF[operation.kind]
 
-        def settle(ledger: dict[str, Any]) -> None:
+        def settle(ledger: dict[str, Any]) -> bool:
             entry = ledger["running"].pop(operation.id, None)
             if entry is None:  # already interrupted, so its reservation counts as spent
-                return
+                return False
             ledger["reserved"][budget] -= entry["reserved"]
             known = cost_micro_usd is not None
             ledger["spent"][budget] += cost_micro_usd if known else entry["reserved"]
+            return True
 
         try:
-            self._update(LEDGER, settle, _empty_ledger)
+            settled = self._update(LEDGER, settle, _empty_ledger)
             status = "unknown" if cost_micro_usd is None else outcome
             self._close(operation.id, status, cost_micro_usd, outcome)
         except StoreUnavailable as error:
             # The ledger still marks the call running; the stale rule will keep its reservation.
             logger.warning("pilot accounting unavailable during finish: %s", error)
+            return False
+        return return_request and settled and self._return_request(operation.invite_id)
+
+    def _recent_returns(self, data: dict[str, Any]) -> list[str]:
+        cutoff = self._now() - timedelta(seconds=RETURN_WINDOW_S)
+        return [
+            stamp
+            for stamp in data.get("recent_returns", [])
+            if datetime.fromisoformat(stamp) > cutoff
+        ]
+
+    def _too_many_returned(self, invite_id: str) -> bool:
+        document = self._store.read(self._invite_name(invite_id))
+        return document is not None and (
+            len(self._recent_returns(document.data)) >= MAX_RECENT_RETURNS
+        )
+
+    def _return_request(self, invite_id: str) -> bool:
+        def give_back(data: dict[str, Any]) -> bool:
+            if data["plan_requests"] <= 0:
+                return False
+            data["plan_requests"] -= 1
+            data["plan_requests_returned"] = data.get("plan_requests_returned", 0) + 1
+            data["recent_returns"] = [*self._recent_returns(data), self._stamp()]
+            return True
+
+        try:
+            return self._update(self._invite_name(invite_id), give_back, _empty_invite)
+        except StoreUnavailable as error:
+            # The call is settled; the person keeps one request fewer, and the answer says so.
+            logger.warning("pilot request not returned: %s", error)
+            return False
 
     def _release(self, operation: Operation) -> None:
         """Undo a reservation for a call that never started."""

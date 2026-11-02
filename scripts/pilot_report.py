@@ -45,6 +45,7 @@ OUTCOME_CATEGORY = {
     "succeeded": "succeeded",  # try-on
     "generation_failed": "failed",
     "no_match": "failed",  # the shopping agent's choice did not pass, or nothing suited
+    "shops_unavailable": "failed",  # the shopping agent could read no shop page
     "failed": "failed",
     "provider_timeout": "failed",
     "provider_error": "failed",
@@ -206,7 +207,9 @@ def report(
         "asked_for_a_plan": [
             i
             for i in invites
-            if counted(records[i], "plan_requests") or counted(records[i], "infeasible_requests")
+            if counted(records[i], "plan_requests")
+            or counted(records[i], "infeasible_requests")
+            or counted(records[i], "plan_requests_returned")
         ],
         "used_a_planning_request": [i for i in invites if counted(records[i], "plan_requests")],
         "got_a_plan": [i for i in invites if i in succeeded[OperationKind.PLAN]],

@@ -483,6 +483,7 @@ export function parseFindLine(value: unknown): { kind: "step"; step: string } | 
       scope: readString(result.scope, "scope"),
       budget_cents: readCount(result.budget_cents, "budget"),
       total_cents: readCount(result.total_cents, "total"),
+      counted: readFlag(result.counted, "counted flag"),
       finds: readArray(result.finds, "finds").map((find) => {
         if (!isRecord(find)) throw new Error("Invalid find");
         return {
@@ -494,6 +495,7 @@ export function parseFindLine(value: unknown): { kind: "step"; step: string } | 
           price_cents: readCount(find.price_cents, "price"),
           size_checked: readFlag(find.size_checked, "size flag"),
           slot: readString(find.slot, "slot"),
+          slot_checked: readFlag(find.slot_checked, "slot flag"),
           why: readString(find.why, "reason"),
         };
       }),
