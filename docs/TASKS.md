@@ -23,7 +23,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-19](#t-19-small-fixes-from-the-authors-test) Small fixes from the author's test | done | 2026-11-01 |
 | [T-20](#t-20-the-shopping-agent) The shopping agent | done | 2026-11-01 |
 | [T-21](#t-21-fixes-from-the-review-of-the-shopping-agent) Fixes from the review of the shopping agent | done | 2026-11-02 |
-| [T-22](#t-22-a-clothing-line-kept-by-code-and-the-reason-for-an-unknown-cost) A clothing line kept by code, and the reason for an unknown cost | next | |
+| [T-22](#t-22-a-clothing-line-kept-by-code-and-the-reason-for-an-unknown-cost) A clothing line kept by code, and the reason for an unknown cost | done | 2026-11-02 |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -200,6 +200,8 @@ Done when: the checks in the [README](../README.md#check-a-change) pass, and the
 ## T-22: A clothing line kept by code, and the reason for an unknown cost
 
 A further review of `bf5751c` left two points, and the work stops there before the submission. A chosen clothing line is now kept by code ([D-80](DECISIONS.md#d-80-a-chosen-clothing-line-must-be-named-in-the-address)), and a search of unknown cost says why in the log ([D-81](DECISIONS.md#d-81-a-call-of-unknown-cost-says-why-in-the-log)).
+
+The work was deployed on 2026-11-02 as `259c686` and passed the HTTP smoke check there ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). No search ran on the deployed site, to keep the requests left on the invite for the demo video, so the first one there tests it.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, real searches on this code succeed for each scope and both lines, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check.
 
