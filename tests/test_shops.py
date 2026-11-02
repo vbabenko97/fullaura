@@ -20,6 +20,7 @@ from backend.app.shops import (
     RETRY_FAILED_PAGES_S,
     RETRY_FAILED_SHOP_S,
     SEARCH_BUDGET_S,
+    Line,
     Robots,
     Shop,
     ShopIndex,
@@ -160,6 +161,56 @@ def test_search_returns_only_listed_pages_of_the_line_within_the_budget() -> Non
         WOMEN
     ]
     assert index.search(["ab"], "men", [], 15000).products == []  # too short to mean anything
+
+
+@pytest.mark.parametrize(
+    ("words", "line", "address"),
+    [
+        (["damen", "jacke"], "women", WOMEN),
+        (["frauen", "jacke"], "women", WOMEN),
+        (["herren", "jacke"], "men", JACKET),
+        (["Männer", "jacke"], "men", JACKET),
+        (["men's", "jacke"], "men", JACKET),
+    ],
+)
+def test_a_word_for_the_clothing_line_does_not_narrow_the_search(
+    words: list[str], line: Line, address: str
+) -> None:
+    # Shops write the line differently, as damen or frauen, and the line is applied anyway.
+    found = ShopIndex((SHOP,), serve(routes())).search(words, line, [], 15000)
+    assert [product.url for product in found.products] == [address]
+
+
+def test_a_product_says_whether_its_address_or_title_names_the_line() -> None:
+    all_routes = {
+        **listing("https://shop.example", [page(product("Parka")), page(product("Herren-Parka"))]),
+        JACKET: httpx2.Response(200, text=page(product("Winterjacke", offer("120.00")))),
+    }
+    sitemap = all_routes["https://shop.example/sitemap.xml"].text
+    all_routes["https://shop.example/sitemap.xml"] = httpx2.Response(
+        200, text=sitemap.replace("</urlset>", f"<url><loc>{JACKET}</loc></url></urlset>")
+    )
+    index = ShopIndex((SHOP,), serve(all_routes))
+
+    men = index.search(["jacke"], "men", [], 15000).products
+    assert {found.title: found.line_stated for found in men} == {
+        "Parka": False,
+        "Herren-Parka": True,
+        "Winterjacke": True,
+    }
+    # With no line asked for there is nothing to state.
+    either = index.search(["jacke"], "any", [], 15000).products
+    assert all(found.line_stated for found in either)
+    # A title that names another line takes the product out, like an address that does.
+    women = index.search(["jacke"], "women", [], 15000).products
+    assert [(found.title, found.line_stated) for found in women] == [("Parka", False)]
+
+
+def test_a_word_for_the_line_alone_is_not_a_search() -> None:
+    seen: list[str] = []
+    found = ShopIndex((SHOP,), serve(routes(), seen)).search(["damen"], "women", [], 15000)
+    assert (found.products, found.read, found.failed) == ([], 0, 0)
+    assert page_reads(seen) == []
 
 
 def test_a_second_search_reads_the_page_from_memory() -> None:
