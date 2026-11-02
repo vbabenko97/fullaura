@@ -194,7 +194,7 @@ The first search on the deployed site then found what stand-ins could not show. 
 
 The work was deployed on 2026-11-02 as `bf5751c` and checked on the deployed site ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). The whole outfit ran on that revision, and the upper body and one item on the one before it. This task does not show that the recommendations suit what a person asks for; that remains the author's judgment.
 
-Done when: the checks in the [README](../README.md#check-a-change) pass, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check and real searches for a whole outfit, the upper body and one item, with results that include a shop other than Tom Tailor.
+Done when: the checks in the [README](../README.md#check-a-change) pass, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check and real searches for a whole outfit, the upper body and one item, including results from a shop other than Tom Tailor.
 
 ## T-06: Evaluation and submission
 
