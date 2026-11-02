@@ -120,6 +120,7 @@ function installServer(
       feedback_ids: [],
       has_plan: false,
       design_open: options.design ?? false,
+      invite_scope: null,
     },
     expireToken: () => {
       server.token += 100;
@@ -366,6 +367,92 @@ describe(`${FIXTURE_LABEL}: access`, () => {
     expect(await screen.findByRole("heading", { name: "Your preferences" })).toBeTruthy();
     expect(server.requests.filter((entry) => entry.url === "/api/session/invite")).toHaveLength(1);
     expect(window.location.hash).toBe("");
+  });
+
+  describe("a working plan stays with its invite", () => {
+    const INVITE_KEY = "fullaura.current-invite.v1";
+    const goal = () => (screen.getByLabelText("What should the looks work for?") as HTMLTextAreaElement).value;
+    const restores = (server: Server) => server.requests.filter((entry) => entry.url === "/api/plans/restore").length;
+
+    /** A server that has this invite open, and a tab holding a working plan made under `owner`. */
+    function tabWithPlan(scope: string, owner: string | null) {
+      storeWorkingPlan(firstPlan);
+      if (owner) sessionStorage.setItem(INVITE_KEY, JSON.stringify(owner));
+      const server = installServer({ plans: [firstPlan] });
+      server.session.invite_scope = scope;
+      return server;
+    }
+
+    it("brings it back when the same invite opens again", async () => {
+      const server = tabWithPlan("invite-a", "invite-a");
+      window.location.hash = "#invite=good-invite";
+      render(<App />);
+      expect(await screen.findByRole("heading", { name: "look 3" })).toBeTruthy();
+      expect(goal()).toBe("Relaxed office outfits");
+      expect(restores(server)).toBe(1);
+    });
+
+    it("keeps it when the same invite's link is pasted into the open tab", async () => {
+      const server = tabWithPlan("invite-a", "invite-a");
+      render(<App />);
+      await screen.findByRole("heading", { name: "look 3" });
+      window.location.hash = "#invite=good-invite";
+      await waitFor(() => expect(restores(server)).toBe(2));
+      expect(await screen.findByRole("heading", { name: "look 3" })).toBeTruthy();
+      expect(goal()).toBe("Relaxed office outfits");
+    });
+
+    it.each([
+      ["another invite's", "invite-a"],
+      ["an unnamed older", null],
+    ])("leaves %s plan behind when a tab opens, and keeps the plans saved on the device", async (_, owner) => {
+      localStorage.setItem("fullaura.saved-plans.v1", `[${storeWorkingPlan(firstPlan)}]`);
+      const server = tabWithPlan("invite-b", owner);
+      window.location.hash = "#invite=good-invite";
+      render(<App />);
+      expect(await screen.findByRole("button", { name: "Restore" })).toBeTruthy();
+      await screen.findByText(/products\. Prices checked/);
+      expect(screen.queryByRole("heading", { name: "look 3" })).toBeNull();
+      expect(goal()).toBe("");
+      expect(restores(server)).toBe(0);
+      expect(sessionStorage.getItem(CURRENT_PLAN_KEY)).toBeNull();
+    });
+
+    it("clears the plan and the photos from the page when another invite's link is pasted into the open tab", async () => {
+      const server = tabWithPlan("invite-a", "invite-a");
+      render(<App />);
+      await screen.findByRole("heading", { name: "look 3" });
+      fireEvent.click(await screen.findByRole("button", { name: "I agree to this processing of my photos" }));
+      await screen.findByText("You agreed to this processing.");
+      for (const label of ["Portrait photo", "Full-body photo"]) {
+        fireEvent.change(screen.getByLabelText(label), { target: { files: [new File(["me"], "me.png", { type: "image/png" })] } });
+      }
+      const tryOn = () => screen.getByRole("button", { name: "Try on look 1" }) as HTMLButtonElement;
+      await waitFor(() => expect(tryOn().disabled).toBe(false));
+
+      server.session.invite_scope = "invite-b";
+      window.location.hash = "#invite=good-invite";
+      await waitFor(() => expect(screen.queryByRole("heading", { name: "look 3" })).toBeNull());
+      await screen.findByText(/products\. Prices checked/);
+      expect(goal()).toBe("");
+      expect(restores(server)).toBe(1);
+      expect(sessionStorage.getItem(CURRENT_PLAN_KEY)).toBeNull();
+      expect(sessionStorage.getItem(INVITE_KEY)).toBe(JSON.stringify("invite-b"));
+
+      await generate();
+      expect(tryOn().disabled).toBe(true); // the next person's plan comes without the photos
+    });
+
+    it("clears the shopping agent's page when another invite's link is pasted into the open tab", async () => {
+      const server = installServer();
+      Object.assign(server.session, { invite_scope: "invite-a", find_open: true });
+      render(<App />);
+      fireEvent.change(await screen.findByLabelText("What do you need?"), { target: { value: "A warm jacket" } });
+
+      server.session.invite_scope = "invite-b";
+      window.location.hash = "#invite=good-invite";
+      await waitFor(() => expect((screen.getByLabelText("What do you need?") as HTMLTextAreaElement).value).toBe(""));
+    });
   });
 
   it("shows a refused invite link pasted over an open workspace, and keeps the workspace", async () => {

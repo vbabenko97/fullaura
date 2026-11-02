@@ -6,6 +6,7 @@ import type { SavedPlan } from "./types";
  * a private window, so every access tolerates failure. */
 const SAVED_KEY = "fullaura.saved-plans.v1";
 const CURRENT_KEY = "fullaura.current-plan.v1";
+const INVITE_KEY = "fullaura.current-invite.v1";
 export const MAX_SAVED = 10;
 
 function read(storage: () => Storage, key: string): unknown {
@@ -86,4 +87,15 @@ export function keepCurrentPlan(plan: SavedPlan | null): void {
     return;
   }
   write(() => sessionStorage, CURRENT_KEY, plan);
+}
+
+/** Records the invite this tab now works under and says whether it was working under another one.
+ * That invite's working plan is then removed, and so is a plan from before tabs recorded their
+ * invite, which could be anyone's. Plans saved on the device stay. */
+export function enterInvite(scope: string | null): boolean {
+  const previous = read(() => sessionStorage, INVITE_KEY);
+  const other = previous !== scope && (previous !== null || loadCurrentPlan() !== null);
+  write(() => sessionStorage, INVITE_KEY, scope);
+  if (other) keepCurrentPlan(null);
+  return other;
 }

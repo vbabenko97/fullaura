@@ -54,6 +54,12 @@ def _mac(secret: bytes, invite_id: str, key: str) -> str:
     return hmac.new(secret, f"{invite_id}.{key}".encode(), hashlib.sha256).hexdigest()
 
 
+def invite_scope(secret: bytes, invite_id: str) -> str:
+    """What a browser holds to tell one invite from another: the same each time the invite opens,
+    unlike the session's key, and showing neither the invite nor its code."""
+    return hmac.new(secret, f"scope\0{invite_id}".encode(), hashlib.sha256).hexdigest()
+
+
 @dataclass(frozen=True, slots=True)
 class PlanRecord:
     """A plan that passed every check, with the state and brief it was checked against."""

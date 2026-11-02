@@ -244,6 +244,8 @@ export interface Session {
   /** Design my look is switched on and planning is open for this invite. */
   design_open: boolean;
   find_open: boolean;
+  /** Stays the same each time an invite opens and differs between invites; null without an invite. */
+  invite_scope: string | null;
 }
 
 export type FindScope = "look" | "upper_body" | "item";

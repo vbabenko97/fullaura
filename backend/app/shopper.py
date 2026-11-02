@@ -311,10 +311,24 @@ If nothing returned suits the request, answer
 {{"items": [], "why_not": "one short reason, in English"}}."""
 
 
+def _past_braces(text: str, start: int) -> int:
+    """Where the braces opened at start close, or the end of the text when they never do."""
+    depth = 0
+    for index in range(start, len(text)):
+        if text[index] == "{":
+            depth += 1
+        elif text[index] == "}":
+            depth -= 1
+            if depth == 0:
+                return index + 1
+    return len(text)
+
+
 def _answer(body: dict[str, Any]) -> dict[str, Any] | None:
     """The last object with items, as the prompt asks the reply to end with one, with its fields in
-    any order. An object that cannot be read may be the real answer, so it ends any draft before it:
-    the model is asked again, because the checks cannot tell a draft that passes from the answer."""
+    any order. An object that cannot be read may be the real answer, so it ends any draft before it
+    and nothing inside it counts: the model is asked again, because the checks cannot tell a draft
+    that passes from the answer."""
     text = "\n".join(
         block.get("text", "")
         for item in body.get("output", [])
@@ -329,7 +343,7 @@ def _answer(body: dict[str, Any]) -> dict[str, Any] | None:
         try:
             value, position = decoder.raw_decode(text, start)
         except json.JSONDecodeError:
-            answer, position = None, start + 1
+            answer, position = None, _past_braces(text, start)
             continue
         if "items" in value:
             answer = value
