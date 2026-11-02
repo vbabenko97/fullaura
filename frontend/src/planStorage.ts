@@ -95,7 +95,7 @@ export function keepCurrentPlan(plan: SavedPlan | null): void {
 export function enterInvite(scope: string | null): boolean {
   const previous = read(() => sessionStorage, INVITE_KEY);
   const other = previous !== scope && (previous !== null || loadCurrentPlan() !== null);
-  write(() => sessionStorage, INVITE_KEY, scope);
   if (other) keepCurrentPlan(null);
+  write(() => sessionStorage, INVITE_KEY, scope);
   return other;
 }
