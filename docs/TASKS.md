@@ -220,7 +220,7 @@ An outside audit of the source, made with GPT, named six defects at the boundari
 
 The sixth point, that a malformed model reply crashes a search, was not adopted. `/api/finds` already answers any failure of the agent as a failed search and keeps the reservation, which `test_a_failed_search_answers_without_detail_and_keeps_its_reservation` checks. The proposed handling would have paid for one more model call and then told the person to try other words.
 
-The three shops' live robots.txt files and sitemaps were read before and after the change on 2026-11-02. No robots.txt has a group that the new matching treats differently, no sitemap is gzipped, and no product address holds an escape or a port. The address counts stayed at 6,584 for Tom Tailor, 36,853 for Tchibo and 781 for Giesswein, where one address moves between language files from read to read, however the link is written. The token counts in 11 recorded replies from Meta and 6 from Baseten all pass the new check. So the fixes change nothing that people see today, and the work is not deployed: it reaches the site with the next deployment.
+The three shops' live robots.txt files and sitemaps were read before and after the change on 2026-11-02. No robots.txt has a group that the new matching treats differently, no sitemap is gzipped, and no product address holds an escape or a port. The address counts stayed at 6,584 for Tom Tailor, 36,853 for Tchibo and 781 for Giesswein, where one address moves between language files from read to read, however the link is written. The token counts in 11 recorded replies from Meta and 6 from Baseten all pass the new check. So the fixes change nothing that people see today. They reached the site with the deployment of `1688393`.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, the new tests fail on the earlier code, and the comparison with the live shops loses no address.
 
@@ -239,7 +239,7 @@ The other three points change nothing here:
 - The image provider's answer is read into memory with no limit on its size. Only the 120-second deadline bounds it, and the sender is the authenticated provider. This stays as it is.
 - A plan request and a restore that run together in one browser session do not corrupt anything. The later one replaces the other, both plans passed every check, and the older token is refused with `plan_expired` before anything is counted. The page answers that by restoring its own plan. This was read in the code, not run under load.
 
-The change reaches the site with the next deployment.
+The change reached the site with the deployment of `1688393`.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass and the new tests fail on the earlier code.
 
@@ -253,7 +253,7 @@ The same auditor reviewed the T-24 work and asked for two more changes, and then
 - Invites open one at a time, so the link opened last decides both the cookie and the page. A late answer to an earlier link used to decide them.
 - Nothing inside a JSON object that cannot be read counts as the shopping agent's answer. The parser used to read on inside a broken object, so it could take a draft with `items` nested in it. It now skips to where the object's braces close, or to the end of the reply when they never do. A `}` inside the text of a broken object can still end it early. That takes a reply with a broken wrapper and a brace in its text, and none of the 7 recorded replies has a wrapper, so it stays.
 
-The work reaches the site with the next deployment.
+The work reached the site with the deployment of `1688393`, where switching invites was also checked in Chromium ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)).
 
 Done when: the checks in the [README](../README.md#check-a-change) pass and the new tests fail on the earlier code.
 
