@@ -303,8 +303,9 @@ async function generate(styleGoal = "Relaxed office outfits", budget = "250") {
 const CURRENT_PLAN_KEY = "fullaura.current-plan.v1";
 
 /** The working plan this tab kept before a reload, as the page stores it; returns the stored text. */
-function storeWorkingPlan(plan: unknown, locks: Body[] = []): string {
+function storeWorkingPlan(plan: unknown, locks: Body[] = [], owner: string | null = null): string {
   const text = JSON.stringify({
+    ...(owner ? { invite_scope: owner } : {}),
     id: "token-0-working",
     saved_at: "2026-10-30T12:00:00.000Z",
     name: "Relaxed office outfits",
@@ -374,14 +375,12 @@ describe(`${FIXTURE_LABEL}: access`, () => {
   });
 
   describe("a working plan stays with its invite", () => {
-    const INVITE_KEY = "fullaura.current-invite.v1";
     const goal = () => (screen.getByLabelText("What should the looks work for?") as HTMLTextAreaElement).value;
     const restores = (server: Server) => server.requests.filter((entry) => entry.url === "/api/plans/restore").length;
 
     /** A server that has this invite open, and a tab holding a working plan made under `owner`. */
     function tabWithPlan(scope: string, owner: string | null) {
-      storeWorkingPlan(firstPlan);
-      if (owner) sessionStorage.setItem(INVITE_KEY, JSON.stringify(owner));
+      storeWorkingPlan(firstPlan, [], owner);
       const server = installServer({ plans: [firstPlan] });
       server.session.invite_scope = scope;
       return server;
@@ -441,7 +440,6 @@ describe(`${FIXTURE_LABEL}: access`, () => {
       expect(goal()).toBe("");
       expect(restores(server)).toBe(1);
       expect(sessionStorage.getItem(CURRENT_PLAN_KEY)).toBeNull();
-      expect(sessionStorage.getItem(INVITE_KEY)).toBe(JSON.stringify("invite-b"));
 
       await generate();
       expect(tryOn().disabled).toBe(true); // the next person's plan comes without the photos
@@ -505,12 +503,10 @@ describe(`${FIXTURE_LABEL}: access`, () => {
       expect(sessionStorage.getItem(CURRENT_PLAN_KEY)).toBeNull();
     });
 
-    it("mounts the page once for another invite when the tab cannot record it", async () => {
+    it("mounts the page once for another invite, and shows nothing of a plan the tab cannot remove", async () => {
       const server = tabWithPlan("invite-b", "invite-a");
-      const setItem = Storage.prototype.setItem;
-      const refused = vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key, value) {
-        if (key === INVITE_KEY) throw new DOMException("Storage is full", "QuotaExceededError");
-        setItem.call(this, key, value);
+      const refused = vi.spyOn(Storage.prototype, "removeItem").mockImplementation(() => {
+        throw new DOMException("Storage is unavailable", "SecurityError");
       });
       onTestFinished(() => refused.mockRestore());
       render(<App />);
@@ -522,6 +518,33 @@ describe(`${FIXTURE_LABEL}: access`, () => {
       expect(screen.queryByRole("heading", { name: "look 3" })).toBeNull();
       expect(goal()).toBe("");
       expect(restores(server)).toBe(0);
+    });
+
+    it.each([
+      ["no", false],
+      ["every", true],
+    ])("leaves the next invite's work behind on the way back to the first when %s write fails", async (_, refuse) => {
+      const server = tabWithPlan("invite-a", "invite-a");
+      if (refuse) {
+        const refused = vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+          throw new DOMException("Storage is full", "QuotaExceededError");
+        });
+        onTestFinished(() => refused.mockRestore());
+      }
+      render(<App />);
+      await screen.findByRole("heading", { name: "look 3" });
+
+      server.session.invite_scope = "invite-b";
+      window.location.hash = "#invite=good-invite";
+      await waitFor(() => expect(screen.queryByRole("heading", { name: "look 3" })).toBeNull());
+      await generate("The next person's goal");
+      expect(await screen.findByRole("heading", { name: "look 3" })).toBeTruthy();
+
+      server.session.invite_scope = "invite-a";
+      window.location.hash = "#invite=good-invite";
+      await waitFor(() => expect(goal()).toBe(""));
+      expect(screen.queryByRole("heading", { name: "look 3" })).toBeNull();
+      expect(restores(server)).toBe(1);
     });
   });
 

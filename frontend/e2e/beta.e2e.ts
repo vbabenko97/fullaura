@@ -5,6 +5,7 @@ import { crc32, deflateSync } from "node:zlib";
 /* The whole beta flow against scripted providers: invite, plan, try-on, keep, lower budget,
  * update, replace, save, restore, export and feedback. Nothing here is model output. */
 const INVITE = "e2e-invite-code-not-for-production";
+const OTHER_INVITE = "e2e-other-invite-code-not-for-production";
 const SHOTS = "../runs/e2e/screens";
 
 function png(width: number, height: number, rgb: [number, number, number]): Buffer {
@@ -365,6 +366,52 @@ test("an invite link pasted into an open tab opens the invite", async ({ page })
   const age = page.getByRole("checkbox", { name: "I confirm that I am 18 or older." });
   await expect(age.or(page.getByRole("heading", { name: "What you need", exact: true }))).toBeVisible();
   expect(page.url()).not.toContain("invite=");
+});
+
+test("a working plan stays with its invite, and saved plans stay on the device", async ({ page }) => {
+  const look = page.getByRole("heading", { name: "look 3" });
+  const goal = page.getByLabel("What should the looks work for?");
+  const agent = page.getByRole("heading", { name: "What you need", exact: true });
+  const age = page.getByRole("checkbox", { name: "I confirm that I am 18 or older." });
+  async function paste(invite: string) {
+    await page.evaluate((code) => {
+      window.location.hash = `#invite=${code}`;
+    }, invite);
+    await expect.poll(() => page.url()).not.toContain("invite=");
+  }
+
+  await openWorkspace(page);
+  await goal.fill("Smart casual for autumn office days");
+  await page.getByLabel("Budget in EUR").fill("450");
+  await page.getByRole("button", { name: "Generate three looks" }).click();
+  await expect(look).toBeVisible();
+  await page.getByRole("button", { name: "Save this plan" }).click();
+
+  await page.reload();
+  await expect(look).toBeVisible();
+  await expect(goal).toHaveValue("Smart casual for autumn office days");
+  await paste(INVITE);
+  await expect(look).toBeVisible();
+  await expect(goal).toHaveValue("Smart casual for autumn office days");
+
+  await paste(OTHER_INVITE);
+  await expect(age.or(agent)).toBeVisible();
+  if (await age.isVisible()) {
+    await age.check();
+    await page.getByRole("button", { name: "Continue" }).click();
+  }
+  await expect(agent).toBeVisible();
+  await expect(look).toHaveCount(0);
+  await page.getByRole("button", { name: "Three looks from the catalog" }).click();
+  await expect(goal).toHaveValue("");
+  await expect(page.getByRole("button", { name: "Restore" })).toBeVisible();
+
+  await paste(INVITE);
+  await expect(goal).toHaveCount(0);
+  await expect(agent).toBeVisible();
+  await page.reload();
+  await expect(agent).toBeVisible();
+  await expect(look).toHaveCount(0);
 });
 
 test("the question before a restore stays inside its panel at every width", async ({ page }) => {

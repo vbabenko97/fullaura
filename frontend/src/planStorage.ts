@@ -6,7 +6,6 @@ import type { SavedPlan } from "./types";
  * a private window, so every access tolerates failure. */
 const SAVED_KEY = "fullaura.saved-plans.v1";
 const CURRENT_KEY = "fullaura.current-plan.v1";
-const INVITE_KEY = "fullaura.current-invite.v1";
 export const MAX_SAVED = 10;
 
 function read(storage: () => Storage, key: string): unknown {
@@ -71,13 +70,19 @@ export function deleteSavedPlan(id: string): boolean {
   );
 }
 
-/** The working plan of this tab, so a reload can restore it. */
-export function loadCurrentPlan(): SavedPlan | null {
-  const value = read(() => sessionStorage, CURRENT_KEY);
-  return isSavedPlan(value) ? value : null;
+/** Whether this tab holds a working plan, under whichever invite. */
+export function holdsCurrentPlan(): boolean {
+  return isSavedPlan(read(() => sessionStorage, CURRENT_KEY));
 }
 
-export function keepCurrentPlan(plan: SavedPlan | null): void {
+/** The working plan of this tab, so a reload can restore it, when it was made under this invite.
+ * The plan and its invite are kept in one write, so a failed write cannot part them. */
+export function loadCurrentPlan(scope: string | null): SavedPlan | null {
+  const value = read(() => sessionStorage, CURRENT_KEY);
+  return isRecord(value) && (value.invite_scope ?? null) === scope && isSavedPlan(value) ? value : null;
+}
+
+export function keepCurrentPlan(plan: SavedPlan | null, scope: string | null): void {
   if (plan === null) {
     try {
       sessionStorage.removeItem(CURRENT_KEY);
@@ -86,16 +91,13 @@ export function keepCurrentPlan(plan: SavedPlan | null): void {
     }
     return;
   }
-  write(() => sessionStorage, CURRENT_KEY, plan);
+  write(() => sessionStorage, CURRENT_KEY, { ...plan, invite_scope: scope });
 }
 
-/** Records the invite this tab now works under and says whether it was working under another one.
- * That invite's working plan is then removed, and so is a plan from before tabs recorded their
- * invite, which could be anyone's. Plans saved on the device stay. */
-export function enterInvite(scope: string | null): boolean {
-  const previous = read(() => sessionStorage, INVITE_KEY);
-  const other = previous !== scope && (previous !== null || loadCurrentPlan() !== null);
-  if (other) keepCurrentPlan(null);
-  write(() => sessionStorage, INVITE_KEY, scope);
-  return other;
+/** Removes a working plan made under another invite, or from before plans named their invite,
+ * which could be anyone's, and says whether there was one. Plans saved on the device stay. */
+export function dropOtherInvitesPlan(scope: string | null): boolean {
+  if (!holdsCurrentPlan() || loadCurrentPlan(scope) !== null) return false;
+  keepCurrentPlan(null, scope);
+  return true;
 }

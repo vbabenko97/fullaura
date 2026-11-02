@@ -35,7 +35,17 @@ import type { Preferences } from "./plan";
 import { PreferencesForm } from "./PreferencesForm";
 import { PrivacyNotice } from "./PrivacyNotice";
 import { ShopMode } from "./ShopMode";
-import { deleteSavedPlan, enterInvite, keepCurrentPlan, loadCurrentPlan, loadSavedPlans, MAX_SAVED, savedName, savePlan } from "./planStorage";
+import {
+  deleteSavedPlan,
+  dropOtherInvitesPlan,
+  holdsCurrentPlan,
+  keepCurrentPlan,
+  loadCurrentPlan,
+  loadSavedPlans,
+  MAX_SAVED,
+  savedName,
+  savePlan,
+} from "./planStorage";
 import { SavedPlans } from "./SavedPlans";
 import { ShoppingList } from "./ShoppingList";
 import { TryOnPanel } from "./TryOnPanel";
@@ -147,7 +157,7 @@ function catalogChecks(catalog: Catalog): string {
 
 /** The page holds one invite's work: its plan, results and photos. Opening another invite mounts
  * the page afresh, so none of it stays for the next person. The page is mounted for that invite,
- * so a tab that cannot record the invite still mounts only once for it. */
+ * so a tab whose storage fails still mounts only once for it. */
 export function App() {
   const [invite, setInvite] = useState<string | null>(null);
   return <Workspace key={invite} invite={invite} onOtherInvite={setInvite} />;
@@ -157,6 +167,8 @@ function Workspace({ invite, onOtherInvite }: { invite: string | null; onOtherIn
   // Set once this page gives way to another invite's. A request still running then answers here,
   // and must not touch the tab's plan or send anything more under the next invite's cookie.
   const left = useRef(false);
+  // The invite this page works under, known here whatever the tab's storage manages to keep.
+  const activeInvite = useRef(invite);
   const [session, setSession] = useState<Session | null>(null);
   const [sessionState, setSessionState] = useState<LoadState>("loading");
   const [gateBusy, setGateBusy] = useState(false);
@@ -184,21 +196,25 @@ function Workspace({ invite, onOtherInvite }: { invite: string | null; onOtherIn
   const [mode, setMode] = useState<"plan" | "design">("plan");
   // The shopping agent opens first, unless this tab already has a working plan to come back to. It
   // stays on the page once seen, so a used-up quota does not take away results already shown.
-  const [catalogMode, setCatalogMode] = useState(() => loadCurrentPlan() !== null);
+  const [catalogMode, setCatalogMode] = useState(holdsCurrentPlan);
   const [findSeen, setFindSeen] = useState(false);
   const [concept, setConcept] = useState<CurrentConcept | null>(null);
   const [designState, setDesignState] = useState<RequestState>("idle");
   const [designMessage, setDesignMessage] = useState<string | null>(null);
 
   function keepPlan(plan: SavedPlan | null) {
-    if (!left.current) keepCurrentPlan(plan);
+    if (!left.current) keepCurrentPlan(plan, activeInvite.current);
   }
 
   /** Whether this page gave way to one mounted for another invite. */
   function leftForOtherInvite(next: Session): boolean {
-    if (!enterInvite(next.invite_scope) || next.invite_scope === invite) return false;
+    const scope = next.invite_scope;
+    const droppedPlan = dropOtherInvitesPlan(scope);
+    const otherInvite = activeInvite.current !== null && activeInvite.current !== scope;
+    activeInvite.current = scope;
+    if ((!droppedPlan && !otherInvite) || scope === invite) return false;
     left.current = true;
-    onOtherInvite(next.invite_scope);
+    onOtherInvite(scope);
     return true;
   }
 
@@ -311,7 +327,7 @@ function Workspace({ invite, onOtherInvite }: { invite: string | null; onOtherIn
     if (stopped()) return;
     setCatalog(loaded);
     setCatalogState("ready");
-    const working = loadCurrentPlan();
+    const working = loadCurrentPlan(activeInvite.current);
     if (!working) return;
     setPreferences(preferencesFrom(working));
     // A running request, like a restore of a saved plan: a plan generated meanwhile would be
