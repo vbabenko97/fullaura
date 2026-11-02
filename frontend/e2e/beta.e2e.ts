@@ -407,8 +407,10 @@ test("a working plan stays with its invite, and saved plans stay on the device",
   await expect(page.getByRole("button", { name: "Restore" })).toBeVisible();
 
   await paste(INVITE);
-  await expect(goal).toHaveCount(0);
   await expect(agent).toBeVisible();
+  await expect(goal).toBeHidden(); // the catalog's form stays on the page, hidden, behind the agent
+  await expect(goal).toHaveValue("");
+  await expect(look).toHaveCount(0);
   await page.reload();
   await expect(agent).toBeVisible();
   await expect(look).toHaveCount(0);

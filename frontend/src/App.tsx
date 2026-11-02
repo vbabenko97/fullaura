@@ -169,6 +169,9 @@ function Workspace({ invite, onOtherInvite }: { invite: string | null; onOtherIn
   const left = useRef(false);
   // The invite this page works under, known here whatever the tab's storage manages to keep.
   const activeInvite = useRef(invite);
+  // Invites open one at a time, so the one asked for last decides both the cookie and the page,
+  // whichever answer would have come first.
+  const opening = useRef<Promise<void>>(Promise.resolve());
   const [session, setSession] = useState<Session | null>(null);
   const [sessionState, setSessionState] = useState<LoadState>("loading");
   const [gateBusy, setGateBusy] = useState(false);
@@ -377,10 +380,10 @@ function Workspace({ invite, onOtherInvite }: { invite: string | null; onOtherIn
       if (!next.beta || !next.invited || leftForOtherInvite(next)) return;
       await openWorkspace(() => cancelled);
     }
-    void start();
+    opening.current = start();
     function openPastedInvite() {
       const invite = takeInviteFromLocation();
-      if (invite) void openInvite(invite);
+      if (invite) queueInvite(invite);
     }
     window.addEventListener("hashchange", openPastedInvite);
     return () => {
@@ -395,6 +398,11 @@ function Workspace({ invite, onOtherInvite }: { invite: string | null; onOtherIn
     setGateMessage(message);
     setRequestState("error");
     setRequestMessage(message);
+  }
+
+  function queueInvite(code: string) {
+    const open = () => openInvite(code);
+    opening.current = opening.current.then(open, open);
   }
 
   async function openInvite(code: string) {
@@ -767,7 +775,7 @@ function Workspace({ invite, onOtherInvite }: { invite: string | null; onOtherIn
             busy={gateBusy}
             message={gateMessage}
             onConfirmAge={() => void confirmAge()}
-            onInvite={(code) => void openInvite(code)}
+            onInvite={queueInvite}
             session={session}
           />
           {/* A saved plan stays on this device, so it can be read and deleted without the beta. */}
