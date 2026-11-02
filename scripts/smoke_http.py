@@ -40,6 +40,9 @@ def check(base_url: str) -> None:
         with urlopen(f"{base_url}{asset}", timeout=5) as response:
             if response.status != 200 or not response.read():
                 raise RuntimeError(f"Frontend asset failed: {asset}")
+    with urlopen(f"{base_url}/assets/third-party-licenses.md", timeout=5) as response:
+        if "react-dom" not in response.read().decode("utf-8"):
+            raise RuntimeError("The notices of the page's libraries are missing")
     try:
         urlopen(f"{base_url}/api/unknown", timeout=5).close()
     except HTTPError as error:
