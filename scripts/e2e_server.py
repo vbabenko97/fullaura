@@ -33,6 +33,7 @@ from backend.app.shopper import Find, FindOutcome, FindRequest, FindResult, Find
 from backend.app.shops import ShopProduct
 
 E2E_INVITE = "e2e-invite-code-not-for-production"
+E2E_OTHER_INVITE = "e2e-other-invite-code-not-for-production"
 _SLOTS_FOR = {"top": ("top", "knitwear"), "bottom": ("bottom",), "footwear": ("footwear",)}
 
 
@@ -227,7 +228,7 @@ def main() -> None:
     args = parser.parse_args()
     settings = Settings(
         session_secret="e2e-session-secret-not-for-production-use",
-        invite_hashes=frozenset({invite_hash(E2E_INVITE)}),
+        invite_hashes=frozenset({invite_hash(E2E_INVITE), invite_hash(E2E_OTHER_INVITE)}),
         store_url=f"file://{args.store.resolve()}" if args.store else "memory://",
         # Every browser test and viewport shares the one invite; the quota rule still applies.
         plan_requests_per_invite=48,
