@@ -249,6 +249,30 @@ describe("the shopping agent's page", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it.each(["XS,S,M,L,XL,XXL,43", "ABCDEFGHIJKLM"])("refuses the sizes %s before calling the server, and drops none", async (sizes) => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    show();
+    fill();
+    fireEvent.change(screen.getByLabelText("Your sizes (optional)"), { target: { value: sizes } });
+    fireEvent.click(screen.getByRole("button", { name: "Find it" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("up to six sizes");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect((screen.getByLabelText("Your sizes (optional)") as HTMLInputElement).value).toBe(sizes);
+  });
+
+  it("sends six sizes of up to twelve characters in full", async () => {
+    const fetchMock = vi.fn(async () => stream({ result: RESULT }));
+    vi.stubGlobal("fetch", fetchMock);
+    show();
+    fill();
+    fireEvent.change(screen.getByLabelText("Your sizes (optional)"), { target: { value: "XS,S,M,L,XL,123456789012" } });
+    fireEvent.click(screen.getByRole("button", { name: "Find it" }));
+    await screen.findByRole("heading", { name: "Winterjacke" });
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body)).sizes).toEqual(["XS", "S", "M", "L", "XL", "123456789012"]);
+  });
+
   it("turns the button off and says why when the mode is closed", () => {
     show({ ...SESSION, find_open: false }, "This invite has used all its requests.");
     expect((screen.getByRole("button", { name: "Find it" }) as HTMLButtonElement).disabled).toBe(true);
