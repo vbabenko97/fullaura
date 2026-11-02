@@ -18,7 +18,7 @@ import zlib
 from collections import deque
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal
 from urllib.parse import urljoin, urlsplit
 
@@ -61,6 +61,12 @@ _THIS_LINE: dict[str, re.Pattern[str]] = {
     "women": re.compile(r"frauen|damen|women"),
     "any": re.compile(r"$^"),
 }
+# Not words to find in an address: shops write the line differently, as damen or frauen, and a
+# search applies the person's line anyway, so one of these would only hide products of that line.
+_LINE_WORDS = frozenset(
+    {"damen", "dame", "frauen", "frau", "women", "women's", "womens", "woman"}
+    | {"herren", "herr", "männer", "maenner", "mann", "men", "men's", "mens", "man"}
+)
 _JSON_LD = re.compile(r"<script[^>]+application/ld\+json[^>]*>(.*?)</script>", re.S | re.I)
 _CANONICAL_LINK = re.compile(r"<link\b[^>]*\brel=[\"']?canonical\b[^>]*>", re.I)
 _LINK_ADDRESS = re.compile(r"\bhref=[\"']([^\"']+)", re.I)
@@ -129,6 +135,7 @@ class ShopProduct:
     color: str | None
     material: str | None
     size_checked: bool  # the page lists sizes and has one the person gave, in stock
+    line_stated: bool = True  # its address or title names the line the person asked for
 
 
 @dataclass(frozen=True, slots=True)
@@ -582,7 +589,8 @@ class ShopIndex:
         failing, or until the search reaches its limit of pages or of time. A shop that keeps
         failing is then left alone for a while, and the other shops are read as usual."""
         self.load(wait_s=0)
-        wanted = [word.strip().lower() for word in words if len(word.strip()) >= 3]
+        cleaned = (word.strip().lower() for word in words)
+        wanted = [word for word in cleaned if len(word) >= 3 and word not in _LINE_WORDS]
         if not wanted:
             return ShopSearch([])
         sizes = list(sizes)
@@ -632,8 +640,13 @@ class ShopIndex:
                     read_count += 1
                     reading.failures = 0
                     product = buyable(url, reading.shop.name, facts, sizes) if facts else None
-                    if product and product.price_cents <= budget_cents:
-                        products.append(product)
+                    if (
+                        product
+                        and product.price_cents <= budget_cents
+                        and not _OTHER_LINE[line].search(product.title.lower())
+                    ):
+                        named = _THIS_LINE[line].search(f"{url} {product.title}".lower())
+                        products.append(replace(product, line_stated=line == "any" or bool(named)))
                         reading.found += 1
         back_at = self._clock() + RETRY_FAILED_PAGES_S
         with self._lock:

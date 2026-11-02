@@ -14,6 +14,7 @@ from backend.app.shopper import (
     ATTEMPTS_KEY,
     FIND_RESERVE_MICRO_USD,
     HTTP_ATTEMPTS,
+    MAX_OUTPUT_TOKENS,
     Find,
     FindOutcome,
     FindRequest,
@@ -251,6 +252,24 @@ def test_the_try_on_keeps_clothes_nobody_asked_for() -> None:
         ]
     )
     assert "the clothes they wear" not in whole
+
+
+def test_the_model_and_the_page_hear_when_a_shop_does_not_name_the_line() -> None:
+    unnamed = ShopProduct(
+        "https://shop.example/p/parka", "Shop", "Parka", 900, None, None, False, False
+    )
+    named = ShopProduct(
+        "https://shop.example/p/hemd", "Shop", "Herren-Hemd", 900, None, None, False
+    )
+    model = FakeModel(call("parka"), answer([item(unnamed, "outer_layer")]))
+    agent = ShopAgent(model, TitledIndex(unnamed, named))  # type: ignore[arg-type]
+    result = agent(request(), lambda _: None)
+
+    assert "line_stated is false" in model.payloads[0]["input"]
+    shown = json.loads(model.payloads[1]["input"][0]["output"])
+    assert [product["line_stated"] for product in shown] == [False, True]
+    finds = find_json(result, request(), None)["finds"]
+    assert finds[0]["line_stated"] is False
 
 
 def test_a_title_cannot_add_markup_to_the_try_on() -> None:
@@ -640,7 +659,44 @@ def test_a_cost_the_usage_does_not_prove_is_kept_unknown(reply: dict[str, Any]) 
 
 
 def test_the_reserve_covers_every_attempt_of_every_turn() -> None:
-    assert FIND_RESERVE_MICRO_USD == round(HTTP_ATTEMPTS * 7 * (12_000 * 1.25 + 3000 * 4.25))
+    reserve = HTTP_ATTEMPTS * 7 * (12_000 * 1.25 + MAX_OUTPUT_TOKENS * 4.25)
+    assert FIND_RESERVE_MICRO_USD == round(reserve)
+
+
+def test_the_model_is_asked_to_keep_its_reasoning_within_the_output_cap() -> None:
+    model = FakeModel(answer(why_not="Nothing."))
+    run(model)
+    assert model.payloads[0]["reasoning"] == {"effort": "medium"}
+    assert model.payloads[0]["max_output_tokens"] == MAX_OUTPUT_TOKENS
+
+
+# What Meta's API answered on 2026-11-02 when reasoning used up the output cap.
+CUT_OFF = {
+    "id": "response-cut-off",
+    "status": "incomplete",
+    "incomplete_details": {"reason": "max_output_tokens"},
+    "usage": {"input_tokens": 5000, "output_tokens": 1200},
+    "output": [{"type": "reasoning", "summary": []}],
+}
+
+
+def test_an_answer_cut_off_by_the_output_cap_is_asked_for_again_and_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level("WARNING")
+    model = FakeModel(call("hemd"), CUT_OFF, answer([item(SHIRT, "top")]))
+    result, _, _ = run(model)
+    assert result.outcome is FindOutcome.SUCCESS
+    assert "held no JSON object" in model.payloads[-1]["input"]
+    assert "shop model answer cut off: max output tokens" in caplog.text
+    assert result.usage.output_tokens == 1200 + 10 + 20  # a cut-off answer is paid for too
+
+
+def test_two_answers_cut_off_end_the_search_and_are_not_called_nothing_on_sale() -> None:
+    result, _, _ = run(FakeModel(call("hemd"), CUT_OFF, CUT_OFF))
+    assert result.outcome is FindOutcome.NO_MATCH
+    assert result.finds == []
+    assert "No choice passed the checks" in str(result.message)
 
 
 def test_the_try_on_of_a_scarf_draws_the_scarf_and_a_dress_keeps_the_shoes() -> None:
