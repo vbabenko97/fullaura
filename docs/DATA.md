@@ -59,7 +59,7 @@ Add public demo assets only after completing this register:
 
 Model output shown in a recording should include enough run metadata to reproduce the process without exposing a person's original photographs or credentials. Label cached examples and fixtures in the UI and demo.
 
-The shopping agent ([D-73](DECISIONS.md#d-73-the-shopping-agent-chooses-among-real-shop-pages-that-code-reads)) reads facts at a person's request from Tom Tailor, Tchibo and Giesswein, the sources above whose terms were checked. `backend/app/shops.py` reads only addresses and pages that the shop's robots.txt allows, names itself as `FullAura/0.1` in its requests, stays on each shop's own host over HTTPS, reads at most 18 pages across the shops for each of the agent's searches, of which a request has at most four, stops reading a shop once six of its products can be bought, and keeps addresses and facts in process memory only, facts for an hour. It shows no shop's image.
+The shopping agent ([D-73](DECISIONS.md#d-73-the-shopping-agent-chooses-among-real-shop-pages-that-code-reads)) reads facts at a person's request from Tom Tailor, Tchibo and Giesswein, the sources above whose terms were checked. `backend/app/shops.py` reads only addresses and pages that the shop's robots.txt allows, names itself as `FullAura/0.1` in its requests, stays on each shop's own host and port over HTTPS, reads at most 18 pages across the shops for each of the agent's searches, of which a request has at most four, stops reading a shop once six of its products can be bought, and keeps addresses and facts in process memory only, facts for an hour. It shows no shop's image.
 
 ## Licenses of the models and libraries
 

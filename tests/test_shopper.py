@@ -725,3 +725,22 @@ def test_the_try_on_of_a_scarf_draws_the_scarf_and_a_dress_keeps_the_shoes() -> 
     assert "the clothes they wear" not in find_prompt(
         [Find(dress, FindSlot.ONE_PIECE, ""), Find(SHOES, FindSlot.FOOTWEAR, "")]
     )
+
+
+@pytest.mark.parametrize(
+    "usage",
+    [
+        {"input_tokens": -100000, "output_tokens": 100},
+        {"input_tokens": 2, "output_tokens": -100000},
+        {"input_tokens": 5, "input_tokens_details": {"cached_tokens": 7}, "output_tokens": 10},
+        {"input_tokens": "100", "output_tokens": 10},
+        {"input_tokens": 100},
+        {"input_tokens": 100, "output_tokens": 10, "input_tokens_details": []},
+    ],
+)
+def test_invalid_model_usage_never_reduces_spending(usage: dict[str, Any]) -> None:
+    reply = {**answer([item(SHIRT, "top")]), "usage": usage}
+    result, _, _ = run(FakeModel(call("hemd"), reply))
+    assert result.outcome is FindOutcome.SUCCESS
+    assert result.cost_known is False
+    assert result.usage.cost_micro_usd >= 0

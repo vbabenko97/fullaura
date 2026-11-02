@@ -137,7 +137,7 @@ class Usage:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     http_attempts: int = 0
-    unmetered_calls: int = 0  # completed calls whose reply reported no token usage
+    unmetered_calls: int = 0  # completed calls whose reply reported no valid token usage
 
     def add(
         self,
@@ -146,13 +146,17 @@ class Usage:
         *,
         call_completed: bool = True,
     ) -> Usage:
+        prompt = usage.get("prompt_tokens") if isinstance(usage, dict) else None
+        completion = usage.get("completion_tokens") if isinstance(usage, dict) else None
+        # A provider's counts that cannot be true cost a call at its maximum, like no counts at
+        # all, because a negative count would lower what the ledger records as spent.
+        metered = type(prompt) is int and prompt >= 0 and type(completion) is int and completion > 0
         return Usage(
             calls=self.calls + int(call_completed),
-            prompt_tokens=self.prompt_tokens + int(usage.get("prompt_tokens") or 0),
-            completion_tokens=self.completion_tokens + int(usage.get("completion_tokens") or 0),
+            prompt_tokens=self.prompt_tokens + (prompt if metered else 0),
+            completion_tokens=self.completion_tokens + (completion if metered else 0),
             http_attempts=self.http_attempts + http_attempts,
-            unmetered_calls=self.unmetered_calls
-            + int(call_completed and not usage.get("completion_tokens")),
+            unmetered_calls=self.unmetered_calls + int(call_completed and not metered),
         )
 
 
