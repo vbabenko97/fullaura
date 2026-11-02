@@ -83,6 +83,7 @@ from backend.app.sessions import (
     PlanMemory,
     PlanRecord,
     Session,
+    invite_scope,
     read_session,
     sign_session,
 )
@@ -443,9 +444,11 @@ def create_app(
             "has_plan": False,
             "design_open": False,
             "find_open": False,
+            "invite_scope": None,
         }
         if session is None or not beta_open():
             return payload
+        payload["invite_scope"] = invite_scope(secret, session.invite_id)
         payload["has_plan"] = plans.get(session) is not None
         try:
             status = pilot.status(session.invite_id)

@@ -26,6 +26,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-22](#t-22-a-clothing-line-kept-by-code-and-the-reason-for-an-unknown-cost) A clothing line kept by code, and the reason for an unknown cost | done | 2026-11-02 |
 | [T-23](#t-23-fixes-from-an-outside-audit) Fixes from an outside audit | done | 2026-11-02 |
 | [T-24](#t-24-fixes-from-a-second-outside-audit) Fixes from a second outside audit | done | 2026-11-02 |
+| [T-25](#t-25-follow-ups-to-the-second-outside-audit) Follow-ups to the second outside audit | done | 2026-11-02 |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | next | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -234,11 +235,22 @@ The audit's parser was not adopted. It took the first object with `items`, so a 
 
 The other three points change nothing here:
 
-- Opening an invite in a tab that holds a working plan brings that plan and its preferences back, whichever invite made them. This is open and waits for the author's decision. The page cannot tell a second person from the same person opening their link again, because each opening starts a new browser session and the page is not told which invite it has. Clearing the plan on every opening would lose the same person's work. Saved plans are shared across a device by design ([D-46](DECISIONS.md#d-46-the-server-keeps-the-checked-plan-and-the-browser-keeps-saved-copies)).
+- Opening an invite in a tab that held a working plan brought that plan and its preferences back, whichever invite made them. [T-25](#t-25-follow-ups-to-the-second-outside-audit) changes this.
 - The image provider's answer is read into memory with no limit on its size. Only the 120-second deadline bounds it, and the sender is the authenticated provider. This stays as it is.
 - A plan request and a restore that run together in one browser session do not corrupt anything. The later one replaces the other, both plans passed every check, and the older token is refused with `plan_expired` before anything is counted. The page answers that by restoring its own plan. This was read in the code, not run under load.
 
 The change reaches the site with the next deployment.
+
+Done when: the checks in the [README](../README.md#check-a-change) pass and the new tests fail on the earlier code.
+
+## T-25: Follow-ups to the second outside audit
+
+The same auditor reviewed the T-24 work and asked for two more changes. Both are made, with tests that fail on the earlier code:
+
+- A working plan stays with the invite it was made under ([D-86](DECISIONS.md#d-86-a-tabs-working-plan-stays-with-the-invite-it-was-made-under)). That decision is proposed until the author answers.
+- Nothing inside a JSON object that cannot be read counts as the shopping agent's answer. The parser used to read on inside a broken object, so it could take a draft with `items` nested in it. It now skips to where the object's braces close, or to the end of the reply when they never do. A `}` inside the text of a broken object can still end it early. That takes a reply with a broken wrapper and a brace in its text, and none of the 7 recorded replies has a wrapper, so it stays.
+
+The work reaches the site with the next deployment.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass and the new tests fail on the earlier code.
 

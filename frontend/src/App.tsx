@@ -35,7 +35,7 @@ import type { Preferences } from "./plan";
 import { PreferencesForm } from "./PreferencesForm";
 import { PrivacyNotice } from "./PrivacyNotice";
 import { ShopMode } from "./ShopMode";
-import { deleteSavedPlan, keepCurrentPlan, loadCurrentPlan, loadSavedPlans, MAX_SAVED, savedName, savePlan } from "./planStorage";
+import { deleteSavedPlan, enterInvite, keepCurrentPlan, loadCurrentPlan, loadSavedPlans, MAX_SAVED, savedName, savePlan } from "./planStorage";
 import { SavedPlans } from "./SavedPlans";
 import { ShoppingList } from "./ShoppingList";
 import { TryOnPanel } from "./TryOnPanel";
@@ -145,7 +145,14 @@ function catalogChecks(catalog: Catalog): string {
   );
 }
 
+/** The page holds one invite's work: its plan, results and photos. Opening another invite mounts
+ * the page afresh, so none of it stays for the next person. */
 export function App() {
+  const [opening, setOpening] = useState(0);
+  return <Workspace key={opening} onOtherInvite={() => setOpening((count) => count + 1)} />;
+}
+
+function Workspace({ onOtherInvite }: { onOtherInvite: () => void }) {
   const [session, setSession] = useState<Session | null>(null);
   const [sessionState, setSessionState] = useState<LoadState>("loading");
   const [gateBusy, setGateBusy] = useState(false);
@@ -335,6 +342,10 @@ export function App() {
       setSession(next);
       setSessionState("ready");
       if (!next.beta || !next.invited) return;
+      if (enterInvite(next.invite_scope)) {
+        onOtherInvite();
+        return;
+      }
       await openWorkspace(() => cancelled);
     }
     void start();
@@ -370,6 +381,10 @@ export function App() {
       return;
     } finally {
       setGateBusy(false);
+    }
+    if (enterInvite(next.invite_scope)) {
+      onOtherInvite();
+      return;
     }
     // The invite is open now; a catalog failure shows in the workspace, not as an invite error.
     setSession(next);

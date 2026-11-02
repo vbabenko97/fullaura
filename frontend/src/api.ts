@@ -412,6 +412,7 @@ export function parseSession(value: unknown): Session {
     design_open: value.design_open === undefined ? false : readFlag(value.design_open, "design flag"),
     // minimal: a server from before the shopping agent sends no flag, which means the mode is off
     find_open: value.find_open === undefined ? false : readFlag(value.find_open, "find flag"),
+    invite_scope: readNullableString(value.invite_scope, "invite scope"),
   };
 }
 

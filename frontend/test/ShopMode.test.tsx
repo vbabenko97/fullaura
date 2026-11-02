@@ -22,6 +22,7 @@ const SESSION: Session = {
   has_plan: false,
   design_open: false,
   find_open: true,
+  invite_scope: null,
 };
 const FIND = {
   url: "https://shop.example/p/jacke",

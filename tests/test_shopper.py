@@ -787,3 +787,15 @@ def test_a_broken_object_after_a_draft_is_asked_again_rather_than_taking_the_dra
     result, _, _ = run(model)
     assert "held no JSON object" in model.payloads[-1]["input"]
     assert [find.product for find in result.finds] == [SWEATER]
+
+
+@pytest.mark.parametrize(
+    "broken",
+    [f'{{"draft": {DRAFT}, "final":', f'{{"draft": {DRAFT}', f'{{"draft": {DRAFT},}}'],
+    ids=["text after the draft", "ending right after the draft", "closed after a stray comma"],
+)
+def test_nothing_inside_a_broken_object_is_the_answer(broken: str) -> None:
+    model = FakeModel(call("hemd", "pullover"), said(broken), answer([item(SWEATER, "mid_layer")]))
+    result, _, _ = run(model)
+    assert "held no JSON object" in model.payloads[-1]["input"]
+    assert [find.product for find in result.finds] == [SWEATER]

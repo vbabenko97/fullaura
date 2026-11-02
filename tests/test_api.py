@@ -154,6 +154,21 @@ def test_an_invite_opens_a_signed_session(http: TestClient) -> None:
     assert http.get("/api/session").json()["invited"] is False  # a changed cookie is not a session
 
 
+def test_an_invite_keeps_its_scope_when_opened_again_and_the_scope_shows_nothing(
+    http: TestClient,
+) -> None:
+    assert http.get("/api/session").json()["invite_scope"] is None
+    scope = http.post("/api/session/invite", json={"code": CODE}).json()["invite_scope"]
+    invite_id, key, _ = http.cookies["fullaura_session"].split(".")
+    again = http.post("/api/session/invite", json={"code": CODE}).json()["invite_scope"]
+    assert again == scope
+    assert http.cookies["fullaura_session"].split(".")[1] != key  # a new browser session
+    assert http.get("/api/session").json()["invite_scope"] == scope
+    assert not any(part in scope for part in (CODE, invite_id, key))
+    other = http.post("/api/session/invite", json={"code": OTHER_CODE}).json()["invite_scope"]
+    assert other != scope
+
+
 def test_planning_needs_age_confirmation_and_an_operation_id(http: TestClient) -> None:
     http.post("/api/session/invite", json={"code": CODE})
     assert plan(http).json()["reason"] == "age_required"
