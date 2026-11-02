@@ -257,8 +257,6 @@ export interface Find {
   material: string | null;
   price_cents: number;
   size_checked: boolean;
-  /** The shop's address or title names the line asked for; otherwise it may be another line. */
-  line_stated: boolean;
   slot: string;
   /** The shop's title confirms this position; otherwise only the model says so. */
   slot_checked: boolean;

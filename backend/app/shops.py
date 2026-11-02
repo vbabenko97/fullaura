@@ -18,7 +18,7 @@ import zlib
 from collections import deque
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from typing import Any, Literal
 from urllib.parse import urljoin, urlsplit
 
@@ -56,10 +56,12 @@ _OTHER_LINE: dict[str, re.Pattern[str]] = {
     "women": re.compile(rf"{_MEN}|kinder|kids"),
     "any": re.compile(r"kinder|kids"),
 }
+# What an address must name for a person who chose a line. A page that names none may be any line,
+# and on the shops read on 2026-11-02 a title never named a line that its address did not.
 _THIS_LINE: dict[str, re.Pattern[str]] = {
-    "men": re.compile(_MEN),
-    "women": re.compile(r"frauen|damen|women"),
-    "any": re.compile(r"$^"),
+    "men": re.compile(rf"{_MEN}|unisex"),
+    "women": re.compile(r"frauen|damen|women|unisex"),
+    "any": re.compile(r""),
 }
 # Not words to find in an address: shops write the line differently, as damen or frauen, and a
 # search applies the person's line anyway, so one of these would only hide products of that line.
@@ -135,7 +137,6 @@ class ShopProduct:
     color: str | None
     material: str | None
     size_checked: bool  # the page lists sizes and has one the person gave, in stock
-    line_stated: bool = True  # its address or title names the line the person asked for
 
 
 @dataclass(frozen=True, slots=True)
@@ -584,7 +585,8 @@ class ShopIndex:
         self, words: Iterable[str], line: Line, sizes: Iterable[str], budget_cents: int
     ) -> ShopSearch:
         """Products whose address holds every word, read from their pages, that can be bought now
-        within the budget. The person's clothing line comes first, and the others stay out. Pages
+        within the budget. The address must name the person's clothing line, or unisex, unless they
+        take any line, so a product that names none is not read for someone who chose one. Pages
         are read a few at a time until each shop has enough products, has no address left or keeps
         failing, or until the search reaches its limit of pages or of time. A shop that keeps
         failing is then left alone for a while, and the other shops are read as usual."""
@@ -608,13 +610,13 @@ class ShopIndex:
                 url
                 for url in entry[1]
                 if all(word in url.lower() for word in wanted)
+                and _THIS_LINE[line].search(url.lower())
                 and not _OTHER_LINE[line].search(url.lower())
                 and robots.allows(url)
             ]
             if down:
                 left_alone += bool(matches)
                 continue
-            matches.sort(key=lambda url: not _THIS_LINE[line].search(url.lower()))
             readings.append(_Reading(shop, robots, deque(matches)))
 
         def read(entry: tuple[_Reading, str]) -> PageFacts | None | ShopReadError:
@@ -645,8 +647,7 @@ class ShopIndex:
                         and product.price_cents <= budget_cents
                         and not _OTHER_LINE[line].search(product.title.lower())
                     ):
-                        named = _THIS_LINE[line].search(f"{url} {product.title}".lower())
-                        products.append(replace(product, line_stated=line == "any" or bool(named)))
+                        products.append(product)
                         reading.found += 1
         back_at = self._clock() + RETRY_FAILED_PAGES_S
         with self._lock:

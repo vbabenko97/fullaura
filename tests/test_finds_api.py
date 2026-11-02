@@ -351,13 +351,15 @@ def test_shops_that_cannot_be_read_never_use_up_a_request(tmp_path: Path) -> Non
 
 
 def test_a_failing_shop_leaves_other_invites_and_other_shops_working(tmp_path: Path) -> None:
-    shoes = "https://shop.example/p/schuh-0"
+    shoes = "https://shop.example/p/schuh-herren-0"
     model = FakeModel(
         call("jacke"), call("schuh"), answer([{"url": shoes, "slot": "footwear", "why": "Closed"}])
     )
     all_routes = {
-        **listing("https://down.example", [503] * FAILURES_TO_STOP),
-        **listing("https://shop.example", [page(product("Schuh", offer("50.00")))], word="schuh"),
+        **listing("https://down.example", [503] * FAILURES_TO_STOP, word="jacke-herren"),
+        **listing(
+            "https://shop.example", [page(product("Schuh", offer("50.00")))], word="schuh-herren"
+        ),
     }
     down = Shop("Down", "https://down.example", "/p/")
     agent = ShopAgent(model, ShopIndex((down, SHOP), serve(all_routes)))
@@ -377,7 +379,7 @@ def test_real_pages_failing_behind_a_readable_sitemap_stop_further_paid_calls(
 ) -> None:
     now = [0.0]
     model = FakeModel(call("jacke"))
-    all_routes = listing("https://shop.example", [503] * FAILURES_TO_STOP)
+    all_routes = listing("https://shop.example", [503] * FAILURES_TO_STOP, word="jacke-herren")
     index = ShopIndex((SHOP,), serve(all_routes), clock=lambda: now[0])
     app = create_app(settings(tmp_path), store=store, shop_agent=ShopAgent(model, index))
     operation = str(uuid.uuid4())

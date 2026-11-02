@@ -23,6 +23,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-19](#t-19-small-fixes-from-the-authors-test) Small fixes from the author's test | done | 2026-11-01 |
 | [T-20](#t-20-the-shopping-agent) The shopping agent | done | 2026-11-01 |
 | [T-21](#t-21-fixes-from-the-review-of-the-shopping-agent) Fixes from the review of the shopping agent | done | 2026-11-02 |
+| [T-22](#t-22-a-clothing-line-kept-by-code-and-the-reason-for-an-unknown-cost) A clothing line kept by code, and the reason for an unknown cost | next | |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -195,6 +196,12 @@ The first search on the deployed site then found what stand-ins could not show. 
 The work was deployed on 2026-11-02 as `bf5751c` and checked on the deployed site ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). The whole outfit ran on that revision, and the upper body and one item on the one before it. This task does not show that the recommendations suit what a person asks for; that remains the author's judgment.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check and real searches for a whole outfit, the upper body and one item, including results from a shop other than Tom Tailor.
+
+## T-22: A clothing line kept by code, and the reason for an unknown cost
+
+A further review of `bf5751c` left two points, and the work stops there before the submission. A chosen clothing line is now kept by code ([D-80](DECISIONS.md#d-80-a-chosen-clothing-line-must-be-named-in-the-address)), and a search of unknown cost says why in the log ([D-81](DECISIONS.md#d-81-a-call-of-unknown-cost-says-why-in-the-log)).
+
+Done when: the checks in the [README](../README.md#check-a-change) pass, real searches on this code succeed for each scope and both lines, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check.
 
 ## T-06: Evaluation and submission
 

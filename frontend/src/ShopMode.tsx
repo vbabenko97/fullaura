@@ -51,7 +51,6 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
   const canSubmit = session.find_open && !running;
   const unchecked = result?.finds.filter((find) => !find.size_checked).length ?? 0;
   const kindUnchecked = result?.finds.filter((find) => !find.slot_checked).length ?? 0;
-  const lineUnstated = result?.finds.filter((find) => !find.line_stated).length ?? 0;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -157,6 +156,7 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
                   <span>{option.label}</span>
                 </label>
               ))}
+              <p className="field-help">Men's and Women's show only products the shop names that way, or unisex. Either also shows products that name no line, which can be of any line.</p>
             </fieldset>
             <div className="field-pair">
               <div className="form-field">
@@ -238,11 +238,6 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
                   Size not checked for {unchecked === result.finds.length ? "these items" : `${unchecked} item${unchecked === 1 ? "" : "s"}`}. Check yours on the shop's page before you buy.
                 </p>
               )}
-              {lineUnstated > 0 && (
-                <p className="plan-unchecked">
-                  Clothing line not named by the shop for {lineUnstated === result.finds.length ? "these items" : `${lineUnstated} item${lineUnstated === 1 ? "" : "s"}`}, so {lineUnstated === 1 ? "it" : "they"} may belong to another line. Check on the shop's page before you buy.
-                </p>
-              )}
               {kindUnchecked > 0 && (
                 <p className="plan-unchecked">
                   Kind of item not confirmed for {kindUnchecked === result.finds.length ? "these items" : `${kindUnchecked} item${kindUnchecked === 1 ? "" : "s"}`}: the shop's title does not state it, so the position shown is the agent's reading.
@@ -261,7 +256,6 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
                     </p>
                     {find.why && <p className="item-facts">Agent's reason: {find.why}</p>}
                     {find.material && <p className="item-facts">{find.material}</p>}
-                    {!find.line_stated && <p className="item-facts">Line not named by the shop</p>}
                   </li>
                 ))}
               </ul>

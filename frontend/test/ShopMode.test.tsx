@@ -31,7 +31,6 @@ const FIND = {
   material: "100% Polyester",
   price_cents: 9000,
   size_checked: false,
-  line_stated: true,
   slot: "outer_layer",
   slot_checked: true,
   why: "Warm enough",
@@ -201,24 +200,10 @@ describe("the shopping agent's page", () => {
     expect(screen.getByText("Footwear (not confirmed)")).toBeTruthy();
   });
 
-  it("says when a shop does not name the clothing line", async () => {
-    const second = { ...FIND, url: "https://shop.example/p/hemd", title: "Hemd", slot: "top" };
-    vi.stubGlobal("fetch", async () => stream({ result: { ...RESULT, finds: [{ ...FIND, line_stated: false }, second] } }));
+  it("says what choosing a clothing line leaves out", () => {
     show();
-    fill();
-    fireEvent.click(screen.getByRole("button", { name: "Find it" }));
-    await screen.findByRole("heading", { name: "Winterjacke" });
-    expect(screen.getByText(/Clothing line not named by the shop for 1 item, so it may belong to another line/)).toBeTruthy();
-    expect(screen.getByText("Line not named by the shop")).toBeTruthy();
-  });
-
-  it("says nothing about the line when the shop names it", async () => {
-    vi.stubGlobal("fetch", async () => stream({ result: RESULT }));
-    show();
-    fill();
-    fireEvent.click(screen.getByRole("button", { name: "Find it" }));
-    await screen.findByRole("heading", { name: "Winterjacke" });
-    expect(screen.queryByText(/not named by the shop/)).toBeNull();
+    expect(screen.getByText(/Men's and Women's show only products the shop names that way, or unisex/)).toBeTruthy();
+    expect(screen.getByText(/Either also shows products that name no line/)).toBeTruthy();
   });
 
   it("says what the upper body changes, and what the try-on is made from", async () => {
