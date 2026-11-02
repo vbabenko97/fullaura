@@ -247,7 +247,7 @@ Done when: the checks in the [README](../README.md#check-a-change) pass and the 
 
 The same auditor reviewed the T-24 work and asked for two more changes, and then named three defects in the first of them. All are made, with tests that fail on the earlier code, and a browser test now switches invites in Chromium:
 
-- A working plan stays with the invite it was made under ([D-86](DECISIONS.md#d-86-a-tabs-working-plan-stays-with-the-invite-it-was-made-under)). That decision is proposed until the author answers.
+- A working plan stays with the invite it was made under ([D-86](DECISIONS.md#d-86-a-tabs-working-plan-stays-with-the-invite-it-was-made-under)). The author accepted that decision. The session cookie that the tabs of one browser share stays a known limitation, which it records.
 - A request still running when another invite opens in the same tab no longer reaches that invite. A plan that answered late used to be written to the tab, and an update that found its plan expired used to restore it and send it again under the next invite's cookie.
 - A failed write to the tab's storage no longer breaks a change of invite. The tab kept the invite under its own key, so a failed write left the earlier invite there. The page then mounted again and again without opening, and on the way back to the earlier invite it kept the later invite's work and could restore its plan. The plan and its invite are now written together, the open page holds its invite in memory, and the page mounts once for an invite.
 - Invites open one at a time, so the link opened last decides both the cookie and the page. A late answer to an earlier link used to decide them.
