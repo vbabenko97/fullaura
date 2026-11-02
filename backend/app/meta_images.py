@@ -251,18 +251,22 @@ async def post_json_async(request: Request, timeout_s: float) -> dict[str, Any]:
 
 
 def error_detail(error: HTTPError, api_key: str) -> str:
-    """The provider's error type, code and a short message; never the request body, and
-    never the API key, even when the provider repeats it in the message."""
+    """The provider's error type, code and a short message on one line; never the request body,
+    and never the API key, even when the provider repeats it in any of them."""
+
+    def safe_text(value: object, limit: int) -> str:
+        text = str(value)
+        if api_key:
+            text = text.replace(api_key, "[redacted]")
+        return " ".join(text.split())[:limit]
+
     try:
         info = json.loads(error.read())
         info = info.get("error", info)
-        labels = ", ".join(str(info[key]) for key in ("type", "code") if info.get(key))
-        message = str(info.get("message", ""))
+        labels = ", ".join(safe_text(info[key], 80) for key in ("type", "code") if info.get(key))
+        message = safe_text(info.get("message", ""), 200)
     except (ValueError, AttributeError, OSError):
         return ""
-    if api_key:
-        message = message.replace(api_key, "[redacted]")
-    message = message[:200]
     return f" ({labels}): {message}" if labels else f": {message}" if message else ""
 
 

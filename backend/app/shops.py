@@ -344,8 +344,9 @@ def _offer_sizes(product: dict[str, Any], offer: dict[str, Any]) -> tuple[str, .
 
 
 def _offer_price(offer: dict[str, Any]) -> int | None:
-    """The price in cents. A range's low price is not the price of this product."""
-    if offer.get("@type") == "AggregateOffer" and offer.get("lowPrice") != offer.get("highPrice"):
+    """The price in cents. A range's low price is not the price of this product, whatever type the
+    offer states."""
+    if offer.get("lowPrice") != offer.get("highPrice"):
         return None
     price = _text(offer.get("price") if offer.get("price") is not None else offer.get("lowPrice"))
     if price is None or not _PRICE.fullmatch(price):

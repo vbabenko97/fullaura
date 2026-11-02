@@ -27,6 +27,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-23](#t-23-fixes-from-an-outside-audit) Fixes from an outside audit | done | 2026-11-02 |
 | [T-24](#t-24-fixes-from-a-second-outside-audit) Fixes from a second outside audit | done | 2026-11-02 |
 | [T-25](#t-25-follow-ups-to-the-second-outside-audit) Follow-ups to the second outside audit | done | 2026-11-02 |
+| [T-26](#t-26-fixes-from-a-third-outside-audit) Fixes from a third outside audit | done | 2026-11-02 |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | next | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -254,6 +255,19 @@ The same auditor reviewed the T-24 work and asked for two more changes, and then
 - Nothing inside a JSON object that cannot be read counts as the shopping agent's answer. The parser used to read on inside a broken object, so it could take a draft with `items` nested in it. It now skips to where the object's braces close, or to the end of the reply when they never do. A `}` inside the text of a broken object can still end it early. That takes a reply with a broken wrapper and a brace in its text, and none of the 7 recorded replies has a wrapper, so it stays.
 
 The work reached the site with the deployment of `1688393`, where switching invites was also checked in Chromium ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)).
+
+Done when: the checks in the [README](../README.md#check-a-change) pass and the new tests fail on the earlier code.
+
+## T-26: Fixes from a third outside audit
+
+A third outside audit of the source, made with GPT, named two defects. Both were confirmed and fixed, with tests that fail on the earlier code:
+
+- A range of prices no longer counts as a price, whatever type the offer states. The check looked only for an `@type` that was exactly `AggregateOffer`, so a list of types, the full schema.org address, another type or no type let a range's low price through as the product's price. An offer now has no price when its `lowPrice` and `highPrice` differ, including an offer with only a `lowPrice` and one that also states a `price`. 55 saved shop pages and 15 live pages of each of the three shops, read on 2026-11-02, hold 265 offers, and none has a `lowPrice` or `highPrice`, so these pages read as before.
+- The provider's error type and code now get the same treatment as its message: the API key is removed, line breaks become spaces, and each is limited in length. Only the message used to be cleaned. The running app neither logs this text nor sends it to the browser, so it reaches people only through `scripts/smoke_models.py` and `scripts/feasibility_run.py`.
+
+The audit's patch was not adopted as written. Its check of the price still let an offer of another type or no type through, and it did not apply to the source.
+
+These changes have not reached the site.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass and the new tests fail on the earlier code.
 
