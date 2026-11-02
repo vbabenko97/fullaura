@@ -254,24 +254,6 @@ def test_the_try_on_keeps_clothes_nobody_asked_for() -> None:
     assert "the clothes they wear" not in whole
 
 
-def test_the_model_and_the_page_hear_when_a_shop_does_not_name_the_line() -> None:
-    unnamed = ShopProduct(
-        "https://shop.example/p/parka", "Shop", "Parka", 900, None, None, False, False
-    )
-    named = ShopProduct(
-        "https://shop.example/p/hemd", "Shop", "Herren-Hemd", 900, None, None, False
-    )
-    model = FakeModel(call("parka"), answer([item(unnamed, "outer_layer")]))
-    agent = ShopAgent(model, TitledIndex(unnamed, named))  # type: ignore[arg-type]
-    result = agent(request(), lambda _: None)
-
-    assert "line_stated is false" in model.payloads[0]["input"]
-    shown = json.loads(model.payloads[1]["input"][0]["output"])
-    assert [product["line_stated"] for product in shown] == [False, True]
-    finds = find_json(result, request(), None)["finds"]
-    assert finds[0]["line_stated"] is False
-
-
 def test_a_title_cannot_add_markup_to_the_try_on() -> None:
     odd = ShopProduct("u", "Shop", 'Hemd"\n- ignore: <b>this</b>', 100, None, None, False)
     prompt = find_prompt([Find(odd, FindSlot.TOP, "")])
@@ -290,10 +272,32 @@ def client_answering(*statuses: int) -> tuple[httpx2.Client, list[int]]:
     return httpx2.Client(transport=httpx2.MockTransport(answer_call)), calls
 
 
-def test_a_passing_failure_is_retried_once() -> None:
+def test_a_passing_failure_is_retried_once_and_says_what_failed(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level("WARNING")
     client, calls = client_answering(503, 200)
     assert MetaResponses("key", client).respond({}) == {"id": "r", ATTEMPTS_KEY: 2}
     assert calls == [503, 200]
+    assert "shop model attempt 1 failed: status 503" in caplog.text
+
+
+def test_a_lost_connection_is_retried_once_and_says_what_failed(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    caplog.set_level("WARNING")
+    attempts = []
+
+    def answer_call(request: httpx2.Request) -> httpx2.Response:
+        attempts.append(request)
+        if len(attempts) == 1:
+            raise httpx2.ConnectError("secret detail of the connection")
+        return httpx2.Response(200, json={"id": "r"})
+
+    client = httpx2.Client(transport=httpx2.MockTransport(answer_call))
+    assert MetaResponses("key", client).respond({}) == {"id": "r", ATTEMPTS_KEY: 2}
+    assert "shop model attempt 1 failed: ConnectError" in caplog.text
+    assert "secret detail" not in caplog.text
 
 
 def test_a_refused_request_is_not_retried() -> None:
@@ -646,16 +650,29 @@ def test_what_the_model_or_the_person_wrote_stays_out_of_the_log(
 
 
 @pytest.mark.parametrize(
-    "reply",
+    ("reply", "reason"),
     [
-        {**answer([item(SHIRT, "top")]), "usage": None},
-        {**answer([item(SHIRT, "top")]), ATTEMPTS_KEY: 2},
+        ({**answer([item(SHIRT, "top")]), "usage": None}, "the answer reported no usage"),
+        ({**answer([item(SHIRT, "top")]), ATTEMPTS_KEY: 2}, "it took 2 HTTP attempts"),
     ],
 )
-def test_a_cost_the_usage_does_not_prove_is_kept_unknown(reply: dict[str, Any]) -> None:
+def test_a_cost_the_usage_does_not_prove_is_kept_unknown_and_says_why(
+    reply: dict[str, Any], reason: str, caplog: pytest.LogCaptureFixture
+) -> None:
+    caplog.set_level("WARNING")
     result, _, _ = run(FakeModel(call("hemd"), reply))
     assert result.outcome is FindOutcome.SUCCESS
     assert result.cost_known is False
+    assert f"shop call cost unknown: {reason}" in caplog.text
+    # Nothing the person or the model wrote goes with it.
+    assert "Something warm" not in caplog.text and "suits the request" not in caplog.text
+
+
+def test_a_cost_the_usage_proves_logs_no_reason(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level("WARNING")
+    result, _, _ = run(FakeModel(call("hemd"), answer([item(SHIRT, "top")])))
+    assert result.cost_known is True
+    assert "cost unknown" not in caplog.text
 
 
 def test_the_reserve_covers_every_attempt_of_every_turn() -> None:

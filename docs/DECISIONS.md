@@ -621,7 +621,23 @@ Each decision has a number that is never reused and a status: accepted, proposed
 ## D-79: A product that names no clothing line is marked, not left out
 
 - **Date:** 2026-11-02
-- **Status:** proposed; implemented as the default, and the author has not decided between this and leaving such products out
+- **Status:** superseded by [D-80](#d-80-a-chosen-clothing-line-must-be-named-in-the-address)
 - **Decision:** A product whose address or title names another clothing line is left out. One that names no line stays, with `line_stated` false: the prompt tells the model to choose it only when no product that names the line suits, and the page says that it may belong to another line.
 - **Reason:** In the live runs of 2026-11-02, a men's search chose "Grobstrickpullover mit Zopfmuster" and "Gefütterte Winterboots" from Tchibo. On the same day, 2,354 of Tchibo's 36,853 addresses held a word for a line, and the structured data of the five Tchibo pages looked at names none, so code cannot tell which line these products belong to. Leaving out every product that names no line would remove most of Tchibo and shoes that Giesswein names "Beach".
 - **Consequences:** A person can still be offered a product of another line, and the page says so. The rule depends on the model following the prompt, which code does not check.
+
+## D-80: A chosen clothing line must be named in the address
+
+- **Date:** 2026-11-02
+- **Status:** accepted; the author forwarded a review's recommendation of this on 2026-11-02, in answer to the question left open by [D-79](#d-79-a-product-that-names-no-clothing-line-is-marked-not-left-out)
+- **Decision:** With Men's or Women's chosen, a search takes only addresses that name that line or `unisex`, as the catalog also counts unisex for either line. Either takes every address. The rule is in code and is applied before a page is read, so the page mark and the prompt's preference of D-79 are gone. A title that names another line still takes a product out.
+- **Reason:** A person who chooses a line should not depend on the model following a prompt to keep to it. The cost is small where it matters. On 2026-11-02, for example, Tom Tailor's addresses named the men's line for 195 jackets, 306 pullovers and 141 trousers, and the women's for 149 jackets, 125 dresses and 176 trousers. In a sample of 75 pages from the three shops whose addresses name no line, no title named one, so the address is enough and those pages need not be read.
+- **Consequences:** Most Tchibo products and some of Giesswein's, such as all its scarves and hats, appear only with Either, and the form says so. A men's or women's search therefore comes mostly from Tom Tailor. Few products may remain for a word, such as 5 women's boots at Tom Tailor. With Either, a product can be of any line, and nothing on the page marks it.
+
+## D-81: A call of unknown cost says why in the log
+
+- **Date:** 2026-11-02
+- **Status:** accepted
+- **Decision:** Each failed HTTP attempt to the shopping agent's model logs its number and the status or the kind of error. A search whose cost is unknown logs whether it took a second attempt or its answer reported no usage. Neither line holds what a person or the model wrote, and the whole reservation is kept as before.
+- **Reason:** A search on the deployed site on 2026-11-02 kept its whole reservation of $0.567, and nothing showed which case it was, so neither its cause nor what it really cost can be known. At that size such calls could close the planning budget early if they became common.
+- **Consequences:** The next such search shows its cause in the log. That earlier search stays unexplained. In twelve real searches on this code, run on this machine, one met status 503 on both attempts: it ended as "The model could not be reached" and would count against an invite. A second attempt follows the first at once, with no wait.

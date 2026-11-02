@@ -494,7 +494,6 @@ export function parseFindLine(value: unknown): { kind: "step"; step: string } | 
           material: readNullableString(find.material, "material"),
           price_cents: readCount(find.price_cents, "price"),
           size_checked: readFlag(find.size_checked, "size flag"),
-          line_stated: readFlag(find.line_stated, "line flag"),
           slot: readString(find.slot, "slot"),
           slot_checked: readFlag(find.slot_checked, "slot flag"),
           why: readString(find.why, "reason"),

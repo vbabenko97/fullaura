@@ -181,29 +181,48 @@ def test_a_word_for_the_clothing_line_does_not_narrow_the_search(
     assert [product.url for product in found.products] == [address]
 
 
-def test_a_product_says_whether_its_address_or_title_names_the_line() -> None:
+def test_a_chosen_line_must_be_named_in_the_address_and_no_other_page_is_read() -> None:
+    addresses = {
+        "plain": "https://shop.example/p/jacke-1",
+        "men": "https://shop.example/p/jacke-herren-2",
+        "women": "https://shop.example/p/jacke-frauen-3",
+        "unisex": "https://shop.example/p/jacke-unisex-4",
+        "kids": "https://shop.example/p/jacke-kinder-5",
+    }
+    sitemap = "".join(f"<url><loc>{address}</loc></url>" for address in addresses.values())
     all_routes = {
-        **listing("https://shop.example", [page(product("Parka")), page(product("Herren-Parka"))]),
-        JACKET: httpx2.Response(200, text=page(product("Winterjacke", offer("120.00")))),
+        "https://shop.example/robots.txt": httpx2.Response(200, text=ROBOTS),
+        "https://shop.example/sitemap.xml": httpx2.Response(
+            200, text=f"<urlset>{sitemap}</urlset>"
+        ),
+        **{
+            address: httpx2.Response(200, text=page(product("Jacke", offer("50.00"))))
+            for address in addresses.values()
+        },
     }
-    sitemap = all_routes["https://shop.example/sitemap.xml"].text
-    all_routes["https://shop.example/sitemap.xml"] = httpx2.Response(
-        200, text=sitemap.replace("</urlset>", f"<url><loc>{JACKET}</loc></url></urlset>")
-    )
-    index = ShopIndex((SHOP,), serve(all_routes))
+    seen: list[str] = []
+    index = ShopIndex((SHOP,), serve(all_routes, seen))
 
-    men = index.search(["jacke"], "men", [], 15000).products
-    assert {found.title: found.line_stated for found in men} == {
-        "Parka": False,
-        "Herren-Parka": True,
-        "Winterjacke": True,
+    def found(line: Line) -> set[str]:
+        return {item.url for item in index.search(["jacke"], line, [], 15000).products}
+
+    assert found("men") == {addresses["men"], addresses["unisex"]}
+    # A page that could not be this line is not read at all.
+    assert addresses["plain"] not in seen and addresses["women"] not in seen
+    assert found("women") == {addresses["women"], addresses["unisex"]}
+    # Either also takes what names no line, and no line ever takes children's clothes.
+    assert found("any") == {
+        addresses["plain"],
+        addresses["men"],
+        addresses["women"],
+        addresses["unisex"],
     }
-    # With no line asked for there is nothing to state.
-    either = index.search(["jacke"], "any", [], 15000).products
-    assert all(found.line_stated for found in either)
-    # A title that names another line takes the product out, like an address that does.
-    women = index.search(["jacke"], "women", [], 15000).products
-    assert [(found.title, found.line_stated) for found in women] == [("Parka", False)]
+
+
+def test_a_title_that_names_another_line_takes_the_product_out() -> None:
+    all_routes = listing("https://shop.example", [page(product("Damen-Parka"))], "jacke-herren")
+    found = ShopIndex((SHOP,), serve(all_routes)).search(["jacke"], "men", [], 15000)
+    assert (found.products, found.read) == ([], 1)
 
 
 def test_a_word_for_the_line_alone_is_not_a_search() -> None:
@@ -621,7 +640,7 @@ def test_no_request_leaves_the_shop() -> None:
     }
     seen: list[str] = []
     index = ShopIndex((SHOP,), serve(all_routes, seen))
-    assert [found.url for found in index.search(["jacke"], "men", [], 15000).products] == [inside]
+    assert [found.url for found in index.search(["jacke"], "any", [], 15000).products] == [inside]
     assert all(url.startswith("https://shop.example/") for url in seen)
 
 
