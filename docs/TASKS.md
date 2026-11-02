@@ -24,7 +24,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-20](#t-20-the-shopping-agent) The shopping agent | done | 2026-11-01 |
 | [T-21](#t-21-fixes-from-the-review-of-the-shopping-agent) Fixes from the review of the shopping agent | done | 2026-11-02 |
 | [T-22](#t-22-a-clothing-line-kept-by-code-and-the-reason-for-an-unknown-cost) A clothing line kept by code, and the reason for an unknown cost | done | 2026-11-02 |
-| [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
+| [T-06](#t-06-evaluation-and-submission) Evaluation and submission | next | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
 ## T-01: Foundation
@@ -201,7 +201,7 @@ Done when: the checks in the [README](../README.md#check-a-change) pass, and the
 
 A further review of `bf5751c` left two points, and the work stops there before the submission. A chosen clothing line is now kept by code ([D-80](DECISIONS.md#d-80-a-chosen-clothing-line-must-be-named-in-the-address)), and a search of unknown cost says why in the log ([D-81](DECISIONS.md#d-81-a-call-of-unknown-cost-says-why-in-the-log)).
 
-The work was deployed on 2026-11-02 as `259c686` and passed the HTTP smoke check there ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). No search ran on the deployed site, to keep the requests left on the invite for the demo video, so the first one there tests it.
+The work was deployed on 2026-11-02 as `259c686` and passed the HTTP smoke check there ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). No search ran there at that point, to keep the requests left on the invite for the demo video. Two searches with a later invite then succeeded on the same revision.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, real searches on this code succeed for each scope and both lines, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check.
 
@@ -211,7 +211,7 @@ The submission deadline is 2026-11-04 21:00 ET, which is 2026-11-05 03:00 in Vie
 
 Compare the full workflow with a simple baseline on the same cases. Record constraint failures and human judgments separately. Prepare the demo video and the public contribution summary. Three minutes is the working target for the video; check the final format in the submission form.
 
-The fixed cases, deterministic baseline, live comparison metrics and the author's answers for the example-fit case are recorded in [EVALUATION.md](EVALUATION.md). The demo video and submission remain outstanding, so T-06 remains planned.
+The fixed cases, deterministic baseline, live comparison metrics and the author's answers for the example-fit case are recorded in [EVALUATION.md](EVALUATION.md). Raw screen recordings of two searches and a try-on on the deployed site exist on the operator's machine, without narration. The finished video and the submission remain outstanding, so T-06 is not done.
 
 Done when: the submission is sent and its confirmation is received. Being ready to submit does not finish the task, so record each step on its own line:
 

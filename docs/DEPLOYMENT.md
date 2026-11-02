@@ -15,7 +15,7 @@
 | Revision | `fullaura-demo--0000024`, serving all traffic since 2026-11-02 |
 | Compute and scaling | 0.5 vCPU / 1 GiB; minimum 0 and maximum 1 replica; scales to zero after 300 seconds without traffic |
 | Ingress | External HTTPS, target port 8000, insecure HTTP disabled |
-| Beta | `FULLAURA_BETA_ENABLED=true`; 13 invite digests in the secret `invite-hashes` (10 for participants and 3 for the operator: the first, whose planning requests are used up, and two added on 2026-10-31 for the T-08 acceptance and the demo video); cookies signed with the secret `session-secret` |
+| Beta | `FULLAURA_BETA_ENABLED=true`; 14 invite digests in the secret `invite-hashes` (10 for participants and 4 for the operator: the first, whose planning requests are used up, two added on 2026-10-31 for the T-08 acceptance and the demo video, and one added on 2026-11-02 for recording the video); cookies signed with the secret `session-secret` |
 | Pilot window | `FULLAURA_PILOT_ENDS_AT=2026-11-06T23:59:00+01:00` and `FULLAURA_RECORDS_PURGE_AT=2026-11-09T10:00:00+01:00` |
 | Budgets in the app | Planning $7.97 and images $2.91: the beta's $8 and $3, less the $0.023 and $0.09 spent outside the ledger on the checks of 2026-10-30 |
 | Pilot store | Storage account `stfullauradurnz5gu4z`, container `pilot`; shared keys and public blob access off; a lifecycle rule deletes each record 30 days after its last change. The app's and the purge job's identities each have Storage Blob Data Contributor on the container; the operator has Storage Blob Data Reader on the account. |
@@ -207,6 +207,14 @@ Later on 2026-11-02, after the deployment of `main` at `259c686`, which adds the
 - `scripts/smoke_http.py` passed over HTTPS with an open beta session, and the page served holds the form's new text about clothing lines. A page opened before this deployment must be reloaded before its next search, because it expects a field that the server no longer sends.
 - No search ran on the deployed site, to keep the three planning requests left on the invite for the demo video. So the rule for a chosen clothing line and the new log lines ran only in tests and on this machine. There, twelve real searches for each scope and both lines cost about $0.12 on the Meta key, outside the ledger. Eleven succeeded, and every product they chose names its line in its address. One met status 503 on both attempts and ended as "The model could not be reached".
 - `scripts/pilot_report.py` with the participants' digests counts ten invites, none activated. The ledger holds $0.816982 for planning and $0.28 for images.
+
+Later on 2026-11-02, one operator invite was added to the secret `invite-hashes` with `az containerapp secret set`, keeping the thirteen earlier digests, which matched the operator's files, and revision `fullaura-demo--0000024` was restarted so that it reads the new value. The image, `session-secret`, the purge job and the pilot's times stayed as they were.
+
+- The secret holds 14 digests. The earlier value is kept in the operator's ignored files; a rollback sets it again and restarts the revision.
+- `scripts/smoke_http.py` passed over HTTPS. The new invite opens a session with 0 of 8 planning requests used, the invites for the T-08 acceptance and the first operator with 8 of 8, and the invite for the demo video with 5 of 8. An unknown invite code answered 403.
+- With the new invite in Chromium, the first searches on this revision succeeded. The upper body for men up to €150 returned a shirt at €39.99 and a pullover at €59.99 in 21 seconds, and one try-on with a synthetic persona took 11 seconds. One item for men up to €150 returned a puffer jacket at €149.99 in 15 seconds. All three prices appear on the shops' own pages, opened in a browser, and each address names the men's line. The jacket's page says "warm gefüttert". Consent was then withdrawn.
+- The log shows no answer cut off, no page refused, no failed attempt and no cost unknown. The invite has used 2 of its 8 planning requests and 1 of its 12 try-ons.
+- `scripts/pilot_report.py` with the participants' digests counts ten invites, none activated. The ledger holds $0.836313 for planning and $0.29 for images.
 
 URL: <https://fullaura-demo.blackbay-aaeee2c5.francecentral.azurecontainerapps.io>.
 
