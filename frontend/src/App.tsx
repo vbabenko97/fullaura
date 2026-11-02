@@ -146,13 +146,17 @@ function catalogChecks(catalog: Catalog): string {
 }
 
 /** The page holds one invite's work: its plan, results and photos. Opening another invite mounts
- * the page afresh, so none of it stays for the next person. */
+ * the page afresh, so none of it stays for the next person. The page is mounted for that invite,
+ * so a tab that cannot record the invite still mounts only once for it. */
 export function App() {
-  const [opening, setOpening] = useState(0);
-  return <Workspace key={opening} onOtherInvite={() => setOpening((count) => count + 1)} />;
+  const [invite, setInvite] = useState<string | null>(null);
+  return <Workspace key={invite} invite={invite} onOtherInvite={setInvite} />;
 }
 
-function Workspace({ onOtherInvite }: { onOtherInvite: () => void }) {
+function Workspace({ invite, onOtherInvite }: { invite: string | null; onOtherInvite: (scope: string | null) => void }) {
+  // Set once this page gives way to another invite's. A request still running then answers here,
+  // and must not touch the tab's plan or send anything more under the next invite's cookie.
+  const left = useRef(false);
   const [session, setSession] = useState<Session | null>(null);
   const [sessionState, setSessionState] = useState<LoadState>("loading");
   const [gateBusy, setGateBusy] = useState(false);
@@ -186,6 +190,18 @@ function Workspace({ onOtherInvite }: { onOtherInvite: () => void }) {
   const [designState, setDesignState] = useState<RequestState>("idle");
   const [designMessage, setDesignMessage] = useState<string | null>(null);
 
+  function keepPlan(plan: SavedPlan | null) {
+    if (!left.current) keepCurrentPlan(plan);
+  }
+
+  /** Whether this page gave way to one mounted for another invite. */
+  function leftForOtherInvite(next: Session): boolean {
+    if (!enterInvite(next.invite_scope) || next.invite_scope === invite) return false;
+    left.current = true;
+    onOtherInvite(next.invite_scope);
+    return true;
+  }
+
   async function refreshSession(): Promise<Session | null> {
     try {
       const next = parseSession(await readJson(await fetch("/api/session")));
@@ -210,7 +226,7 @@ function Workspace({ onOtherInvite }: { onOtherInvite: () => void }) {
       preferenceKey: key,
     };
     setCurrent(next);
-    keepCurrentPlan(savedFrom(next, catalog));
+    keepPlan(savedFrom(next, catalog));
     return next;
   }
 
@@ -218,6 +234,7 @@ function Workspace({ onOtherInvite }: { onOtherInvite: () => void }) {
     saved: { brief: Brief; state: StateInput & { plan: Plan }; catalog_id: string },
     loadedCatalog: Catalog | null = catalog,
   ): Promise<Restored> {
+    if (left.current) return { plan: null, response: null, error: null };
     try {
       const body = { brief: saved.brief, state: saved.state, catalog_id: saved.catalog_id };
       const response = parsePlanResponse(await postJson("/api/plans/restore", body));
@@ -243,7 +260,7 @@ function Workspace({ onOtherInvite }: { onOtherInvite: () => void }) {
         preferenceKey: preferenceKey(preferencesFrom(saved)),
       };
       setCurrent(next);
-      keepCurrentPlan(savedFrom(next, loadedCatalog));
+      keepPlan(savedFrom(next, loadedCatalog));
       return { plan: next, response, error: null };
     } catch (error) {
       return { plan: null, response: null, error };
@@ -262,7 +279,7 @@ function Workspace({ onOtherInvite }: { onOtherInvite: () => void }) {
       // say so whichever request found out, an update or a try-on.
       setCurrent(null);
       setLocks([]);
-      keepCurrentPlan(null);
+      keepPlan(null);
       // A request still running, such as the update that found out, says so once it answers.
       if (shownRequestState.current !== "loading") {
         setRequestState("error");
@@ -310,7 +327,7 @@ function Workspace({ onOtherInvite }: { onOtherInvite: () => void }) {
     }
     if (!stopped() && !result.plan) {
       // Only the server's refusal ends the working plan; after a network error a reload tries again.
-      if (result.response) keepCurrentPlan(null);
+      if (result.response) keepPlan(null);
       setRequestState("error");
       setRequestMessage(
         result.response
@@ -341,11 +358,7 @@ function Workspace({ onOtherInvite }: { onOtherInvite: () => void }) {
       if (cancelled) return;
       setSession(next);
       setSessionState("ready");
-      if (!next.beta || !next.invited) return;
-      if (enterInvite(next.invite_scope)) {
-        onOtherInvite();
-        return;
-      }
+      if (!next.beta || !next.invited || leftForOtherInvite(next)) return;
       await openWorkspace(() => cancelled);
     }
     void start();
@@ -382,10 +395,7 @@ function Workspace({ onOtherInvite }: { onOtherInvite: () => void }) {
     } finally {
       setGateBusy(false);
     }
-    if (enterInvite(next.invite_scope)) {
-      onOtherInvite();
-      return;
-    }
+    if (leftForOtherInvite(next)) return;
     // The invite is open now; a catalog failure shows in the workspace, not as an invite error.
     setSession(next);
     await openWorkspace();
@@ -417,7 +427,7 @@ function Workspace({ onOtherInvite }: { onOtherInvite: () => void }) {
   /** The kept items, also in the tab's working plan, so a reload keeps them. */
   function changeLocks(next: LockedPlacement[]) {
     setLocks(next);
-    if (current && catalog) keepCurrentPlan(savedFrom(current, catalog, next));
+    if (current && catalog) keepPlan(savedFrom(current, catalog, next));
   }
 
   function removeOwnedItem(id: string) {

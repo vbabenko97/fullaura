@@ -1,7 +1,7 @@
 import { act, cleanup, configure, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, onTestFinished, vi } from "vitest";
 import { App } from "../src/App";
 import { normalizePhoto } from "../src/photos";
 import firstPlanJson from "./fixtures/plan-success-initial.fixture.json?raw";
@@ -63,6 +63,8 @@ interface Server {
   restoreGate: Promise<void> | null;
   /** When set, a plan request answers only once this settles, as a slow model would. */
   planGate: Promise<void> | null;
+  /** When set, a plan request reaches the token check only once this settles, as on a slow connection. */
+  planEntryGate: Promise<void> | null;
   catalogFailures: number;
   consentFails: boolean;
   /** When set, a try-on answers only once this settles, as a slow provider would. */
@@ -130,6 +132,7 @@ function installServer(
     restoreOffline: false,
     restoreGate: null,
     planGate: null,
+    planEntryGate: null,
     catalogFailures: 0,
     consentFails: false,
     previewGate: null,
@@ -180,6 +183,7 @@ function installServer(
     if (url === "/api/plans") {
       const request = object(body);
       if (!headers["x-operation-id"]) return json({ detail: "no id", reason: "operation_id" }, 400);
+      if (server.planEntryGate) await server.planEntryGate;
       if (request.plan_token !== null && request.plan_token !== currentToken()) {
         return json({ detail: "expired", reason: "plan_expired" }, 409);
       }
@@ -452,6 +456,72 @@ describe(`${FIXTURE_LABEL}: access`, () => {
       server.session.invite_scope = "invite-b";
       window.location.hash = "#invite=good-invite";
       await waitFor(() => expect((screen.getByLabelText("What do you need?") as HTMLTextAreaElement).value).toBe(""));
+    });
+
+    /** Lets what the old page was still waiting for answer, after the next invite's page has opened. */
+    async function answerLate(gate: { resolve: () => void }) {
+      await act(async () => {
+        gate.resolve();
+        await new Promise((settled) => setTimeout(settled, 20));
+      });
+    }
+
+    it("keeps a plan that answers after another invite opened out of the tab", async () => {
+      const server = installServer({ plans: [firstPlan] });
+      server.session.invite_scope = "invite-a";
+      const slow = deferred();
+      server.planGate = slow.promise;
+      render(<App />);
+      await screen.findByText(/products\. Prices checked/);
+      fireEvent.change(screen.getByLabelText("What should the looks work for?"), { target: { value: "My own goal" } });
+      fireEvent.change(screen.getByLabelText("Budget in EUR"), { target: { value: "250" } });
+      fireEvent.click(screen.getByRole("button", { name: "Generate three looks" }));
+      await waitFor(() => expect(planRequests(server)).toHaveLength(1));
+
+      server.session.invite_scope = "invite-b";
+      window.location.hash = "#invite=good-invite";
+      await waitFor(() => expect(goal()).toBe(""));
+      await answerLate(slow);
+      expect(sessionStorage.getItem(CURRENT_PLAN_KEY)).toBeNull();
+      expect(screen.queryByRole("heading", { name: "look 3" })).toBeNull();
+    });
+
+    it("sends nothing more under the next invite when a running request finds its plan expired", async () => {
+      const server = tabWithPlan("invite-a", "invite-a");
+      render(<App />);
+      await screen.findByRole("heading", { name: "look 3" });
+      const slow = deferred();
+      server.planEntryGate = slow.promise;
+      fireEvent.click(screen.getByRole("button", { name: "Update three looks" }));
+      await waitFor(() => expect(planRequests(server)).toHaveLength(1));
+      server.expireToken();
+
+      server.session.invite_scope = "invite-b";
+      window.location.hash = "#invite=good-invite";
+      await waitFor(() => expect(goal()).toBe(""));
+      await answerLate(slow);
+      expect(restores(server)).toBe(1);
+      expect(planRequests(server)).toHaveLength(1);
+      expect(sessionStorage.getItem(CURRENT_PLAN_KEY)).toBeNull();
+    });
+
+    it("mounts the page once for another invite when the tab cannot record it", async () => {
+      const server = tabWithPlan("invite-b", "invite-a");
+      const setItem = Storage.prototype.setItem;
+      const refused = vi.spyOn(Storage.prototype, "setItem").mockImplementation(function (this: Storage, key, value) {
+        if (key === INVITE_KEY) throw new DOMException("Storage is full", "QuotaExceededError");
+        setItem.call(this, key, value);
+      });
+      onTestFinished(() => refused.mockRestore());
+      render(<App />);
+      await screen.findByText(/products\. Prices checked/);
+      await act(async () => {
+        await new Promise((settled) => setTimeout(settled, 20));
+      });
+      expect(server.requests.filter((entry) => entry.url === "/api/session")).toHaveLength(2);
+      expect(screen.queryByRole("heading", { name: "look 3" })).toBeNull();
+      expect(goal()).toBe("");
+      expect(restores(server)).toBe(0);
     });
   });
 

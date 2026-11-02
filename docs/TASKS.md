@@ -245,9 +245,11 @@ Done when: the checks in the [README](../README.md#check-a-change) pass and the 
 
 ## T-25: Follow-ups to the second outside audit
 
-The same auditor reviewed the T-24 work and asked for two more changes. Both are made, with tests that fail on the earlier code:
+The same auditor reviewed the T-24 work and asked for two more changes, and then named two defects in the first of them. All are made, with tests that fail on the earlier code:
 
 - A working plan stays with the invite it was made under ([D-86](DECISIONS.md#d-86-a-tabs-working-plan-stays-with-the-invite-it-was-made-under)). That decision is proposed until the author answers.
+- A request still running when another invite opens in the same tab no longer reaches that invite. A plan that answered late used to be written to the tab, and an update that found its plan expired used to restore it and send it again under the next invite's cookie.
+- A tab that cannot record its invite mounts the page once for that invite, and its working plan is removed at each load. The page used to mount again and again without opening.
 - Nothing inside a JSON object that cannot be read counts as the shopping agent's answer. The parser used to read on inside a broken object, so it could take a draft with `items` nested in it. It now skips to where the object's braces close, or to the end of the reply when they never do. A `}` inside the text of a broken object can still end it early. That takes a reply with a broken wrapper and a brace in its text, and none of the 7 recorded replies has a wrapper, so it stays.
 
 The work reaches the site with the next deployment.
