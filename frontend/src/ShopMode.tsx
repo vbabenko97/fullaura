@@ -50,6 +50,7 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
 
   const canSubmit = session.find_open && !running;
   const unchecked = result?.finds.filter((find) => !find.size_checked).length ?? 0;
+  const kindUnchecked = result?.finds.filter((find) => !find.slot_checked).length ?? 0;
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -113,7 +114,7 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
       <div className="workspace-heading no-print">
         <div>
           <h1>Say what you need. Get real products.</h1>
-          <p className="page-description">An agent looks through real shops, and code checks every price and stock on the shop's own page.</p>
+          <p className="page-description">An agent searches Tom Tailor, Tchibo and Giesswein by words in their product addresses. Code reads each price and stock on the shop's own page and checks the links and your budget. Warmth, whether items go together and style are the agent's judgment, which code cannot check.</p>
         </div>
       </div>
       <div className="workspace-grid">
@@ -143,6 +144,9 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
                   <span>{option.label}</span>
                 </label>
               ))}
+              {scope === "upper_body" && (
+                <p className="field-help">Upper body limits what the agent chooses. A try-on still needs a full-body photo and draws you from head to toe.</p>
+              )}
             </fieldset>
             <fieldset className="budget-mode choice-row">
               <legend>Clothing line</legend>
@@ -220,16 +224,22 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
 
           {result && result.finds.length === 0 && (
             <p className="request-message is-error" role="alert">
-              {result.message ?? "Nothing suitable was found."} This request still counts against your invite.
+              {result.message ?? "Nothing suitable was found."}{" "}
+              {result.counted ? "This request still counts against your invite." : "This request did not count against your invite."}
             </p>
           )}
 
           {result && result.finds.length > 0 && (
             <>
-              <p className="request-message is-success" role="status">Code read every price and stock below from the shop's own page within the last hour.</p>
+              <p className="request-message is-success" role="status">Code read every price and stock below from the shop's own page within the last hour. It did not check warmth, whether the items go together or your style: the reasons below are the agent's.</p>
               {unchecked > 0 && (
                 <p className="plan-unchecked">
                   Size not checked for {unchecked === result.finds.length ? "these items" : `${unchecked} item${unchecked === 1 ? "" : "s"}`}. Check yours on the shop's page before you buy.
+                </p>
+              )}
+              {kindUnchecked > 0 && (
+                <p className="plan-unchecked">
+                  Kind of item not confirmed for {kindUnchecked === result.finds.length ? "these items" : `${kindUnchecked} item${kindUnchecked === 1 ? "" : "s"}`}: the shop's title does not state it, so the position shown is the agent's reading.
                 </p>
               )}
               <ul className="find-list">
@@ -237,13 +247,13 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
                   .sort((left, right) => SLOT_ORDER.indexOf(left.slot) - SLOT_ORDER.indexOf(right.slot))
                   .map((find) => (
                   <li className="look-card find-card" key={find.url}>
-                    <p className="find-slot">{SLOT_LABELS[find.slot] ?? find.slot}</p>
+                    <p className="find-slot">{SLOT_LABELS[find.slot] ?? find.slot}{find.slot_checked ? "" : " (not confirmed)"}</p>
                     <h3>{find.title}</h3>
                     <p className="find-price">
                       <strong>{formatMoney(find.price_cents)}</strong>{" "}
                       <a href={find.url} rel="noreferrer" target="_blank">{find.shop}</a>
                     </p>
-                    {find.why && <p className="item-facts">{find.why}</p>}
+                    {find.why && <p className="item-facts">Agent's reason: {find.why}</p>}
                     {find.material && <p className="item-facts">{find.material}</p>}
                   </li>
                 ))}
@@ -264,7 +274,7 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
           {!running && !result && !error && (
             <div className="empty-state">
               <h3>The products will appear here</h3>
-              <p>Real products that ship to Austria, each with a link to its shop.</p>
+              <p>Products from these three shops, each with a link to its page. Other shops are not searched.</p>
             </div>
           )}
           {/* Hidden, not removed, so a started answer survives the next search. */}

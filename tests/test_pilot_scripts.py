@@ -314,6 +314,19 @@ def test_requests_no_plan_could_meet_count_as_asking_but_not_as_a_call() -> None
     assert p.status(one).plan_requests_used == 0  # no quota
 
 
+def test_a_returned_request_counts_as_asking_and_as_a_failed_call_but_not_as_used() -> None:
+    store, clock = MemoryStore(), Clock()
+    p = pilot(store, clock)
+    one = invite(p, CODES[0])
+    operation = p.begin(one, PLAN, str(uuid.uuid4()), 1000)
+    assert p.finish(operation, 200, "shops_unavailable", return_request=True) is True
+
+    result = summary(store)
+    assert result["invites"]["asked_for_a_plan"]["count"] == 1
+    assert result["invites"]["used_a_planning_request"]["count"] == 0
+    assert result["model_calls"]["planning"]["by_outcome"] == {"shops_unavailable": 1}
+
+
 def test_calls_that_never_reached_the_provider_or_the_ledger_are_not_counted_as_started() -> None:
     store, clock = MemoryStore(), Clock()
     p = pilot(store, clock)

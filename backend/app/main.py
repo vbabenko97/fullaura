@@ -116,6 +116,7 @@ REFUSAL_STATUS = {
     Refusal.DUPLICATE: 409,
     Refusal.BUDGET: 503,
     Refusal.ACCOUNTING_UNAVAILABLE: 503,
+    Refusal.SHOPS_UNAVAILABLE: 503,
 }
 IMAGE_ATTEMPTS = 3  # MuseImageClient.max_attempts
 # The largest body the app sends, a restore of a full saved plan, is about 12 KB even when every
@@ -724,7 +725,8 @@ def create_app(
     def create_find(submission: FindRequest, request: Request) -> Response:
         """Real products for what a person asks for, chosen by the agent and checked by code. The
         answer is a stream of JSON lines: what the agent is doing, then the result. It counts as
-        one planning request."""
+        one planning request, unless no shop page could be read, when the request is returned while
+        what the model call cost stays spent; the result says which."""
         if not beta_open():
             return closed()
         session = session_of(request)
@@ -750,7 +752,11 @@ def create_app(
                 return _error("The shops cannot be read right now", 503, "shops_unavailable")
             try:
                 operation = pilot.begin(
-                    session.invite_id, OperationKind.PLAN, operation_id, FIND_RESERVE_MICRO_USD
+                    session.invite_id,
+                    OperationKind.PLAN,
+                    operation_id,
+                    FIND_RESERVE_MICRO_USD,
+                    returnable=True,
                 )
             except Refused as refused:
                 return _refusal(refused)
@@ -759,6 +765,7 @@ def create_app(
                 # In its own thread, so a person who leaves does not stop the settling of the cost.
                 cost: int | None = None
                 outcome = "error"
+                shops_down = False
                 answer: dict[str, Any] = {
                     "outcome": FindOutcome.FAILED.value,
                     "message": "The search could not be finished.",
@@ -767,11 +774,13 @@ def create_app(
                     "scope": submission.scope.value,
                     "budget_cents": submission.budget_cents,
                     "total_cents": 0,
+                    "counted": True,
                 }
                 try:
                     result = agent(submission, lambda step: lines.put({"step": step}))
                     cost = result.usage.cost_micro_usd if result.cost_known else None
                     outcome = result.outcome.value
+                    shops_down = result.outcome is FindOutcome.SHOPS_UNAVAILABLE
                     answer = find_json(result, submission, None)
                     if result.finds:
                         stored = finds.store(session, result.finds, answer, operation_id)
@@ -781,7 +790,8 @@ def create_app(
                 finally:
                     # The answer goes out whatever the store does, so the page never waits forever.
                     try:
-                        pilot.finish(operation, cost, outcome)
+                        if pilot.finish(operation, cost, outcome, return_request=shops_down):
+                            answer = {**answer, "counted": False}
                     except Exception as error:
                         logger.warning("find not settled: %s", type(error).__name__)
                     finally:

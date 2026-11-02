@@ -10,6 +10,8 @@ import pytest
 
 from backend.app.pilot import (
     LEDGER,
+    MAX_RECENT_RETURNS,
+    RETURN_WINDOW_S,
     WRITE_WINDOW_S,
     Budget,
     ClosingStore,
@@ -432,6 +434,117 @@ def test_feedback_its_invite_cannot_list_is_deleted_again(caplog: pytest.LogCapt
     assert "unlisted feedback not deleted: StoreUnavailable" in caplog.text
     assert "private words" not in caplog.text and "delete failed" not in caplog.text
     assert p.status(invite).feedback_ids == ()
+
+
+def test_a_returned_request_stops_counting_and_its_cost_stays_spent() -> None:
+    p = pilot()
+    invite = ready(p)
+    first = p.begin(invite, PLAN, op(), 500)
+    # Until it settles it blocks the invite like any other call.
+    with pytest.raises(Refused) as busy:
+        p.begin(invite, PLAN, op(), 500)
+    assert busy.value.reason is Refusal.BUSY
+    assert p.status(invite).plan_requests_used == 1
+
+    assert p.finish(first, 40, "shops_unavailable", return_request=True) is True
+    assert p.status(invite).plan_requests_used == 0
+    ledger = p.ledger()
+    assert ledger["spent"][Budget.PLANNING] == 40
+    assert ledger["reserved"][Budget.PLANNING] == 0
+    assert ledger["running"] == {}
+
+
+def test_a_returned_request_of_unknown_cost_keeps_its_whole_reservation() -> None:
+    p = pilot()
+    invite = ready(p)
+    operation = p.begin(invite, PLAN, op(), 500)
+    assert p.finish(operation, None, "shops_unavailable", return_request=True) is True
+    assert p.status(invite).plan_requests_used == 0
+    assert p.ledger()["spent"][Budget.PLANNING] == 500
+
+
+def test_a_finish_that_does_not_ask_returns_no_request() -> None:
+    p = pilot()
+    invite = ready(p)
+    assert p.finish(p.begin(invite, PLAN, op(), 500), 40, "no_match") is False
+    assert p.status(invite).plan_requests_used == 1
+
+
+def return_requests(p: Pilot, invite: str, count: int) -> list[bool]:
+    return [
+        p.finish(
+            p.begin(invite, PLAN, op(), 500, returnable=True),
+            40,
+            "shops_unavailable",
+            return_request=True,
+        )
+        for _ in range(count)
+    ]
+
+
+def test_every_request_is_returned_and_too_many_at_once_refuse_more_paid_calls() -> None:
+    clock = Clock()
+    # A quota of one, so that any request not returned would show at once.
+    p = pilot(clock=clock, plan_requests=1)
+    invite = ready(p)
+    assert return_requests(p, invite, MAX_RECENT_RETURNS) == [True] * MAX_RECENT_RETURNS
+    assert p.status(invite).plan_requests_used == 0
+
+    # The next one is refused, not charged: nothing is counted, reserved or recorded.
+    waiting = op()
+    with pytest.raises(Refused) as refused:
+        p.begin(invite, PLAN, waiting, 500, returnable=True)
+    assert refused.value.reason is Refusal.SHOPS_UNAVAILABLE
+    assert p.status(invite).plan_requests_used == 0
+    assert p.ledger()["reserved"][Budget.PLANNING] == 0
+    assert p.ledger()["spent"][Budget.PLANNING] == 40 * MAX_RECENT_RETURNS
+
+    # Once they are old enough the same operation starts, and returning has no overall limit.
+    clock.now += timedelta(seconds=RETURN_WINDOW_S + 1)
+    operation = p.begin(invite, PLAN, waiting, 500, returnable=True)
+    assert p.finish(operation, 40, "shops_unavailable", return_request=True) is True
+    assert return_requests(p, invite, MAX_RECENT_RETURNS - 1) == [True] * (MAX_RECENT_RETURNS - 1)
+    assert p.status(invite).plan_requests_used == 0
+
+
+def test_returned_requests_do_not_refuse_calls_that_cannot_be_returned() -> None:
+    p = pilot()
+    invite = ready(p)
+    return_requests(p, invite, MAX_RECENT_RETURNS)
+    # A plan from the catalog needs no shop, and a try-on neither.
+    p.finish(p.begin(invite, PLAN, op(), 500), 40, "success")
+    assert p.status(invite).plan_requests_used == 1
+
+
+def test_returned_requests_of_one_invite_do_not_refuse_another() -> None:
+    p = pilot()
+    invite, other = ready(p), ready(p, OTHER)
+    return_requests(p, invite, MAX_RECENT_RETURNS)
+    assert return_requests(p, other, 1) == [True]
+
+
+def test_an_operation_already_counted_as_interrupted_returns_no_request() -> None:
+    clock = Clock()
+    p = pilot(clock=clock)
+    invite = ready(p)
+    stale = p.begin(invite, PLAN, op(), 500)
+    clock.now += timedelta(seconds=p.limits.running_timeout_s + 1)
+    p.finish(p.begin(invite, PLAN, op(), 500), 40, "success")
+    assert p.finish(stale, 40, "shops_unavailable", return_request=True) is False
+    assert p.status(invite).plan_requests_used == 2
+
+
+def test_a_request_that_cannot_be_returned_still_settles_and_says_so() -> None:
+    store = InviteWritesFail()
+    p = pilot(store)
+    invite = ready(p)
+    operation = p.begin(invite, PLAN, op(), 500)
+    store.failing = True
+    assert p.finish(operation, 40, "shops_unavailable", return_request=True) is False
+    assert p.status(invite).plan_requests_used == 1
+    assert p.ledger()["spent"][Budget.PLANNING] == 40
+    record = store.read(f"operations/{operation.id}.json")
+    assert record is not None and record.data["outcome"] == "shops_unavailable"
 
 
 def test_planning_costs_follow_reported_tokens_and_hold_unknown_attempts() -> None:

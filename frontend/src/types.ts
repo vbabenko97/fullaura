@@ -258,6 +258,8 @@ export interface Find {
   price_cents: number;
   size_checked: boolean;
   slot: string;
+  /** The shop's title confirms this position; otherwise only the model says so. */
+  slot_checked: boolean;
   why: string;
 }
 
@@ -268,6 +270,8 @@ export interface FindResponse {
   scope: string;
   budget_cents: number;
   total_cents: number;
+  /** False when no shop page could be read and the invite got this request back. */
+  counted: boolean;
   finds: Find[];
 }
 

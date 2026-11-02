@@ -236,6 +236,7 @@ test("the agent finds real products in steps, says what it did not check, and tr
   await openAgent(page);
   await page.getByLabel("What do you need?").fill("Something smart for a video call");
   await page.getByRole("radio", { name: "Upper body" }).check();
+  await expect(page.getByText(/A try-on still needs a full-body photo/)).toBeVisible();
   await page.getByRole("radio", { name: "Men's", exact: true }).check();
   await page.getByLabel("Spend up to (EUR)").fill("200");
   await page.getByRole("button", { name: "Find it", exact: true }).click();
@@ -246,6 +247,8 @@ test("the agent finds real products in steps, says what it did not check, and tr
   await expect(page.getByText(/Working\. This usually takes/)).toBeHidden();
   await expect(page.getByText(/Code read every price and stock/)).toBeVisible();
   await expect(page.getByText(/Size not checked for 1 item/)).toBeVisible();
+  await expect(page.getByText(/It did not check warmth, whether the items go together or your style/)).toBeVisible();
+  await expect(page.getByText(/No photo of the product is used/)).toBeVisible();
   await expect(page.getByRole("link", { name: "Synthetic Shop" }).first()).toHaveAttribute("href", /synthetic\.example/);
 
   // The catalog keeps its own page, and coming back shows the same results.
@@ -275,6 +278,17 @@ test("the agent says so when nothing suits, and the button stays on screen", asy
   await page.getByLabel("Spend up to (EUR)").fill("50");
   await page.getByRole("button", { name: "Find it", exact: true }).click();
   await expect(page.getByText(/Nothing scripted suits this request\. This request still counts/)).toBeVisible();
+});
+
+test("a search whose shop pages all fail says so and leaves the request unspent", async ({ page }) => {
+  await openAgent(page);
+  const left = page.getByText(/Uses one of \d+ requests left for this invite/);
+  const before = await left.textContent();
+  await page.getByLabel("What do you need?").fill("unreadable shops");
+  await page.getByLabel("Spend up to (EUR)").fill("50");
+  await page.getByRole("button", { name: "Find it", exact: true }).click();
+  await expect(page.getByText(/The shops could not be read right now\. Try again later\. This request did not count/)).toBeVisible();
+  await expect(left).toHaveText(before as string);
 });
 
 test("the button that sends the form stays on screen, and hides no field that has the focus", async ({ page }) => {

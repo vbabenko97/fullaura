@@ -190,10 +190,16 @@ def _product(name: str, cents: int, *, checked: bool = False) -> ShopProduct:
 
 
 def scripted_shop_agent(request: FindRequest, on_step: Callable[[str], None]) -> FindResult:
-    """Fixed synthetic products for each scope; no shop or model is called, and a request that
-    says "nothing" finds nothing."""
+    """Fixed synthetic products for each scope; no shop or model is called. A request that says
+    "nothing" finds nothing, and one that says "unreadable" meets shops whose pages all fail."""
     on_step("Looking in the shops for: scripted")
     time.sleep(0.3)
+    if "unreadable" in request.request.lower():
+        on_step("The shops' pages could not be read")
+        return FindResult(
+            FindOutcome.SHOPS_UNAVAILABLE,
+            message="The shops could not be read right now. Try again later.",
+        )
     on_step("Read the shops' pages: 3 on sale within your budget")
     if "nothing" in request.request.lower():
         return FindResult(FindOutcome.NO_MATCH, message="Nothing scripted suits this request.")

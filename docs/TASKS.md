@@ -22,6 +22,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-18](#t-18-form-fixes-from-the-authors-test) Form fixes from the author's test | done | 2026-11-01 |
 | [T-19](#t-19-small-fixes-from-the-authors-test) Small fixes from the author's test | done | 2026-11-01 |
 | [T-20](#t-20-the-shopping-agent) The shopping agent | done | 2026-11-01 |
+| [T-21](#t-21-fixes-from-the-review-of-the-shopping-agent) Fixes from the review of the shopping agent | next | |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | planned | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -184,6 +185,14 @@ A person says what they need, for a whole outfit, the upper body or one item, an
 The work was deployed on 2026-11-01 as `f2d68dc` and checked on the deployed site, including one real search and one try-on of what it found ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)).
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check and a real search there.
+
+## T-21: Fixes from the review of the shopping agent
+
+An independent review of `563cd2e` found gaps that its tests did not cover. A recommendation listed before the product could become the page's product under that product's address ([D-74](DECISIONS.md#d-74-a-pages-facts-come-only-from-the-product-it-names)). Six unsuitable pages hid a seventh that could be bought ([D-75](DECISIONS.md#d-75-a-search-reads-pages-in-portions-under-one-limit)). A search that could read no page used a person's request ([D-76](DECISIONS.md#d-76-a-search-that-could-read-no-page-gives-its-request-back)). A dress the model called a top passed for the upper body ([D-77](DECISIONS.md#d-77-a-shops-title-can-rule-out-a-position-or-leave-it-unconfirmed)). The page and the documents now also say what the checks and the try-on do not show ([SPEC.md](SPEC.md#find-it-for-me)).
+
+The changes are checked locally with fixtures and stand-ins. They are not deployed, and no live search has run on them.
+
+Done when: the checks in the [README](../README.md#check-a-change) pass, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check and real searches for a whole outfit, the upper body and one item, including results from a shop other than Tom Tailor.
 
 ## T-06: Evaluation and submission
 

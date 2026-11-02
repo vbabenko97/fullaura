@@ -10,10 +10,16 @@ import pytest
 
 from backend.app.shops import (
     AGENT,
+    FAILURES_TO_STOP,
     INDEX_TTL_S,
+    MAX_PAGES_PER_SEARCH,
     MAX_SITEMAP_FILES,
     MAX_UNZIPPED_BYTES,
+    PRODUCTS_PER_SHOP,
+    READERS,
+    RETRY_FAILED_PAGES_S,
     RETRY_FAILED_SHOP_S,
+    SEARCH_BUDGET_S,
     Robots,
     Shop,
     ShopIndex,
@@ -239,12 +245,224 @@ def test_the_user_agent_is_named_for_robots_rules() -> None:
     assert AGENT.startswith("FullAura/")
 
 
-def test_a_product_of_another_name_on_the_page_is_not_this_product() -> None:
-    html = page(product("Parka", offer("199.00")), product("Socken", offer("9.99")))
-    facts = read_page(html)
+PARKA = "https://shop.example/p/parka-1"
+PARKA_PRODUCT = product("Parka", offer("199.00"), url=PARKA)
+SOCKS = product("Socken", offer("9.99"), url="https://shop.example/p/socken-2")
+UNADDRESSED_SOCKS = product("Socken", offer("9.99"))
+
+
+@pytest.mark.parametrize(
+    "blocks",
+    [
+        (SOCKS, PARKA_PRODUCT),
+        (PARKA_PRODUCT, SOCKS),
+        (UNADDRESSED_SOCKS, PARKA_PRODUCT),
+        (PARKA_PRODUCT, UNADDRESSED_SOCKS),
+    ],
+)
+def test_a_recommendation_before_or_after_the_product_is_not_this_product(
+    blocks: tuple[dict[str, object], ...],
+) -> None:
+    facts = read_page(page(*blocks), PARKA)
     assert facts is not None
-    found = buyable("u", "Shop", facts, [])
+    found = buyable(PARKA, "Shop", facts, [])
     assert found is not None and (found.title, found.price_cents) == ("Parka", 19900)
+    assert len(facts.offers) == 1
+
+
+@pytest.mark.parametrize(
+    "main",
+    [
+        product("Parka", offer("199.00"), url="/p/parka-1"),
+        product("Parka", offer("199.00"), url=f"{PARKA}/?variant=3#size"),
+        product("Parka", offer("199.00"), url="http://shop.example/P/Parka-1"),
+        product("Parka", offer("199.00"), url="https://www.shop.example/p/parka-1"),
+        product("Parka", offer("199.00"), **{"@id": f"{PARKA}#product"}),
+        product("Parka", offer("199.00"), mainEntityOfPage=PARKA),
+        product("Parka", offer("199.00"), mainEntityOfPage={"@id": PARKA}),
+        product("Parka", offer("199.00", url=f"{PARKA}?variant=7")),
+        {"@type": "ItemPage", "mainEntity": product("Parka", offer("199.00"))},
+        {
+            "@graph": [
+                {"@type": "WebPage", "mainEntity": {"@id": "#main"}},
+                product("Parka", offer("199.00"), **{"@id": "#main"}),
+            ]
+        },
+    ],
+)
+def test_each_way_a_page_names_its_product_is_read(main: dict[str, object]) -> None:
+    facts = read_page(page(UNADDRESSED_SOCKS, main), PARKA)
+    assert facts is not None and facts.title == "Parka"
+    assert [offer.price_cents for offer in facts.offers] == [19900]
+
+
+def test_only_this_pages_color_counts_in_a_group_of_colors() -> None:
+    # Tom Tailor's shape: a group without an address, this color with its offer, others beside it.
+    group = {
+        "@type": "ProductGroup",
+        "name": "Parka in blau",
+        "hasVariant": [
+            {"@type": "Product", "name": "Parka in rot", "url": "https://shop.example/p/parka-2"},
+            product("Parka in rot", offer("99.00"), url=f"{PARKA}-rot", color="rot"),
+            product("Parka in blau", offer("199.00"), url=PARKA, color="blau", material="Wolle"),
+        ],
+    }
+    facts = read_page(page(group), PARKA)
+    assert facts is not None and facts.title == "Parka in blau" and facts.material == "Wolle"
+    assert [(offer.price_cents, offer.color) for offer in facts.offers] == [(19900, "blau")]
+
+
+def test_every_size_of_the_product_is_read_as_one_product() -> None:
+    by_group = {
+        "@type": "ProductGroup",
+        "name": "Parka",
+        "url": PARKA,
+        "hasVariant": [
+            product("Parka - S", offer("199.00", "OutOfStock"), size="S"),
+            product("Parka - L", offer("199.00"), size="L"),
+        ],
+    }
+    by_address = [
+        product("Parka", offer("199.00", "OutOfStock"), url=f"{PARKA}?variant=1", size="S"),
+        product("Parka", offer("199.00"), url=f"{PARKA}?variant=2", size="L"),
+    ]
+    for html in (page(by_group, SOCKS), page(*by_address, SOCKS)):
+        facts = read_page(html, PARKA)
+        assert facts is not None and facts.title == "Parka" and len(facts.offers) == 2
+        assert buyable(PARKA, "Shop", facts, ["L"]) is not None
+        assert buyable(PARKA, "Shop", facts, ["S"]) is None
+
+
+def test_the_same_name_without_an_address_is_still_one_product() -> None:
+    facts = read_page(page(product("Parka", size="S"), product("Parka", size="L")), PARKA)
+    assert facts is not None and len(facts.offers) == 2
+
+
+@pytest.mark.parametrize(
+    "html",
+    [
+        # Two names and nothing that says which one this page sells.
+        page(product("Parka", offer("199.00")), UNADDRESSED_SOCKS),
+        # Each claims to be this page.
+        page(PARKA_PRODUCT, product("Socken", offer("9.99"), url=PARKA)),
+        page(
+            {"@type": "ItemPage", "mainEntity": [product("Parka"), product("Socken")]},
+        ),
+        # Only another page's product is described.
+        page(SOCKS),
+        page(
+            {
+                "@type": "ProductGroup",
+                "name": "Socken",
+                "hasVariant": [SOCKS, product("Socken", url="https://shop.example/p/socken-3")],
+            }
+        ),
+        # The block that may hold the product cannot be read, so the other one proves nothing.
+        '<script type="application/ld+json">{broken</script>' + page(UNADDRESSED_SOCKS),
+        # This page's product has no price; a recommendation's price is not its price.
+        page({"@type": "Product", "name": "Parka", "url": PARKA}, UNADDRESSED_SOCKS),
+    ],
+)
+def test_a_page_that_does_not_say_which_product_it_sells_gives_no_facts(html: str) -> None:
+    assert read_page(html, PARKA) is None
+
+
+def test_the_canonical_address_also_names_the_page() -> None:
+    moved = "https://shop.example/de/p/parka-1"
+    html = page(product("Parka", offer("199.00"), url=moved), SOCKS)
+    assert read_page(html, PARKA) is None
+    canonical = f'<link data-hid="c" rel="canonical" href="{moved}">{html}'
+    facts = read_page(canonical, PARKA)
+    assert facts is not None and facts.title == "Parka"
+
+
+OTHER_PAGE = "https://shop.example/p/socken-2"
+
+
+@pytest.mark.parametrize(
+    "socks",
+    [
+        product("Socken", offer("9.99", url=PARKA), url=OTHER_PAGE),
+        product("Socken", offer("9.99"), url=OTHER_PAGE, **{"@id": PARKA}),
+        product("Socken", offer("9.99"), url=OTHER_PAGE, mainEntityOfPage=PARKA),
+        product("Socken", offer("9.99"), url=PARKA, mainEntityOfPage=OTHER_PAGE),
+        {
+            "@type": "ProductGroup",
+            "name": "Socken",
+            "url": OTHER_PAGE,
+            "hasVariant": [product("Socken", offer("9.99", url=PARKA))],
+        },
+    ],
+)
+def test_a_product_that_names_another_page_is_not_this_pages_whatever_else_it_says(
+    socks: dict[str, object],
+) -> None:
+    assert read_page(page(socks), PARKA) is None
+    facts = read_page(page(socks, PARKA_PRODUCT), PARKA)
+    assert facts is not None and facts.title == "Parka"
+    assert [offer.price_cents for offer in facts.offers] == [19900]
+
+
+def test_a_same_named_product_without_an_address_does_not_lend_its_price() -> None:
+    facts = read_page(page(product("Parka", offer("9.99")), PARKA_PRODUCT), PARKA)
+    assert facts is not None
+    assert [offer.price_cents for offer in facts.offers] == [19900]
+
+
+def test_the_shapes_of_tchibos_and_giessweins_pages_are_read() -> None:
+    # Invented products in the shapes both shops' real pages had on 2026-11-02.
+    jacket = "https://shop.example/products/1/regenjacke"
+    tchibo = product(
+        "Regenjacke",
+        [
+            offer("49.99", url="/products/1/regenjacke?article_id=7"),
+            offer("49.99", "OutOfStock", url="/products/1/regenjacke?article_id=8"),
+        ],
+        url="/products/1/regenjacke?article_id=7",
+    )
+    for asked in (jacket, f"{jacket}?article_id=8"):
+        facts = read_page(page(tchibo, UNADDRESSED_SOCKS), asked)
+        assert facts is not None and facts.title == "Regenjacke" and len(facts.offers) == 2
+        assert [offer.in_stock for offer in facts.offers] == [True, False]
+
+    sneaker = "https://shop.example/products/wool-sneaker"
+    giesswein = product(
+        "Wool Sneaker",
+        [
+            {
+                **offer("119.95", url="/products/wool-sneaker?variant=9"),
+                "availability": "http://schema.org/InStock",
+            }
+        ],
+        url=sneaker,
+    )
+    facts = read_page(page(giesswein, SOCKS), sneaker)
+    assert facts is not None and facts.title == "Wool Sneaker" and facts.offers[0].in_stock
+
+
+@pytest.mark.parametrize(
+    ("availability", "in_stock"),
+    [
+        ("https://schema.org/InStock", True),
+        ("http://schema.org/InStock", True),
+        ("http://www.schema.org/InStock", True),
+        ("schema:InStock", True),
+        ("InStock", True),
+        ("https://schema.org/NotInStock", False),
+        ("https://schema.org/BackInStock", False),
+        ("https://shop.example/InStock", False),
+        ("https://schema.org/OutOfStock", False),
+        ("https://schema.org/PreOrder", False),
+        ("instock", False),
+        ("", False),
+        (None, False),
+    ],
+)
+def test_only_the_exact_in_stock_value_means_in_stock(
+    availability: str | None, in_stock: bool
+) -> None:
+    facts = read_page(page(product(offers={**offer(), "availability": availability})))
+    assert facts is not None and facts.offers[0].in_stock is in_stock
 
 
 def test_the_color_is_that_of_the_offer_in_stock() -> None:
@@ -375,6 +593,210 @@ def test_a_redirect_within_the_shop_is_followed() -> None:
     }
     found = ShopIndex((SHOP,), serve(all_routes)).search(["jacke"], "men", [], 15000)
     assert [product.url for product in found.products] == [JACKET]
+
+
+def test_a_redirected_page_is_named_by_the_address_it_ended_at() -> None:
+    moved = "https://shop.example/p/neu"
+    all_routes = {
+        **routes(),
+        JACKET: httpx2.Response(301, headers={"location": "/p/neu"}),
+        moved: httpx2.Response(200, text=page(product("Jacke", url=moved), SOCKS)),
+    }
+    found = ShopIndex((SHOP,), serve(all_routes)).search(["jacke"], "men", [], 15000)
+    assert [(product.url, product.title) for product in found.products] == [(JACKET, "Jacke")]
+
+
+SOLD_OUT = page(product("Jacke", offer("50.00", "OutOfStock")))
+ON_SALE = page(product("Jacke", offer("50.00")))
+
+
+def listing(base: str, pages: list[str | int], word: str = "jacke") -> dict[str, httpx2.Response]:
+    """A shop whose sitemap lists pages jacke-0, jacke-1 and so on, each this text or status."""
+    addresses = [f"{base}/p/{word}-{i}" for i in range(len(pages))]
+    sitemap = "".join(f"<url><loc>{address}</loc></url>" for address in addresses)
+    answers = {
+        address: httpx2.Response(body) if isinstance(body, int) else httpx2.Response(200, text=body)
+        for address, body in zip(addresses, pages, strict=True)
+    }
+    robots = f"User-agent: *\nSitemap: {base}/sitemap.xml"
+    return {
+        f"{base}/robots.txt": httpx2.Response(200, text=robots),
+        f"{base}/sitemap.xml": httpx2.Response(200, text=f"<urlset>{sitemap}</urlset>"),
+        **answers,
+    }
+
+
+def page_reads(seen: list[str]) -> list[str]:
+    return [url for url in seen if "/p/" in url]
+
+
+def test_six_sold_out_pages_do_not_hide_the_seventh() -> None:
+    seen: list[str] = []
+    all_routes = listing("https://shop.example", [*[SOLD_OUT] * 6, ON_SALE])
+    found = ShopIndex((SHOP,), serve(all_routes, seen)).search(["jacke"], "any", [], 15000)
+    assert [product.url for product in found.products] == ["https://shop.example/p/jacke-6"]
+    assert (found.read, found.failed) == (7, 0)
+
+
+def test_six_pages_over_the_budget_do_not_hide_the_seventh() -> None:
+    expensive = page(product("Jacke", offer("500.00")))
+    all_routes = listing("https://shop.example", [*[expensive] * 6, ON_SALE])
+    found = ShopIndex((SHOP,), serve(all_routes)).search(["jacke"], "any", [], 15000)
+    assert [product.url for product in found.products] == ["https://shop.example/p/jacke-6"]
+
+
+def test_a_search_never_walks_the_whole_shop() -> None:
+    seen: list[str] = []
+    all_routes = listing("https://shop.example", [SOLD_OUT] * 60)
+    found = ShopIndex((SHOP,), serve(all_routes, seen)).search(["jacke"], "any", [], 15000)
+    assert found.products == []
+    assert len(page_reads(seen)) == MAX_PAGES_PER_SEARCH == found.read
+
+
+def test_the_page_limit_holds_across_all_shops() -> None:
+    seen: list[str] = []
+    shops = tuple(Shop(f"Shop {i}", f"https://s{i}.example", "/p/") for i in range(3))
+    all_routes = {
+        key: value for shop in shops for key, value in listing(shop.base, [SOLD_OUT] * 40).items()
+    }
+    ShopIndex(shops, serve(all_routes, seen)).search(["jacke"], "any", [], 15000)
+    reads = page_reads(seen)
+    assert len(reads) == MAX_PAGES_PER_SEARCH
+    # Each shop gets its turn, so none spends the limit alone.
+    assert all(sum(shop.base in url for url in reads) == 6 for shop in shops)
+
+
+def test_reading_stops_once_a_shop_has_enough_products() -> None:
+    seen: list[str] = []
+    all_routes = listing("https://shop.example", [ON_SALE] * 60)
+    found = ShopIndex((SHOP,), serve(all_routes, seen)).search(["jacke"], "any", [], 15000)
+    assert len(found.products) == PRODUCTS_PER_SHOP
+    assert len(page_reads(seen)) == PRODUCTS_PER_SHOP
+
+
+def test_a_shop_with_enough_products_leaves_the_limit_to_the_other() -> None:
+    plenty = Shop("Plenty", "https://plenty.example", "/p/")
+    all_routes = {
+        **listing("https://plenty.example", [ON_SALE] * 40),
+        **listing("https://shop.example", [*[SOLD_OUT] * 10, ON_SALE]),
+    }
+    found = ShopIndex((plenty, SHOP), serve(all_routes)).search(["jacke"], "any", [], 15000)
+    assert "https://shop.example/p/jacke-10" in [product.url for product in found.products]
+
+
+def test_the_time_limit_ends_the_search_between_portions() -> None:
+    now = [0.0]
+    seen: list[str] = []
+    all_routes = listing("https://shop.example", [SOLD_OUT] * 60)
+
+    def answer(request: httpx2.Request) -> httpx2.Response:
+        if "/p/" in str(request.url):
+            seen.append(str(request.url))
+            now[0] += SEARCH_BUDGET_S
+        return all_routes[str(request.url)]
+
+    client = httpx2.Client(transport=httpx2.MockTransport(answer))
+    found = ShopIndex((SHOP,), client, clock=lambda: now[0]).search(["jacke"], "any", [], 15000)
+    assert found.products == []
+    assert len(seen) == READERS
+
+
+def test_a_shop_that_keeps_failing_is_not_read_further() -> None:
+    now = [0.0]
+    seen: list[str] = []
+    all_routes = listing("https://shop.example", [503] * 40)
+    index = ShopIndex((SHOP,), serve(all_routes, seen), clock=lambda: now[0])
+    assert index.pages_down() is False
+    found = index.search(["jacke"], "any", [], 15000)
+    assert (found.products, found.read) == ([], 0)
+    assert found.failed == len(page_reads(seen))
+    assert FAILURES_TO_STOP <= found.failed <= FAILURES_TO_STOP + READERS
+    assert index.pages_down() is True
+    now[0] += RETRY_FAILED_PAGES_S + 1
+    assert index.pages_down() is False
+
+
+def test_one_failing_shop_leaves_the_other_shop_to_be_read() -> None:
+    down = Shop("Down", "https://down.example", "/p/")
+    all_routes = {
+        **listing("https://down.example", [503] * 20),
+        **listing("https://shop.example", [*[SOLD_OUT] * 6, ON_SALE]),
+    }
+    index = ShopIndex((down, SHOP), serve(all_routes))
+    found = index.search(["jacke"], "any", [], 15000)
+    assert [product.url for product in found.products] == ["https://shop.example/p/jacke-6"]
+    assert found.failed >= FAILURES_TO_STOP and found.read == 7
+    assert index.pages_down() is False
+
+
+def test_a_failing_shop_does_not_stop_searches_that_other_shops_can_answer() -> None:
+    now = [0.0]
+    seen: list[str] = []
+    down = Shop("Down", "https://down.example", "/p/")
+    shoe = page(product("Schuh", offer("50.00")))
+    all_routes = {
+        **listing("https://down.example", [503] * 20),
+        **listing("https://shop.example", [shoe], word="schuh"),
+    }
+    index = ShopIndex((down, SHOP), serve(all_routes, seen), clock=lambda: now[0])
+
+    jackets = index.search(["jacke"], "any", [], 15000)
+    assert (jackets.products, jackets.read) == ([], 0) and jackets.failed >= FAILURES_TO_STOP
+    assert index.pages_down() is False
+
+    shoes = index.search(["schuh"], "any", [], 15000)
+    assert [found.url for found in shoes.products] == ["https://shop.example/p/schuh-0"]
+    assert shoes.failed == 0  # the failing shop lists no such address, so nothing was missed
+
+    # The failing shop is left alone meanwhile, and what that misses is not "nothing on sale".
+    seen.clear()
+    again = index.search(["jacke"], "any", [], 15000)
+    assert (again.products, again.read, again.failed) == ([], 0, 1)
+    assert page_reads(seen) == []
+
+    now[0] += RETRY_FAILED_PAGES_S + 1
+    index.search(["jacke"], "any", [], 15000)
+    assert page_reads(seen) != []
+
+
+def test_only_every_shop_failing_means_the_pages_are_down() -> None:
+    other = Shop("Other", "https://other.example", "/p/")
+    all_routes = {
+        **listing("https://shop.example", [503] * 5),
+        **listing("https://other.example", [503] * 5),
+    }
+    index = ShopIndex((SHOP, other), serve(all_routes))
+    index.search(["jacke"], "any", [], 15000)
+    assert index.pages_down() is True
+
+
+def test_a_few_bad_pages_do_not_mark_their_shop() -> None:
+    all_routes = listing("https://shop.example", [503] * (FAILURES_TO_STOP - 1))
+    index = ShopIndex((SHOP,), serve(all_routes))
+    found = index.search(["jacke"], "any", [], 15000)
+    assert (found.read, found.failed) == (0, FAILURES_TO_STOP - 1)
+    assert index.pages_down() is False
+
+
+def test_a_shop_that_answers_again_is_read_again() -> None:
+    now = [0.0]
+    all_routes = listing("https://shop.example", [503] * FAILURES_TO_STOP)
+    index = ShopIndex((SHOP,), serve(all_routes), clock=lambda: now[0])
+    index.search(["jacke"], "any", [], 15000)
+    assert index.pages_down() is True
+    for address in list(all_routes):
+        if "/p/" in address:
+            all_routes[address] = httpx2.Response(200, text=ON_SALE)
+    now[0] += RETRY_FAILED_PAGES_S + 1
+    assert index.search(["jacke"], "any", [], 15000).read == FAILURES_TO_STOP
+    assert index.pages_down() is False
+
+
+def test_a_search_that_finds_no_address_says_nothing_about_the_pages() -> None:
+    index = ShopIndex((SHOP,), serve(routes()))
+    found = index.search(["mantel"], "any", [], 15000)
+    assert (found.products, found.read, found.failed) == ([], 0, 0)
+    assert index.pages_down() is False
 
 
 def test_pages_that_cannot_be_read_are_reported_and_tried_again() -> None:
