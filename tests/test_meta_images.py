@@ -225,6 +225,25 @@ def test_does_not_retry_a_rejected_request_and_keeps_secrets_out() -> None:
     assert KEY not in repr(images)
 
 
+def test_error_labels_hide_the_key_and_stay_on_one_line() -> None:
+    error = {"type": f"invalid\n{KEY}", "code": f"code:{KEY}", "message": f"bad\n{KEY}"}
+    images, _, _ = client(http_error(400, json.dumps({"error": error}).encode()))
+    with pytest.raises(ImageRequestError) as failure:
+        images.generate("A navy sweater")
+    detail = str(failure.value)
+    assert KEY not in detail
+    assert "\n" not in detail
+    assert detail.count("[redacted]") == 3
+
+
+def test_a_long_error_label_is_cut_short() -> None:
+    body = json.dumps({"error": {"type": "x" * 500}})
+    images, _, _ = client(http_error(400, body.encode()))
+    with pytest.raises(ImageRequestError) as failure:
+        images.generate("A navy sweater")
+    assert len(str(failure.value)) < 100
+
+
 @pytest.mark.parametrize(
     ("payload", "message"),
     [

@@ -551,15 +551,33 @@ def test_a_price_that_cannot_be_read_is_not_a_price(price: str) -> None:
     assert read_page(page(product(offers=offer(price)))) is None
 
 
-def test_a_range_of_prices_is_not_a_price() -> None:
+@pytest.mark.parametrize(
+    "stated",
+    [
+        {"@type": "AggregateOffer", "lowPrice": "20", "highPrice": "200"},
+        {"@type": ["AggregateOffer"], "lowPrice": "20", "highPrice": "200"},
+        {"@type": ["Offer", "AggregateOffer"], "lowPrice": "20", "highPrice": "200"},
+        {"@type": "https://schema.org/AggregateOffer", "lowPrice": "20", "highPrice": "200"},
+        {"@type": "Offer", "lowPrice": "20", "highPrice": "200"},
+        {"lowPrice": "20", "highPrice": "200"},
+        {"@type": "Offer", "lowPrice": "20"},
+    ],
+)
+def test_a_range_of_prices_is_not_a_price(stated: dict[str, object]) -> None:
+    ranged = {**stated, "priceCurrency": "EUR", "availability": "https://schema.org/InStock"}
+    assert read_page(page(product(offers=ranged))) is None
+
+
+def test_a_range_of_one_price_is_that_price() -> None:
     ranged = {
         "@type": "AggregateOffer",
         "lowPrice": "20",
-        "highPrice": "200",
+        "highPrice": "20",
         "priceCurrency": "EUR",
         "availability": "https://schema.org/InStock",
     }
-    assert read_page(page(product(offers=ranged))) is None
+    facts = read_page(page(product(offers=ranged)))
+    assert facts is not None and facts.offers[0].price_cents == 2000
 
 
 def test_broken_text_from_a_shop_is_cleaned_and_bounded() -> None:
