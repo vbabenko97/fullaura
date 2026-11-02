@@ -64,6 +64,11 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
       setError("Say what you need.");
       return;
     }
+    const wantedSizes = sizes.split(",").map((size) => size.trim()).filter(Boolean);
+    if (wantedSizes.length > 6 || wantedSizes.some((size) => size.length > 12)) {
+      setError("Enter up to six sizes, each of at most 12 characters.");
+      return;
+    }
     setRunning(true);
     setSteps([]);
     setError(null);
@@ -78,7 +83,7 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
           request: request.trim(),
           scope,
           line,
-          sizes: sizes.split(",").map((size) => size.trim()).filter(Boolean).slice(0, 6),
+          sizes: wantedSizes,
           budget_cents: budgetCents,
         },
         { "X-Operation-Id": newOperationId() },

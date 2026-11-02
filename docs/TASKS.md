@@ -25,6 +25,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-21](#t-21-fixes-from-the-review-of-the-shopping-agent) Fixes from the review of the shopping agent | done | 2026-11-02 |
 | [T-22](#t-22-a-clothing-line-kept-by-code-and-the-reason-for-an-unknown-cost) A clothing line kept by code, and the reason for an unknown cost | done | 2026-11-02 |
 | [T-23](#t-23-fixes-from-an-outside-audit) Fixes from an outside audit | done | 2026-11-02 |
+| [T-24](#t-24-fixes-from-a-second-outside-audit) Fixes from a second outside audit | done | 2026-11-02 |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | next | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -221,6 +222,25 @@ The sixth point, that a malformed model reply crashes a search, was not adopted.
 The three shops' live robots.txt files and sitemaps were read before and after the change on 2026-11-02. No robots.txt has a group that the new matching treats differently, no sitemap is gzipped, and no product address holds an escape or a port. The address counts stayed at 6,584 for Tom Tailor, 36,853 for Tchibo and 781 for Giesswein, where one address moves between language files from read to read, however the link is written. The token counts in 11 recorded replies from Meta and 6 from Baseten all pass the new check. So the fixes change nothing that people see today, and the work is not deployed: it reaches the site with the next deployment.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, the new tests fail on the earlier code, and the comparison with the live shops loses no address.
+
+## T-24: Fixes from a second outside audit
+
+A second outside audit of the source, made with GPT, named five possible defects. Two were confirmed and fixed, with tests that fail on the earlier code:
+
+- The shopping agent takes the last JSON object with `items` in its reply, with the fields in any order. An answer that did not start with `items`, or that another object followed, used to cost a repair call. An object that cannot be read after a draft still sends the reply back to the model, because the checks cannot tell a draft that passes from the answer. The 7 model replies recorded in the agent's trial runs each hold one object that starts with `items`, so they read as before.
+- The shopping agent's form refuses more than six sizes, or a size longer than 12 characters, before calling the server. It used to drop the sizes after the sixth without saying so, and to send a longer size for the server to refuse.
+
+The audit's parser was not adopted. It took the first object with `items`, so a reply that held a draft and then its answer would have shown the draft. Its patch also did not apply to the source.
+
+The other three points change nothing here:
+
+- Opening an invite in a tab that holds a working plan brings that plan and its preferences back, whichever invite made them. This is open and waits for the author's decision. The page cannot tell a second person from the same person opening their link again, because each opening starts a new browser session and the page is not told which invite it has. Clearing the plan on every opening would lose the same person's work. Saved plans are shared across a device by design ([D-46](DECISIONS.md#d-46-the-server-keeps-the-checked-plan-and-the-browser-keeps-saved-copies)).
+- The image provider's answer is read into memory with no limit on its size. Only the 120-second deadline bounds it, and the sender is the authenticated provider. This stays as it is.
+- A plan request and a restore that run together in one browser session do not corrupt anything. The later one replaces the other, both plans passed every check, and the older token is refused with `plan_expired` before anything is counted. The page answers that by restoring its own plan. This was read in the code, not run under load.
+
+The change reaches the site with the next deployment.
+
+Done when: the checks in the [README](../README.md#check-a-change) pass and the new tests fail on the earlier code.
 
 ## T-06: Evaluation and submission
 

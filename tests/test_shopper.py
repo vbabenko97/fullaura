@@ -744,3 +744,46 @@ def test_invalid_model_usage_never_reduces_spending(usage: dict[str, Any]) -> No
     assert result.outcome is FindOutcome.SUCCESS
     assert result.cost_known is False
     assert result.usage.cost_micro_usd >= 0
+
+
+def said(text: str) -> dict[str, Any]:
+    message = {"type": "message", "content": [{"type": "output_text", "text": text}]}
+    return {**answer(), "output": [message]}
+
+
+DRAFT = json.dumps({"items": [item(SHIRT, "top")]})
+CHOSEN = json.dumps({"items": [item(SWEATER, "mid_layer")]})
+
+
+def test_the_answers_fields_can_come_in_any_order() -> None:
+    reply = said('{"why_not": "Nothing warm enough is on sale.", "items": []}')
+    result, _, _ = run(FakeModel(call("hemd"), reply, answer(why_not="Asked again.")))
+    assert result.outcome is FindOutcome.NO_MATCH
+    assert result.message == "Nothing warm enough is on sale."
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        f'{CHOSEN}\n{{"unrelated": true}}',
+        f"With {{your size}} in mind: {CHOSEN}",
+        f"First idea: {DRAFT}\nBetter: {CHOSEN}",
+    ],
+    ids=["another object after", "a stray brace before", "a draft before"],
+)
+def test_the_last_object_with_items_is_the_answer(text: str) -> None:
+    model = FakeModel(call("hemd", "pullover"), said(text), answer(why_not="Asked again."))
+    result, _, _ = run(model)
+    assert [find.product for find in result.finds] == [SWEATER]
+
+
+def test_a_broken_object_after_a_draft_is_asked_again_rather_than_taking_the_draft() -> None:
+    broken = '{"items": [{"url": "https://shop.example/p/pullover", "slot": "mid_layer"},]}'
+    model = FakeModel(
+        call("hemd", "pullover"),
+        said(f"{DRAFT}\nBetter: {broken}"),
+        answer([item(SWEATER, "mid_layer")]),
+    )
+    result, _, _ = run(model)
+    assert "held no JSON object" in model.payloads[-1]["input"]
+    assert [find.product for find in result.finds] == [SWEATER]

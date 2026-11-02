@@ -310,10 +310,11 @@ bottom, one_piece, footwear, accessory; a dress or jumpsuit is a one_piece, neve
 If nothing returned suits the request, answer
 {{"items": [], "why_not": "one short reason, in English"}}."""
 
-_JSON_OBJECT = re.compile(r'\{\s*"items".*\}', re.S)
-
 
 def _answer(body: dict[str, Any]) -> dict[str, Any] | None:
+    """The last object with items, as the prompt asks the reply to end with one, with its fields in
+    any order. An object that cannot be read may be the real answer, so it ends any draft before it:
+    the model is asked again, because the checks cannot tell a draft that passes from the answer."""
     text = "\n".join(
         block.get("text", "")
         for item in body.get("output", [])
@@ -321,14 +322,18 @@ def _answer(body: dict[str, Any]) -> dict[str, Any] | None:
         for block in item.get("content", [])
         if block.get("type") == "output_text"
     )
-    match = _JSON_OBJECT.search(text)
-    if not match:
-        return None
-    try:
-        answer = json.loads(match.group(0))
-    except json.JSONDecodeError:
-        return None
-    return answer if isinstance(answer, dict) else None
+    decoder = json.JSONDecoder()
+    answer: dict[str, Any] | None = None
+    position = 0
+    while (start := text.find("{", position)) >= 0:
+        try:
+            value, position = decoder.raw_decode(text, start)
+        except json.JSONDecodeError:
+            answer, position = None, start + 1
+            continue
+        if "items" in value:
+            answer = value
+    return answer
 
 
 def _slot_problem(title: str, slot: FindSlot) -> str | None:
