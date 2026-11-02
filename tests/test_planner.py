@@ -16,6 +16,7 @@ import pytest
 from backend.app.catalog import Catalog, Size
 from backend.app.config import Settings
 from backend.app.constraints import Rule, cheapest_usable_offers
+from backend.app.pilot import planning_cost_micro_usd, planning_reserve_micro_usd
 from backend.app.planner import (
     MAX_TOKENS,
     REASONING_EFFORT,
@@ -27,6 +28,7 @@ from backend.app.planner import (
     Replacement,
     Season,
     SparkClient,
+    Usage,
     _post_json,
     _three_look_conflicts,
     check_complete_plan,
@@ -1005,3 +1007,27 @@ def test_occasion_and_season_reach_the_model_as_wishes() -> None:
         "occasion": "office",
         "season": "autumn",
     }
+
+
+@pytest.mark.parametrize(
+    "reported",
+    [
+        {"prompt_tokens": -100000, "completion_tokens": 100},
+        {"prompt_tokens": 200, "completion_tokens": -10},
+        {"prompt_tokens": "200", "completion_tokens": 20},
+        {"prompt_tokens": "many", "completion_tokens": 20},
+        {"prompt_tokens": 200},
+        ["not usage"],
+    ],
+)
+def test_token_counts_that_cannot_be_true_cost_a_call_at_its_maximum(reported: Any) -> None:
+    usage = Usage().add(reported, http_attempts=1)
+    assert (usage.prompt_tokens, usage.completion_tokens, usage.unmetered_calls) == (0, 0, 1)
+    charge = planning_cost_micro_usd(
+        usage.prompt_tokens,
+        usage.completion_tokens,
+        usage.calls - usage.unmetered_calls,
+        usage.http_attempts,
+        MAX_TOKENS,
+    )
+    assert charge == planning_reserve_micro_usd(1, MAX_TOKENS)

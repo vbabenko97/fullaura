@@ -24,6 +24,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-20](#t-20-the-shopping-agent) The shopping agent | done | 2026-11-01 |
 | [T-21](#t-21-fixes-from-the-review-of-the-shopping-agent) Fixes from the review of the shopping agent | done | 2026-11-02 |
 | [T-22](#t-22-a-clothing-line-kept-by-code-and-the-reason-for-an-unknown-cost) A clothing line kept by code, and the reason for an unknown cost | done | 2026-11-02 |
+| [T-23](#t-23-fixes-from-an-outside-audit) Fixes from an outside audit | done | 2026-11-02 |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | next | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -204,6 +205,22 @@ A further review of `bf5751c` left two points, and the work stops there before t
 The work was deployed on 2026-11-02 as `259c686` and passed the HTTP smoke check there ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). No search ran there at that point, to keep the requests left on the invite for the demo video. Two searches with a later invite then succeeded on the same revision.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, real searches on this code succeed for each scope and both lines, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check.
+
+## T-23: Fixes from an outside audit
+
+An outside audit of the source, made with GPT, named six defects at the boundaries with the model providers and the shops. Five were confirmed and fixed, with tests that fail on the earlier code:
+
+- Token counts that cannot be true no longer reach the spending ledger ([D-85](DECISIONS.md#d-85-token-counts-that-cannot-be-true-count-as-an-unknown-cost)).
+- A robots.txt group applies only if it names `fullaura`, the crawler's name that [RFC 9309](https://www.rfc-editor.org/rfc/rfc9309.html#section-2.2.1) matches, or the `FullAura/0.1` that the requests send. A group for another agent whose name is part of this one, or for an empty name, applied before.
+- A shop owns only addresses on its own port and without credentials.
+- Addresses in a sitemap are read with XML's escapes. Giesswein's links to its sitemap files hold `&amp;`, and were requested with it.
+- A truncated gzip sitemap counts as corrupt, so the shop's load fails and it keeps its last list.
+
+The sixth point, that a malformed model reply crashes a search, was not adopted. `/api/finds` already answers any failure of the agent as a failed search and keeps the reservation, which `test_a_failed_search_answers_without_detail_and_keeps_its_reservation` checks. The proposed handling would have paid for one more model call and then told the person to try other words.
+
+The three shops' live robots.txt files and sitemaps were read before and after the change on 2026-11-02. No robots.txt has a group that the new matching treats differently, no sitemap is gzipped, and no product address holds an escape or a port. The address counts stayed at 6,584 for Tom Tailor, 36,853 for Tchibo and 781 for Giesswein, where one address moves between language files from read to read, however the link is written. The token counts in 11 recorded replies from Meta and 6 from Baseten all pass the new check. So the fixes change nothing that people see today, and the work is not deployed: it reaches the site with the next deployment.
+
+Done when: the checks in the [README](../README.md#check-a-change) pass, the new tests fail on the earlier code, and the comparison with the live shops loses no address.
 
 ## T-06: Evaluation and submission
 

@@ -189,11 +189,26 @@ class FindUsage:
     cached_tokens: int = 0
     output_tokens: int = 0
 
-    def add(self, usage: dict[str, Any]) -> None:
-        cached = (usage.get("input_tokens_details") or {}).get("cached_tokens", 0)
-        self.fresh_tokens += usage.get("input_tokens", 0) - cached
+    def add(self, usage: dict[str, Any]) -> bool:
+        """Add the tokens a reply reported, or nothing and False if the counts cannot be true."""
+        if not isinstance(usage, dict):
+            return False
+        incoming = usage.get("input_tokens")
+        output = usage.get("output_tokens")
+        details = usage.get("input_tokens_details")
+        if details is None:
+            details = {}
+        if not isinstance(details, dict):
+            return False
+        cached = details.get("cached_tokens", 0)
+        if not all(type(value) is int and value >= 0 for value in (incoming, output, cached)):
+            return False
+        if cached > incoming:
+            return False
+        self.fresh_tokens += incoming - cached
         self.cached_tokens += cached
-        self.output_tokens += usage.get("output_tokens", 0)
+        self.output_tokens += output
+        return True
 
     @property
     def cost_micro_usd(self) -> int:
@@ -481,10 +496,13 @@ class ShopAgent:
                 logger.warning(
                     "shop call cost unknown: it took %d HTTP attempts", body[ATTEMPTS_KEY]
                 )
-            if not body.get("usage"):
+            usage = body.get("usage")
+            if not usage:
                 result.cost_known = False
                 logger.warning("shop call cost unknown: the answer reported no usage")
-            result.usage.add(body.get("usage") or {})
+            elif not result.usage.add(usage):
+                result.cost_known = False
+                logger.warning("shop call cost unknown: the answer reported invalid usage")
             if body.get("status") == "incomplete":
                 reason = (body.get("incomplete_details") or {}).get("reason")
                 logger.warning("shop model answer cut off: %s", plain_words(str(reason), 40))

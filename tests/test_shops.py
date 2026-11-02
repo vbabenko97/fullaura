@@ -597,6 +597,16 @@ def test_sizes_in_an_offer_name_are_read_whole(name: str, wanted: str, fits: boo
         ("User-agent: FullAura\nDisallow: /p/\nUser-agent: *\nDisallow:\n", "/p/x", False),
         ("User-agent: other\nDisallow: /\n", "/p/x", True),
         ("User-agent: a\nUser-agent: *\nDisallow: /p/\n", "/p/x", False),
+        ("User-agent: aura\nAllow: /p/\nUser-agent: *\nDisallow: /p/\n", "/p/x", False),
+        ("User-agent: full\nAllow: /p/\nUser-agent: *\nDisallow: /p/\n", "/p/x", False),
+        ("User-agent:\nAllow: /p/\nUser-agent: *\nDisallow: /p/\n", "/p/x", False),
+        ("User-agent: fullaura\nDisallow: /p/\nUser-agent: full\nAllow: /p/\n", "/p/x", False),
+        ("User-agent: FullAura/0.1\nDisallow: /p/\nUser-agent: *\nDisallow:\n", "/p/x", False),
+        (
+            "User-agent: fullaura\nDisallow: /a/\nUser-agent: fullaura\nDisallow: /p/\n",
+            "/p/x",
+            False,
+        ),
     ],
 )
 def test_robots_rules_follow_the_standard(rules: str, path: str, allowed: bool) -> None:
@@ -935,5 +945,63 @@ def test_an_oversized_sitemap_is_refused() -> None:
     all_routes = {
         **routes(),
         "https://shop.example/sitemap.xml": httpx2.Response(200, content=bomb),
+    }
+    assert ShopIndex((SHOP,), serve(all_routes)).load() == 0
+
+
+def test_a_shop_owns_no_other_port_and_no_address_with_credentials() -> None:
+    assert SHOP.owns("https://shop.example/p/jacket")
+    assert SHOP.owns("https://shop.example:443/p/jacket")
+    assert not SHOP.owns("https://shop.example:8443/p/jacket")
+    assert not SHOP.owns("https://shop.example:0/p/jacket")
+    assert not SHOP.owns("https://user:secret@shop.example/p/jacket")
+    nondefault = Shop("Local test", "https://shop.example:8443", "/p/")
+    assert nondefault.owns("https://shop.example:8443/p/jacket")
+    assert not nondefault.owns("https://shop.example/p/jacket")
+
+
+@pytest.mark.parametrize(
+    ("written", "address"),
+    [
+        ("/p/jacke?color=blue&amp;size=M", "/p/jacke?color=blue&size=M"),
+        ("/p/jacke?color=&quot;blue&quot;", '/p/jacke?color="blue"'),
+        # Not valid XML, but read as it stands, and HTML's escapes would make this ¤cy=.
+        ("/p/jacke?color=blue&currency=EUR", "/p/jacke?color=blue&currency=EUR"),
+    ],
+)
+def test_a_sitemap_reads_only_xml_escapes_in_a_product_address(written: str, address: str) -> None:
+    all_routes = {
+        "https://shop.example/robots.txt": httpx2.Response(200, text="User-agent: *\n"),
+        "https://shop.example/sitemap.xml": httpx2.Response(
+            200, text=f"<urlset><url><loc>https://shop.example{written}</loc></url></urlset>"
+        ),
+    }
+    _, addresses = ShopIndex((SHOP,), serve(all_routes))._load_shop(SHOP)
+    assert addresses == [f"https://shop.example{address}"]
+
+
+def test_a_sitemap_index_follows_an_escaped_link_to_its_file() -> None:
+    all_routes = {
+        "https://shop.example/robots.txt": httpx2.Response(200, text="User-agent: *\n"),
+        "https://shop.example/sitemap.xml": httpx2.Response(
+            200,
+            text=(
+                "<sitemapindex><sitemap><loc>"
+                "https://shop.example/sitemap_products_1.xml?from=1&amp;to=2"
+                "</loc></sitemap></sitemapindex>"
+            ),
+        ),
+        "https://shop.example/sitemap_products_1.xml?from=1&to=2": httpx2.Response(
+            200, text="<urlset><url><loc>https://shop.example/p/jacke</loc></url></urlset>"
+        ),
+    }
+    assert ShopIndex((SHOP,), serve(all_routes)).load() == 1
+
+
+def test_a_truncated_gzip_sitemap_is_refused() -> None:
+    xml = b"<urlset><url><loc>https://shop.example/p/jacke</loc></url></urlset>"
+    all_routes = {
+        "https://shop.example/robots.txt": httpx2.Response(200, text="User-agent: *\n"),
+        "https://shop.example/sitemap.xml": httpx2.Response(200, content=gzip.compress(xml)[:-8]),
     }
     assert ShopIndex((SHOP,), serve(all_routes)).load() == 0

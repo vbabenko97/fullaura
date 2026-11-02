@@ -21,6 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from typing import Any, Literal
 from urllib.parse import urljoin, urlsplit
+from xml.sax.saxutils import unescape
 
 import httpx2
 
@@ -74,6 +75,7 @@ _CANONICAL_LINK = re.compile(r"<link\b[^>]*\brel=[\"']?canonical\b[^>]*>", re.I)
 _LINK_ADDRESS = re.compile(r"\bhref=[\"']([^\"']+)", re.I)
 _IN_STOCK = re.compile(r"(?:https?://(?:www\.)?schema\.org/|schema:)?InStock")
 _LOCATION = re.compile(r"<loc>\s*(.*?)\s*</loc>")
+_XML_QUOTES = {"&apos;": "'", "&quot;": '"'}  # unescape handles the other three by itself
 _SITEMAP_LINE = re.compile(r"(?im)^sitemap:\s*(\S+)")
 # A price in euros and cents; "1.299" could be either 1299 or 1.30, so it is not read as a price.
 _PRICE = re.compile(r"\d+([.,]\d{1,2})?")
@@ -97,7 +99,15 @@ class Shop:
         reach an internal address, or show another site's price under this shop's name."""
         try:
             parts = urlsplit(url)
-            return parts.scheme == "https" and parts.hostname == urlsplit(self.base).hostname
+            base = urlsplit(self.base)
+            return (
+                parts.scheme == base.scheme == "https"
+                and parts.hostname == base.hostname
+                and (443 if parts.port is None else parts.port)
+                == (443 if base.port is None else base.port)
+                and parts.username is None
+                and parts.password is None
+            )
         except ValueError:
             return False
 
@@ -178,7 +188,9 @@ class Robots:
                     rules.append((key == "allow", value))
         if not groups:
             return None
-        named = [group for group in groups if any(a != "*" and a in AGENT_TOKEN for a in group[0])]
+        # This agent's name, with or without the version its requests send. A group for another
+        # agent is not for this one, even if that name is part of this one or empty.
+        named = [group for group in groups if any(a.split("/")[0] == AGENT_TOKEN for a in group[0])]
         chosen = named or [group for group in groups if "*" in group[0]]
         compiled = []
         for _, group_rules in chosen:
@@ -440,6 +452,8 @@ def _unzipped(content: bytes) -> bytes:
         raise ShopReadError("corrupt sitemap") from error
     if unzip.unconsumed_tail:
         raise ShopReadError("sitemap too large")
+    if not unzip.eof:
+        raise ShopReadError("corrupt sitemap")
     return body
 
 
@@ -510,7 +524,9 @@ class ShopIndex:
             if status >= 400:
                 continue
             sitemap = _unzipped(content).decode("utf-8", "ignore")
-            locations = _LOCATION.findall(sitemap)
+            # An address in XML writes & as &amp;, as Shopify's links to its sitemap files do. Only
+            # XML's escapes: html.unescape would turn a bare &currency= into ¤cy=.
+            locations = [unescape(loc, _XML_QUOTES) for loc in _LOCATION.findall(sitemap)]
             if "<sitemapindex" in sitemap:
                 # Files that name products first, so the limit on files reaches them.
                 children = [loc for loc in locations if shop.owns(loc) and robots.allows(loc)]
