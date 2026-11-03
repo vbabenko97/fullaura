@@ -466,6 +466,46 @@ describe(`${FIXTURE_LABEL}: access`, () => {
       await waitFor(() => expect((screen.getByLabelText("What do you need?") as HTMLTextAreaElement).value).toBe(""));
     });
 
+    const LAST_SEARCH = {
+      invite_scope: "invite-a",
+      form: { request: "A warm jacket", scope: "item", line: "men", sizes: "", budget: "150" },
+      operation_id: null,
+      sent_at: null,
+      result: {
+        outcome: "success",
+        message: null,
+        find_token: "token-1",
+        scope: "item",
+        budget_cents: 15000,
+        total_cents: 9000,
+        counted: true,
+        finds: [{ url: "https://shop.example/p/jacke", shop: "Shop", title: "Winterjacke", color: null, material: null, price_cents: 9000, size_checked: false, slot: "outer_layer", slot_checked: true, why: "Warm" }],
+      },
+    };
+
+    it("still shows the last search after a reload when the invite has no requests left", async () => {
+      const server = installServer();
+      Object.assign(server.session, { invite_scope: "invite-a", find_open: false, plan_requests_used: server.session.plan_requests_limit });
+      sessionStorage.setItem("fullaura.last-search.v1", JSON.stringify(LAST_SEARCH));
+      render(<App />);
+
+      expect(await screen.findByRole("heading", { name: "Winterjacke" })).toBeTruthy();
+      expect(screen.getByRole("button", { name: "Three looks from the catalog" })).toBeTruthy();
+      expect((screen.getByRole("button", { name: "Find it" }) as HTMLButtonElement).disabled).toBe(true);
+      expect(screen.getByText("This invite has used all its requests.")).toBeTruthy();
+    });
+
+    it("does not offer the agent's page when it is closed and the tab holds no search of this invite", async () => {
+      const server = installServer();
+      Object.assign(server.session, { invite_scope: "invite-a", find_open: false });
+      sessionStorage.setItem("fullaura.last-search.v1", JSON.stringify({ ...LAST_SEARCH, invite_scope: "invite-b" }));
+      render(<App />);
+
+      await screen.findByRole("heading", { name: "Your preferences" });
+      expect(screen.queryByRole("button", { name: "Find it for me" })).toBeNull();
+      expect(screen.queryByRole("heading", { name: "Winterjacke" })).toBeNull();
+    });
+
     /** Lets what the old page was still waiting for answer, after the next invite's page has opened. */
     async function answerLate(gate: { resolve: () => void }) {
       await act(async () => {
