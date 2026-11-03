@@ -63,9 +63,26 @@ Add public demo assets only after completing this register:
 
 Model output shown in a recording should include enough run metadata to reproduce the process without exposing a person's original photographs or credentials. Label cached examples and fixtures in the UI and demo.
 
-The shopping agent ([D-73](DECISIONS.md#d-73-the-shopping-agent-chooses-among-real-shop-pages-that-code-reads)) reads facts at a person's request from Tom Tailor, Tchibo and Giesswein, the sources above whose terms were checked. `backend/app/shops.py` reads only addresses and pages that the shop's robots.txt allows, names itself as `FullAura/0.1` in its requests, stays on each shop's own host and port over HTTPS, reads at most 18 pages across the shops for each of the agent's searches, of which a request has at most four, stops reading a shop once six of its products can be bought, and keeps addresses and facts in process memory only, facts for an hour. It shows no shop's image. It does not read a shop's description, whose field on Tom Tailor's pages held only a sales line, or its category. It sends each product's title, color, price and material to Muse Spark, and the shop's color and title, up to 160 characters, to Muse Image for a try-on, both on Meta's API in Standard mode.
+## Reading shop pages
 
-Whether FullAura may send shop titles is open for the author ([D-92](DECISIONS.md#d-92-no-shop-description-or-category-reaches-a-model)), and colors and materials go with them. Meta's [terms](https://dev.meta.ai/legal/terms-of-service), updated on 2026-10-09, have the developer warrant the rights needed to submit inputs (§4.1, §16.2) and indemnify Meta for them (§17.1). On 2026-11-03, Tom Tailor's terms and imprint, Tchibo's terms ("Stand: November 2026") and imprint, and Giesswein's terms showed no clause on using site content. The tool used returned only part of Tchibo's and Giesswein's long terms, and Giesswein's imprint could not be read that day. Silence in these documents does not show permission, and this is a reading of the documents, not legal advice.
+The shopping agent ([D-73](DECISIONS.md#d-73-the-shopping-agent-chooses-among-real-shop-pages-that-code-reads)) reads facts at a person's request from Tom Tailor, Tchibo and Giesswein, the sources above whose terms were checked. `backend/app/shops.py` reads only addresses and pages that the shop's robots.txt allows, names itself as `FullAura/0.1` in its requests, and stays on each shop's own host and port over HTTPS. It loads each shop's sitemap once a day and keeps the product addresses in process memory: 44,261 addresses on 2026-11-03 (Tchibo 36,853, Tom Tailor 6,615, Giesswein 793). It reads at most 18 pages across the shops for each of the agent's searches, of which a request has at most four, stops reading a shop once six of its products can be bought, and keeps a page's facts in process memory for an hour. It shows no shop's image. It does not read a shop's description, whose field on Tom Tailor's pages held only a sales line, or its category.
+
+For each product that a search returns, Muse Spark receives the web address, shop name, title, color, price, material and whether the size was checked. For a try-on, Muse Image receives the shop's color and title, up to 160 characters. Both run on Meta's API in Standard mode.
+
+The author accepts the unresolved risk of this use for a test of up to 10 participants and 5 judges, until model calls close on 10 November 2026 at 06:00 Vienna time ([D-93](DECISIONS.md#d-93-the-limited-test-goes-ahead-with-the-rights-risk-accepted)). This use is not cleared, and whether FullAura may send shop text stays unanswered ([D-92](DECISIONS.md#d-92-no-shop-description-or-category-reaches-a-model)). Before any broader use, the author would seek shop permission, a licensed feed or legal advice.
+
+Meta's [terms](https://dev.meta.ai/legal/terms-of-service), updated on 2026-10-09, have the developer warrant the rights needed to submit inputs (§4.1, §16.2) and indemnify Meta for them (§17.1). What was read of the shops' documents on 2026-11-03, through an automated tool:
+
+| Shop | Document | What the tool returned | Clause on using site content |
+| --- | --- | --- | --- |
+| Tom Tailor | Terms | Not marked truncated | None |
+| Tom Tailor | Imprint | Not marked truncated | None |
+| Tchibo | Terms ("Stand: November 2026") | About 31,000 of 31,090 characters | None in that part |
+| Tchibo | Imprint | Not marked truncated | None |
+| Giesswein | Terms | Marked truncated | None in the part returned |
+| Giesswein | Imprint | Marked truncated | None in the part returned |
+
+Silence in these documents does not show permission, and this is a reading of the documents, not legal advice.
 
 ## Licenses of the models and libraries
 
