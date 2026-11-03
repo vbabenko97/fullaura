@@ -296,8 +296,9 @@ _WHAT_TO_CHOOSE = {
         "for them early"
     ),
     Scope.UPPER_BODY: (
-        "for the upper body only: a top, with a mid or outer layer if it suits the request; "
-        "no trousers, dresses or shoes"
+        "for the upper body only: what the request asks for, from a top, a mid layer and an outer "
+        "layer. If the request names no piece, choose a top, with a mid or outer layer if it suits "
+        "the request. No trousers, dresses or shoes"
     ),
     Scope.ITEM: "exactly one item",
 }
@@ -384,9 +385,7 @@ def _composition_problem(scope: Scope, slots: list[FindSlot]) -> str | None:
         return None if len(slots) == 1 else "exactly one item was asked for"
     if scope is Scope.UPPER_BODY:
         allowed = {FindSlot.TOP, FindSlot.MID_LAYER, FindSlot.OUTER_LAYER}
-        if not set(slots) <= allowed:
-            return "only upper-body clothes were asked for"
-        return None if FindSlot.TOP in slots else "a top is missing"
+        return None if set(slots) <= allowed else "only upper-body clothes were asked for"
     if FindSlot.ONE_PIECE in slots and {FindSlot.TOP, FindSlot.BOTTOM} & set(slots):
         return "a one-piece replaces the top and the bottom"
     base = FindSlot.ONE_PIECE in slots or {FindSlot.TOP, FindSlot.BOTTOM} <= set(slots)

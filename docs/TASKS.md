@@ -34,6 +34,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-30](#t-30-a-rule-for-reasons-and-a-try-on-from-title-and-color) A rule for reasons, and a try-on from title and color | done | 2026-11-03 |
 | [T-31](#t-31-a-search-survives-a-dropped-connection) A search survives a dropped connection | done | 2026-11-03 |
 | [T-32](#t-32-what-the-first-participants-met) What the first participants met | done | 2026-11-03 |
+| [T-33](#t-33-upper-body-without-a-required-top) Upper body without a required top | next | |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | next | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -353,9 +354,17 @@ Not done: sending what the person typed to the image model, which would change t
 
 The work reached the site with the deployment of `1be5341`, which passed the HTTP smoke check and kept its replica through about ten idle minutes ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)).
 
-An open problem came out of these checks, tested with the real model, shops and image model on a synthetic persona. "Upper body" refuses a choice without a top, so a request for one coat cannot get only a coat. In six runs on the current rule, three returned no products, which uses a request, and three added a shirt that nobody asked for. In the two runs traced, the agent's first answer was the coat alone. The drawings then showed the coat, the added shirt and the trousers and shoes of the full-body photo. With a changed rule, patched only in the test, all six runs succeeded: four coat requests returned a coat alone, and two general requests still returned a shirt and a jacket. These are few runs. The tests cost about $0.38 outside the ledger.
+An open problem came out of these checks, tested with the real model, shops and image model on a synthetic persona. "Upper body" refuses a choice without a top, so a request for one coat cannot get only a coat. In six runs on the current rule, three returned no products, which uses a request, and three added a shirt that nobody asked for. In the two runs traced, the agent's first answer was the coat alone. The drawings then showed the coat, the added shirt and the trousers and shoes of the full-body photo. With a changed rule, patched only in the test, all six runs succeeded: four coat requests returned a coat alone, and two general requests still returned a shirt and a jacket. These are few runs. The tests cost about $0.38 outside the ledger. [T-33](#t-33-upper-body-without-a-required-top) changes the rule.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, the new tests fail on the earlier code, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check and one replica running after five idle minutes.
+
+## T-33: Upper body without a required top
+
+The author chose this after [T-32](#t-32-what-the-first-participants-met) showed that a request for one coat under "Upper body" could return no products, or a shirt that nobody asked for. Code now accepts any combination of a top, a mid layer and an outer layer there, and the prompt asks the agent to follow the request ([D-96](DECISIONS.md#d-96-upper-body-takes-what-the-request-asks-for)). Following the request rests on the model, not on a check.
+
+On this code, with the real model and shops, ten runs all returned products: six coat requests each returned a coat alone, and four general requests each returned a top with layers. One drawing on a synthetic persona showed the coat over the clothes in the full-body photo. The search conditions were written before the runs. These checks cost about $0.15 outside the ledger.
+
+Done when: the checks in the [README](../README.md#check-a-change) pass, the new tests fail on the earlier code, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check.
 
 ## T-06: Evaluation and submission
 
