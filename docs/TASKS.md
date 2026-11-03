@@ -33,6 +33,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-29](#t-29-no-shop-description-reaches-a-model) No shop description reaches a model | done | 2026-11-03 |
 | [T-30](#t-30-a-rule-for-reasons-and-a-try-on-from-title-and-color) A rule for reasons, and a try-on from title and color | done | 2026-11-03 |
 | [T-31](#t-31-a-search-survives-a-dropped-connection) A search survives a dropped connection | done | 2026-11-03 |
+| [T-32](#t-32-what-the-first-participants-met) What the first participants met | next | |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | next | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -339,6 +340,18 @@ The page now asks the server for the answer when a search's connection fails, wi
 The work reached the site with the deployment of `a768f3e`, which passed the HTTP smoke check there ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). It ran in Chromium with a reset connection, not on a real phone.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, the new tests fail on the earlier code, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check.
+
+## T-32: What the first participants met
+
+The first participants tested the deployed site on 2026-11-03, and the author chose these changes on their feedback:
+
+- A try-on drew clothes that a participant had not expected. The try-on's text tells the model to keep what was not asked for as in the full-body photo, and it holds nothing of what the person typed, but the page did not say so. The try-on panel now says it. Whether this was the cause is not confirmed: photos and prompts are not stored. In eight real searches with similar words, each found a coat, and none of the four whole outfits held jeans or sneakers.
+- Participants asked to see the products. FullAura records no right to show the shops' photos ([D-25](DECISIONS.md#d-25-product-facts-and-product-images-need-different-rights), [D-56](DECISIONS.md#d-56-a-variant-can-carry-a-photo-only-with-recorded-rights)), so a search's shop link now reads "View at Tom Tailor" in place of the shop's name alone.
+- One server stays running during the test ([D-95](DECISIONS.md#d-95-one-server-stays-running-during-the-limited-test)).
+
+Not done: sending what the person typed to the image model, which would change the data notice, and taking height and weight into account.
+
+Done when: the checks in the [README](../README.md#check-a-change) pass, the new tests fail on the earlier code, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check and one replica running after five idle minutes.
 
 ## T-06: Evaluation and submission
 

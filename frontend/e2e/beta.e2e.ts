@@ -263,7 +263,8 @@ test("the agent finds real products in steps, says what it did not check, and tr
   await expect(page.getByText(/Size not checked for 1 item/)).toBeVisible();
   await expect(page.getByText(/It did not check warmth, whether the items go together or your style/)).toBeVisible();
   await expect(page.getByText(/No photo of the product is used/)).toBeVisible();
-  await expect(page.getByRole("link", { name: "Synthetic Shop" }).first()).toHaveAttribute("href", /synthetic\.example/);
+  await expect(page.getByRole("link", { name: "View at Synthetic Shop" }).first()).toHaveAttribute("href", /synthetic\.example/);
+  await expect(page.getByText(/Clothes you did not ask for stay as in your full-body photo/)).toBeVisible();
 
   // The catalog keeps its own page, and coming back shows the same results.
   await page.getByRole("button", { name: "Three looks from the catalog" }).click();

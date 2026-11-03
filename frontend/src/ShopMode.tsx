@@ -341,7 +341,7 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
                     <h3>{find.title}</h3>
                     <p className="find-price">
                       <strong>{formatMoney(find.price_cents)}</strong>{" "}
-                      <a href={find.url} rel="noreferrer" target="_blank">{find.shop}</a>
+                      <a href={find.url} rel="noreferrer" target="_blank">View at {find.shop}</a>
                     </p>
                     {find.why && <p className="item-facts">Agent's reason: {find.why}</p>}
                     {find.material && <p className="item-facts">{find.material}</p>}
