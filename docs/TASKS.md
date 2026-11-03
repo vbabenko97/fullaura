@@ -295,6 +295,8 @@ On this code, on a local server with the real model and shops, seven searches ac
 
 The first deployment, of `181323b`, kept a search only once the answer's first line arrived. A real search reloaded after about five seconds on the deployed site lost its results and used its request, because a server that has just woken registers a search only after reading the shops' lists ([D-91](DECISIONS.md#d-91-a-search-is-kept-from-the-moment-it-is-sent)). With the fix, the same case on a local server just started, in WebKit with a reload after two seconds, before any step had appeared, was collected about 22 seconds later and used one request.
 
+The work reached the site with the deployment of `264fd01`, where the same case, one real search in WebKit reloaded about five seconds after it was sent, was collected, used one request and kept its results through a further reload ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). Its products passed a check against the shop's pages. It ran in Playwright's WebKit, not on a real phone.
+
 Done when: the checks in the [README](../README.md#check-a-change) pass, the new tests fail on the earlier code, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check and a real search there.
 
 ## T-06: Evaluation and submission
