@@ -172,14 +172,81 @@ describe("the shopping agent's page", () => {
     expect((screen.getByRole("button", { name: "Find it" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it("can still collect a search whose connection was lost, as the server may have received it", async () => {
-    vi.stubGlobal("fetch", async () => {
-      throw new TypeError("offline");
+  it("collects a search whose answer was cut off, without a reload or a second request", async () => {
+    // A phone can drop the answer while the person is in another app; the server goes on.
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const cutOff = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(`${JSON.stringify({ step: "Looking in the shops" })}\n`));
+        setTimeout(() => controller.error(new TypeError("network error")), 10);
+      },
     });
+    const collected = [new Response(JSON.stringify({ running: true }), { status: 200 }), new Response(JSON.stringify({ result: RESULT }), { status: 200 })];
+    const fetchMock = vi.fn(async (url: string) => (url === "/api/finds" ? new Response(cutOff, { status: 200 }) : collected.shift()));
+    vi.stubGlobal("fetch", fetchMock);
+    const onFinished = show();
+    fill();
+    fireEvent.click(screen.getByRole("button", { name: "Find it" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText(/connection dropped/)).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Looking…" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(onFinished).not.toHaveBeenCalled();
+
+    await act(async () => { await vi.advanceTimersByTimeAsync(3100); });
+    await screen.findByRole("heading", { name: "Winterjacke" });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(fetchMock.mock.calls.filter(([url]) => url === "/api/finds")).toHaveLength(1);
+    expect(onFinished).toHaveBeenCalledTimes(1);
+    expect((screen.getByRole("button", { name: "Find it" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(JSON.parse(sessionStorage.getItem(SEARCH_KEY) as string).operation_id).toBeNull();
+  });
+
+  it("asks after a search whose request got no answer at all, as the server may have received it", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === "/api/finds") throw new TypeError("offline");
+      return new Response(JSON.stringify({ result: RESULT }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
     show();
     fill();
     fireEvent.click(screen.getByRole("button", { name: "Find it" }));
-    await screen.findByRole("alert");
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    await screen.findByRole("heading", { name: "Winterjacke" });
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("offers a new search once the server says it never received the lost one", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url === "/api/finds") throw new TypeError("offline");
+      return new Response(JSON.stringify({ detail: "Unknown", reason: "find_unknown" }), { status: 404 });
+    }));
+    show();
+    fill();
+    fireEvent.click(screen.getByRole("button", { name: "Find it" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(76_000); });
+    expect((await screen.findByRole("alert")).textContent).toContain("was cut off");
+    expect((screen.getByRole("button", { name: "Find it" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("stops asking when the page goes away, and a reload can still collect the search", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const fetchMock = vi.fn(async (url: string) => {
+      if (url === "/api/finds") throw new TypeError("offline");
+      return new Response(JSON.stringify({ running: true }), { status: 200 });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    show();
+    fill();
+    fireEvent.click(screen.getByRole("button", { name: "Find it" }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(100); });
+    cleanup();
+    fetchMock.mockClear();
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(fetchMock).not.toHaveBeenCalled();
     expect(JSON.parse(sessionStorage.getItem(SEARCH_KEY) as string).operation_id).toBeTruthy();
   });
 

@@ -20,7 +20,7 @@ These checks do not show that clothes are warm enough, go together or suit your 
 
 **Clothing line.** Men's and Women's show only products the shop names that way, or unisex; most Tchibo products name no line, so they appear under Either, where a product can be of any line.
 
-**Reloading.** A reload brings back your last search and its results at no cost, and a search still running when you reload is collected when it ends.
+**Reloading and leaving.** A reload brings back your last search and its results at no cost, and a search still running when you reload is collected when it ends. If you switch to another app during a search and the connection drops, the page waits for the answer by itself, also at no cost.
 
 **Trying on.** You can try the result on, after you read the photo notice and agree to it. Photos already sent to Meta cannot be called back. The drawing is made from each product's title and color, not from its photo, so it is approximate, and a pattern or detail that the title does not name can be missing, such as the checks of a shirt whose title does not say so. It needs a full-body photo and draws you whole, also when you asked for the upper body or one item.
 
