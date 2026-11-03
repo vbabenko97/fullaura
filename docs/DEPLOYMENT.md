@@ -16,7 +16,7 @@ This document holds, in order: the [deployed configuration](#deployed-configurat
 | Container Apps environment | `cae-fullaura-demo-frc`, Consumption workload profile |
 | Container App | `fullaura-demo`, with a system-assigned managed identity |
 | Revision | `fullaura-demo--0000033`, serving all traffic since 2026-11-03 |
-| Compute and scaling | 0.5 vCPU / 1 GiB; minimum 0 and maximum 1 replica; scales to zero after 300 seconds without traffic |
+| Compute and scaling | 0.5 vCPU / 1 GiB; minimum 1 and maximum 1 replica until the pilot's records are deleted ([D-95](DECISIONS.md#d-95-one-server-stays-running-during-the-limited-test)); with minimum 0 it scales to zero after 300 seconds without traffic |
 | Ingress | External HTTPS, target port 8000, insecure HTTP disabled |
 | Beta | `FULLAURA_BETA_ENABLED=true`; 19 invite digests in the secret `invite-hashes` (10 for participants, 4 for the operator: the first, whose planning requests are used up, two added on 2026-10-31 for the T-08 acceptance and the demo video, and one added on 2026-11-02 for recording the video; and 5 added on 2026-11-02 for judges, not yet given to anyone); cookies signed with the secret `session-secret` |
 | Pilot window | `FULLAURA_PILOT_ENDS_AT=2026-11-10T06:00:00+01:00` and `FULLAURA_RECORDS_PURGE_AT=2026-11-10T10:00:00+01:00` ([D-82](DECISIONS.md#d-82-the-pilot-stays-open-through-the-hackathons-judging)) |
@@ -45,7 +45,7 @@ The Uvicorn access log records the method, path, status and client address of ea
 
 ## Configuration and cost
 
-The Bicep template in `infra/azure/main.bicep` describes the 30-day Log Analytics workspace, the Consumption environment, the externally reachable Container App with one active revision, 0.5 vCPU / 1 GiB, scale from zero to one replica, HTTPS ingress and liveness and readiness probes, and the pilot store. The template keeps the beta closed unless `betaEnabled` is true.
+The Bicep template in `infra/azure/main.bicep` describes the 30-day Log Analytics workspace, the Consumption environment, the externally reachable Container App with one active revision, 0.5 vCPU / 1 GiB, one replica during the pilot, HTTPS ingress and liveness and readiness probes, and the pilot store. The template keeps the beta closed unless `betaEnabled` is true.
 
 The Azure Retail Prices API listed these France Central Consumption rates on 2026-10-29:
 
@@ -57,7 +57,7 @@ The Azure Retail Prices API listed these France Central Consumption rates on 202
 
 At 0.5 vCPU and 1 GiB running continuously for 30 days, compute and memory total about $38.88 before the monthly free grant, or $33.48 if the full grant is unused. The grant covers 180,000 vCPU-seconds, 360,000 GiB-seconds, and 2 million requests per subscription per month; other apps can consume it. Scaling to zero avoids Container Apps compute charges while no replica runs. Request charges above the grant, Log Analytics ingestion, network egress, and other Azure services are not included. These are list-price estimates, not an account-adjusted forecast.
 
-The $20 budget alert is below the continuous-running estimate and is not a spending cap. The Free Trial spending limit protects against paid overage by disabling resources when its credit is exhausted, which would make the demo unavailable. Keep the app at zero minimum replicas and review Azure cost usage after pilot sessions.
+The $20 budget alert is below the continuous-running estimate and is not a spending cap. The Free Trial spending limit protects against paid overage by disabling resources when its credit is exhausted, which would make the demo unavailable. Keep the app at zero minimum replicas outside the limited test, and review Azure cost usage after pilot sessions. During the test one replica runs ([D-95](DECISIONS.md#d-95-one-server-stays-running-during-the-limited-test)), which costs about $1.30 a day before the free grant.
 
 Provider usage is not included in the Azure estimate. Planning uses the hackathon API key. On 2026-10-29, Baseten's pinned answer in the hackathon `#baseten` channel confirmed that the $100 grant is attached to that key, not a personal workspace, so personal workspace budgets do not apply. Baseten said no payment method is needed and the key cannot be charged beyond $100. The key is not linked to the DevRain workspace. Baseten does not expose the remaining balance for this key, and it cannot be checked in that workspace. The planning API returns prompt and completion token counts, and the app records them per request. Review them for each planning request: they provide an activity record but do not establish the balance or the dollars spent. No Baseten account or workspace settings were changed.
 
@@ -99,6 +99,7 @@ No alert watches the job, so the operator checks the deletion twice on 2026-11-1
 1. The job succeeded: `az containerapp job execution list --name fullaura-demo-purge --resource-group rg-fullaura-demo --subscription <subscription ID> --output table` lists an execution of 2026-11-10 from about 09:00 UTC with status `Succeeded`, and its log line in `ContainerAppConsoleLogs_CL` reads `pilot records: <n> found, <n> deleted, 0 left`.
 2. The records are gone: `az storage blob list --account-name stfullauradurnz5gu4z --container-name pilot --auth-mode login --subscription <subscription ID> --query "[].name" --output tsv` prints only `purge-marker.json`.
 3. The report agrees: `scripts/pilot_report.py`, run as [BETA.md](BETA.md#running-the-pilot) describes, counts no activated invite, no model call and an empty ledger. Run against a store that holds only the marker, it exits 0 with these zeros.
+4. Return the app to zero minimum replicas, so that it stops costing about $1.30 a day ([D-95](DECISIONS.md#d-95-one-server-stays-running-during-the-limited-test)): `az containerapp update --name fullaura-demo --resource-group rg-fullaura-demo --subscription <subscription ID> --min-replicas 0`, and set `minReplicas` back to 0 in `infra/azure/main.bicep`.
 
 If an execution failed or any name other than the marker is listed:
 

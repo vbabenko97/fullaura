@@ -407,10 +407,11 @@ describe("the shopping agent's page", () => {
       budget_cents: 15000,
     });
     expect((init.headers as Record<string, string>)["X-Operation-Id"]).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Shop" }).getAttribute("href")).toBe(FIND.url);
+    expect(screen.getByRole("link", { name: "View at Shop" }).getAttribute("href")).toBe(FIND.url);
     expect(screen.getByText(/Size not checked for these items/)).toBeTruthy();
     expect(screen.getByText(/Code read every price and stock/)).toBeTruthy();
     expect(screen.getByRole("heading", { name: "Try a look on" })).toBeTruthy();
+    expect(screen.getByText(/Clothes you did not ask for stay as in your full-body photo, so wear what you want to see\./)).toBeTruthy();
     expect(onFinished).toHaveBeenCalled();
   });
 

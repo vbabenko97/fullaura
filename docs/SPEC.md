@@ -131,7 +131,7 @@ A page's stock is checked for a size only where the page lists sizes: in its str
 
 ### Steps and try-on
 
-The agent's steps appear while it works. A person can try what was found on, under the same consent, quota and photo rules as a plan's try-on. The try-on is written from the shop's color and title and receives no photo of the product, so it is approximate, a pattern or detail that the title does not name can be missing, and it does not show that the drawing looks like the product on sale. Clothes that were not asked for stay as in the photo. Choosing the upper body limits what the agent chooses: the try-on still needs a full-body photo and draws the whole person. The mode has no saved plans, kept items or replacement.
+The agent's steps appear while it works. A person can try what was found on, under the same consent, quota and photo rules as a plan's try-on. The try-on is written from the shop's color and title and receives no photo of the product, so it is approximate, a pattern or detail that the title does not name can be missing, and it does not show that the drawing looks like the product on sale. Clothes that were not asked for stay as in the full-body photo, and the try-on panel says so. Choosing the upper body limits what the agent chooses: the try-on still needs a full-body photo and draws the whole person. The mode has no saved plans, kept items or replacement.
 
 ### Reloading
 
