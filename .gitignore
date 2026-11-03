@@ -18,5 +18,6 @@ artifacts/
 tmp/
 *.log
 .DS_Store
+.hallmark/
 .idea/
 .vscode/
