@@ -463,7 +463,7 @@ describe("the shopping agent's page", () => {
     fill();
     fireEvent.click(screen.getByRole("button", { name: "Find it" }));
     await screen.findByRole("heading", { name: "Winterjacke" });
-    expect(screen.getByText(/each product's title, color and category\. No photo of the product is used/)).toBeTruthy();
+    expect(screen.getByText(/each product's title and color\. No photo of the product is used, so it may not look like what the shop sells: a pattern or detail that the title does not name can be missing/)).toBeTruthy();
   });
 
   it("explains a refusal from the server", async () => {
