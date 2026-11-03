@@ -4,9 +4,9 @@
 
 **Built with Muse Spark Open.**
 
-Say what you need, and an agent searches three supported shops for real products while code checks each price and stock on the shop's own page. Warmth, whether items go together and style stay the agent's judgment. FullAura also plans three looks from a small checked catalog, around your preferences, budget and existing wardrobe.
+FullAura is a web app that helps you choose clothes you can buy. Say what you need, and an agent searches three supported shops, Tom Tailor, Tchibo and Giesswein, for real products while code checks each price and stock on the shop's own page. Warmth, whether items go together and style stay the agent's judgment. FullAura also plans three looks from a small checked catalog, around your preferences, budget and existing wardrobe.
 
-FullAura aims to combine outfits, optional hair and beard previews, and links to real products. A plan should remain consistent when you keep an item, change a preference, or lower the budget.
+Muse Spark 1.3 is the agent, Muse Spark Open plans the looks, and Muse Image draws an experimental try-on on your own photos. Every product links to its shop. When you keep an item, change a preference or lower the budget, code checks the changed plan again. Hair and beard previews are planned.
 
 ## Status: closed beta
 
@@ -21,7 +21,7 @@ The limits of the beta:
 
 - Each invite has 8 planning requests and 12 try-ons, and a shared ledger stops model calls when the beta's $8 planning or $3 image budget is used up.
 - Model calls close at the end of the pilot, on 10 November 2026 at 06:00 Vienna time. At 10:00 that day a scheduled job deletes the pilot's records and the beta closes.
-- The try-on has not passed the formal [feasibility test](docs/FEASIBILITY.md), and hair and beard previews are not implemented.
+- The try-on's formal [feasibility test](docs/FEASIBILITY.md) has not run yet, because it waits for its inputs, and hair and beard previews are not implemented.
 
 ## Run locally
 

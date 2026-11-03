@@ -12,19 +12,19 @@ Open the invite link. FullAura asks you to confirm that you are 18 or older, and
 
 ### Find it for me
 
-Say what you need, choose a whole outfit, the upper body or one item, and the most you will spend, then select "Find it". An agent searches Tom Tailor, Tchibo and Giesswein by words in their product addresses while you watch its steps, and code reads every price and stock on the shop's page.
+Say what you need, choose a whole outfit, the upper body or one item, and the most you will spend, then select "Find it". An agent searches Tom Tailor, Tchibo and Giesswein by words in their product addresses while you watch its steps, and FullAura's code, not the AI, reads every price and stock on the shop's page.
 
 These checks do not show that clothes are warm enough, go together or suit your style; that is the agent's judgment. The agent's reasons can be wrong about a pattern, lining or fabric, so check the shop's page.
 
-**Sizes.** Give your sizes as you buy them, such as "L, 32/32, 43", and give your shoe size if you want shoes, because a number on its own counts as a shoe size for shoes. A product whose page lists sizes in that system and does not have yours in stock is left out. Where a page lists no sizes, or only sizes in another system, such as a blazer in 46 to 58 when you gave L, FullAura keeps the product and says that your size was not checked. It does not convert sizes.
+**Sizes.** Give your sizes as you buy them, such as "L, 32/32, 43", and give your shoe size if you want shoes, because a number on its own counts as a shoe size for shoes. A product whose page lists sizes of the same kind as yours (letters, waist and length, or numbers) and does not have yours in stock is left out. Where a page lists no sizes, or only sizes of another kind, such as a blazer in 46 to 58 when you gave L, FullAura keeps the product and says that your size was not checked. It does not convert sizes.
 
 **Clothing line.** Men's and Women's show only products the shop names that way, or unisex; most Tchibo products name no line, so they appear under Either, where a product can be of any line.
 
 **Reloading.** A reload brings back your last search and its results at no cost, and a search still running when you reload is collected when it ends.
 
-**Trying on.** You can try the result on. The drawing is made from each product's title and color, not from its photo, so it is approximate, and a pattern or detail that the title does not name can be missing, such as the checks of a shirt whose title does not say so. It needs a full-body photo and draws you whole, also when you asked for the upper body or one item.
+**Trying on.** You can try the result on, after you read the photo notice and agree to it. Photos already sent to Meta cannot be called back. The drawing is made from each product's title and color, not from its photo, so it is approximate, and a pattern or detail that the title does not name can be missing, such as the checks of a shirt whose title does not say so. It needs a full-body photo and draws you whole, also when you asked for the upper body or one item.
 
-**What counts.** Each search uses one planning request. When no shop page could be read, the search says that it did not count. After three such searches within ten minutes, FullAura asks you to try again later, which does not count either.
+**What counts.** Each search uses one of your invite's 8 planning requests, which the catalog's looks also use. When no shop page could be read, the search says that it did not count. After three such searches within ten minutes, FullAura asks you to try again later, which does not count either.
 
 ### Three looks from the catalog
 
@@ -39,9 +39,9 @@ These checks do not show that clothes are warm enough, go together or suit your 
 
 ### Requests and dates
 
-Each invite has 8 planning requests and 12 try-ons; generating, updating and replacing each use a planning request, a request that fails at the provider still counts, and so does a cancelled try-on. The beta can also pause model requests early when its shared budget is used up. Your plans and shopping lists keep working when that happens.
+Each invite has 8 planning requests and 12 try-ons; generating, updating and replacing each use a planning request, a request that fails at the AI service still counts, and so does a cancelled try-on. The beta can also pause model requests early when its shared budget is used up. Your plans and shopping lists keep working when that happens.
 
-Planning and try-ons close at the end of the pilot, on 10 November 2026 at 06:00 Vienna time. On 10 November 2026 at 10:00 Vienna time the beta closes, and within a few minutes FullAura deletes your invite's records and your feedback. Plans you saved stay in your browser until you delete them.
+Planning and try-ons close on 10 November 2026 at 06:00 Vienna time. On 10 November 2026 at 10:00 Vienna time the beta closes, and within a few minutes FullAura deletes your invite's records and your feedback. Plans you saved stay in your browser until you delete them.
 
 ## Costs
 

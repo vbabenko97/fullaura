@@ -58,14 +58,14 @@ Each decision has a number that is never reused and a status: accepted, proposed
 ## D-08: Muse Spark plans and Muse Image draws
 
 - **Date:** 2026-10-26
-- **Status:** accepted
+- **Status:** accepted; [D-44](#d-44-the-betas-try-on-is-experimental-and-does-not-wait-for-t-02) lets the beta's try-on run before the feasibility test
 - **Decision:** Muse Spark plans looks and calls tools. Muse Image generates previews. Both are subject to the feasibility test (T-02 in [TASKS.md](TASKS.md)).
 - **Reason:** These are Meta's models for planning and image tasks, and the feasibility test checks them before the product depends on them.
 
 ## D-09: Recommendations come only from catalog records
 
 - **Date:** 2026-10-26
-- **Status:** accepted
+- **Status:** accepted; [D-73](#d-73-the-shopping-agent-chooses-among-real-shop-pages-that-code-reads) adds a mode that departs from it
 - **Decision:** LookPilot recommends only products that have a catalog record, and it chooses them before it generates a preview.
 - **Reason:** Recommendations, prices and materials have to trace back to a record.
 
@@ -79,7 +79,7 @@ Each decision has a number that is never reused and a status: accepted, proposed
 ## D-11: Test previews first, and keep the plan useful without them
 
 - **Date:** 2026-10-26
-- **Status:** accepted
+- **Status:** accepted; [D-44](#d-44-the-betas-try-on-is-experimental-and-does-not-wait-for-t-02) lets the beta's try-on run before the feasibility test
 - **Decision:** The feasibility test (T-02 in [TASKS.md](TASKS.md)) runs before the interface grows. If previews fail it, LookPilot narrows what it promises visually: a person can still complete a sourced style plan, and the interface states the visual limitation clearly.
 - **Reason:** Previews are the main product risk, so the test checks them early, and the plan stays useful if they fail.
 
@@ -175,7 +175,7 @@ Each decision has a number that is never reused and a status: accepted, proposed
 ## D-24: An offer reported out of stock fails
 
 - **Date:** 2026-10-28
-- **Status:** accepted
+- **Status:** accepted; [D-36](#d-36-the-person-states-whom-the-looks-are-for) and [D-45](#d-45-people-choose-closed-open-or-any-shoes) add the fit and footwear constraints, so [SPEC.md](SPEC.md#hard-constraints) lists seven
 - **Decision:** A catalog product fails the checks when its selected offer reports it out of stock. A plan can select another offer of the same variant instead. An offer that gives no stock can be used, and the interface shows its stock as unknown. [SPEC.md](SPEC.md#hard-constraints) has the rule.
 - **Reason:** A retailer cannot sell a product it reports as out of stock, so a plan that includes it cannot be bought as shown. Failing unknown stock as well would leave out every product whose source gives no stock.
 - **Consequences:** The first version has five hard constraints. When FullAura tests whether the locked items alone make a plan infeasible, a locked variant whose offers are all out of stock is a conflict.
@@ -236,7 +236,7 @@ Each decision has a number that is never reused and a status: accepted, proposed
 ## D-31: No persistent server copies of personal photos
 
 - **Date:** 2026-10-28
-- **Status:** accepted; the T-02 gate in its consequences is replaced by [D-44](#d-44-the-betas-try-on-is-experimental-and-does-not-wait-for-t-02)
+- **Status:** accepted; the T-02 gate and the development-only route in its consequences are replaced by [D-44](#d-44-the-betas-try-on-is-experimental-and-does-not-wait-for-t-02)
 - **Decision:** When photo uploads are enabled, FullAura keeps originals, metadata-stripped inputs and generated previews in memory only for the request. It stores no server copy, cache, backup, database record or raw provider response. It deletes any required temporary files in `finally` on every success and failure path, and removes leftovers from interrupted processes during startup before accepting uploads. If cleanup or the startup sweep fails, photo processing stays blocked until cleanup succeeds. [DATA.md](DATA.md#photo-handling-for-upload-support) describes the cleanup order.
 - **Reason:** A short server retention period is unnecessary for the first flow and increases the amount of personal data that needs storage, access control and deletion handling.
 - **Consequences:** The request-scoped route and interface are implemented, but the route returns 503 before reading the body until T-02 passes and `FULLAURA_T02_PREVIEWS_PASSED=true` is set. The route remains development-only. The browser holds selected photos and may retain a returned preview according to its own behavior; a model provider's retention remains governed by its published terms and the user-facing processing notice.
@@ -300,7 +300,7 @@ Each decision has a number that is never reused and a status: accepted, proposed
 ## D-39: Closed shoes come from GEA Waldviertler, with partial compositions
 
 - **Date:** 2026-10-30
-- **Status:** accepted
+- **Status:** accepted; its consequence that Beach is the only shoe under a wool exclusion no longer holds after [D-47](#d-47-tom-tailor-and-tchibo-supply-affordable-basics-and-closed-shoes)
 - **Decision:** The catalog adds two closed leather shoes from GEA Waldviertler, Tramper Flex and Kommod Classic, whose product pages say they are for women and men. The pages name the upper, the lining and, for Tramper Flex, the sole, but not the footbed, so both compositions are partial under [D-27](#d-27-a-composition-is-complete-when-it-names-every-labelled-part) and the shoes drop out while any material exclusion is active.
 - **Reason:** The demo wearer needs closed shoes, and the only wool-free shoe in the first catalog is an open slide ([D-26](#d-26-the-first-catalog-records-facts-from-armedangels-and-giesswein-without-images)). None of the 17 stores checked on 2026-10-30 combined terms that allow recording facts, delivery to Austria and a complete shoe composition. Glore, Bergzeit, Legero, Shoepassion, Lloyd, Wildling, Nat-2, Duckfeet and NAE Vegan restrict the use of their content; avesu's successor shop disallows all crawlers; Shoezuu does not ship to Austria; Ethletic names neither a clothing line nor an insole material; Grüne Erde sells clothing for women only. Treating the named lining as the whole "lining and insole" part would declare the shoes wool-free without knowing the footbed material.
 - **Consequences:** Without a material exclusion, the demo wearer can get closed shoes; with a wool exclusion, Beach is still the only shoe for every look.
@@ -316,7 +316,7 @@ Each decision has a number that is never reused and a status: accepted, proposed
 ## D-41: The demo is accepted on its wearer's yes-or-no answers, set before the run
 
 - **Date:** 2026-10-30
-- **Status:** accepted
+- **Status:** accepted; its consequence that the interface has no previews no longer holds after [D-44](#d-44-the-betas-try-on-is-experimental-and-does-not-wait-for-t-02)
 - **Decision:** The project author is the demo wearer. The author states a fit on the deployed site, gets a plan and answers two questions for each of the three looks of the first plan, before any edit: "Is this what I asked for?" and "Would I go and try this on?" The demo flow is accepted when all six answers are yes. This acceptance is recorded apart from the T-06 comparison. It replaces the threshold of 4 for style relevance and wearability in [D-37](#d-37-the-demo-is-accepted-on-its-wearers-scores-set-before-the-run).
 - **Reason:** The author cannot reliably score style relevance or color coherence, so a threshold on those scales would not show whether the looks suit the wearer. Both questions need no styling expertise, and whether to try an item on is the decision FullAura supports. The rule is fixed before the run so that the result cannot be adjusted to it.
 - **Consequences:** The acceptance shows the flow works for one person; it is not evidence of general preference or fit. The interface has no previews or product images, so the wearer judges each look from item names, catalog colors and the retailer pages.
@@ -340,7 +340,7 @@ Each decision has a number that is never reused and a status: accepted, proposed
 ## D-44: The beta's try-on is experimental and does not wait for T-02
 
 - **Date:** 2026-10-30
-- **Status:** accepted
+- **Status:** accepted; [D-66](#d-66-an-owned-items-words-reach-the-image-model-through-a-closed-list) replaces how an owned item's words reach the prompt
 - **Decision:** In the beta, an invited person who agrees to a separate photo notice can try one look of their current plan on two of their own photos. The browser redraws a JPEG, PNG or WebP photo as an upright JPEG without metadata; the server still accepts only JPEG and removes metadata again. The server writes the prompt from the checked look: garment kind, catalog color, title and complete materials of each catalog item, and for an owned item its category and the person's own color and description, reduced to letters, digits and light punctuation, cut to 80 characters and quoted as a description. It sends no product image and no other text from the browser. The interface labels the result an experimental visualization that shows approximate colors, shapes and combinations, not the exact products, fit or size. A changed plan hides an earlier try-on. `FULLAURA_T02_PREVIEWS_PASSED` is removed, because no route depends on it. The T-02 protocol, its thresholds and its results stay as they are; a beta try-on is not a T-02 run.
 - **Reason:** The author decided on 2026-10-30 that a useful beta matters more than the hackathon schedule and that try-on on one's own photo is part of it. Exploratory runs passed every check ([FEASIBILITY.md](FEASIBILITY.md#results)), and an honest approximate label keeps the promise within what has been seen. A prompt written from the server's checked plan, with the person's own words only as a short quoted description, gives the browser no room to turn the request into another image.
 - **Consequences:** T-02 stays open, so the try-on's quality has no formal evidence; an agent's visual check of synthetic runs is a preliminary check only. [D-31](#d-31-no-persistent-server-copies-of-personal-photos) and [D-32](#d-32-preview-requests-have-one-deadline-and-cancel-on-disconnect) still govern photo handling. This replaces [D-38](#d-38-previews-depend-on-the-formal-test-materials-by-31-october).
@@ -460,7 +460,7 @@ Each decision has a number that is never reused and a status: accepted, proposed
 ## D-59: Design My Look is an experimental mode behind a flag
 
 - **Date:** 2026-10-31
-- **Status:** accepted
+- **Status:** accepted; since [D-73](#d-73-the-shopping-agent-chooses-among-real-shop-pages-that-code-reads) the shopping agent, not the catalog-first flow, is the default
 - **Decision:** A second mode designs one concept look from the person's wishes without the catalog, shows the person in it, and then shows, for each concept item, the closest catalog product among those that pass every item check: a close match, an alternative with its differences, or no close match. Code decides each match from the catalog record alone: the slot, the kind that the garment type or title states, the color family that the color name states, a garment's cut that the title states (the catalog records no cut, so a title that names none leaves the concept's fit unconfirmed, the title must name the same cuts as the fit, and no two different cuts count as the same), the material that the composition states, and a shoe's closure; a kind, color, fit or material that the concept names and the record does not confirm makes the product an alternative. A shoe's or accessory's kind stands for its cut, so code drops a fit the model names for one. Separately, once every item has a product, code checks those products together against every hard constraint. Code calls the concept shoppable only when every item has a close match and those products pass every hard constraint ([SPEC.md](SPEC.md#design-my-look)). A one-piece can only be a dress, because the catalog's garment types and the person's choice of garments have no jumpsuit; this is a limit of the first version. The mode is off unless `FULLAURA_DESIGN_MODE=true`; the catalog-first flow stays the default and the fallback. The catalog is not enlarged and the material list (D-47) is not changed to make concepts match.
 - **Reason:** In a spike on 2026-10-31 with three synthetic personas and the same requests, two blind score sheets, the one the author shared and the assistant's own, preferred the concept's styling in all three cases, and the try-ons kept the personas' appearance; but only 4 of 34 concept items had a close product in the 31-product catalog. In a later search, six ordinary requests gave no look that could be bought as shown. Two requests phrased close to the catalog's range had every item close under a first rule that counted a title without a cut as a regular cut and did not compare materials; in one run, that rule matched the concept's linen trousers with polyester trousers. Under the rule above, neither request is complete: the tops' titles name no cut, one request's trousers are polyester and the other's are slim where the concept says regular, and no shoe's composition confirms canvas. A concept shows what suits the request; the honest match shows how far the catalog gets, and calling a similar product the same garment would claim more than the record shows.
 - **Consequences:** A concept costs about twice a plan's model calls and is counted as one planning request. None of the recorded demo requests is shoppable as shown under these rules, so the demo shows alternatives with their differences, and the author checks the products on the shop pages before showing them. Deploying the mode or offering it to beta participants needs a separate decision.
@@ -557,7 +557,7 @@ Each decision has a number that is never reused and a status: accepted, proposed
 ## D-71: The purge job's time limit covers every retry, and the image's user cannot change the application
 
 - **Date:** 2026-11-01
-- **Status:** accepted
+- **Status:** accepted; [D-82](#d-82-the-pilot-stays-open-through-the-hackathons-judging) moves the pilot's close to 2026-11-10
 - **Decision:** The purge job's replica timeout is 1800 seconds instead of 600. The Dockerfile pins its three base images by digest, and root owns the application files, so the runtime user can read them but not change them.
 - **Reason:** Azure's replica timeout takes precedence over the retry limit ([Job settings](https://learn.microsoft.com/en-us/azure/container-apps/jobs#job-settings)), and an attempt that reaches the deletion takes about three minutes because it waits 120 seconds again, so 600 seconds could stop the third retry. Deployed images are built on the operator's machine, so a tag that moved between CI's build and that build would put an unchecked base image into production. If a flaw let a request write files, a runtime user who owned the application could change its code.
 - **Consequences:** A purge run that hangs holds its 0.25 vCPU replica for up to 30 minutes, and ends by 09:30 UTC, before the second check of the deletion at 09:45 UTC. Pinned base images take no security update until someone changes the digests, which is acceptable for a pilot that closes on 2026-11-09. The purge job keeps its own image, so the pins and the read-only files reach it only if that image changes. CI still does not publish images, so the operator builds the deployed image from the commit CI checked and smoke-tests that digest.
@@ -573,7 +573,7 @@ Each decision has a number that is never reused and a status: accepted, proposed
 ## D-73: The shopping agent chooses among real shop pages that code reads
 
 - **Date:** 2026-11-01
-- **Status:** accepted
+- **Status:** accepted; [D-88](#d-88-a-search-compares-sizes-the-page-lists-within-their-own-system), accepted provisionally, compares the sizes that Tom Tailor's pages list
 - **Decision:** A new mode, shown first, finds real products for what a person asks for: a whole outfit, the upper body or one item. Code lists product addresses from shops' sitemaps and reads price, currency and stock from each page's structured data, where robots.txt allows. Muse Spark in Standard mode, on Meta's API, only chooses among the products code returned, and code checks the choice. This mode departs from [D-09](#d-09-recommendations-come-only-from-catalog-records): it recommends products without a catalog record, and each still traces back to a page that code read. The catalog mode stays as it is.
 - **Reason:** The author used the deployed site on 2026-11-01 and found choosing among 37 products too weak to be the point of the project. The looks failed the [D-41](#d-41-the-demo-is-accepted-on-its-wearers-yes-or-no-answers-set-before-the-run) acceptance with three of six yes answers, and the only men's outer layer in the catalog did not fit the budget. Four local experiments, with a rule set before they ran that at least half of the finds must pass code's check: Muse Spark's own web search confirmed 0 of 5 and then, limited to readable shops, 0 of 8, with invented addresses and category pages. Code listing the products confirmed 4 of 4, at about $0.01 a request, and the server's code then found products for whole-outfit, upper-body and single-item requests. That sample is small.
 - **Consequences:** The sitemaps of Tom Tailor and Tchibo hold about 43,000 product addresses, against 37 catalog products, so a winter request can now include a jacket. Their pages list no sizes, so the size stays unchecked and the page says so; delivery to Austria rests on the shops' Austrian sites, and composition is shown only where the page states it. A search matches words in an address, which is cruder than a shop's own search. The addresses stay in process memory, facts for an hour, and nothing is written to disk, so no copy of a shop's catalog is kept. Reading pages at a person's request is this project's working rule for the prototype, not legal advice, and a lawyer should review it before FullAura is offered to the public, as [D-25](#d-25-product-facts-and-product-images-need-different-rights) says. What a person types now also reaches Meta's API. A try-on's text names the shop's title, and the image model's own search stays off ([D-60](#d-60-a-try-on-turns-off-the-image-models-own-web-and-image-search)).
@@ -645,7 +645,7 @@ Each decision has a number that is never reused and a status: accepted, proposed
 ## D-82: The pilot stays open through the hackathon's judging
 
 - **Date:** 2026-11-02
-- **Status:** accepted
+- **Status:** accepted; [D-84](#d-84-people-without-an-invite-see-a-recorded-run-in-the-repository) records that the submission form has no field for the live site
 - **Decision:** Model calls close on 2026-11-10 at 06:00 Vienna time, midnight ET after the finals, and the records are deleted and the beta closes at 10:00 that day. Both dates change through the template, so that the app and the purge job agree, and the job's schedule stays as it is. Five invites are added for judges, with the same limits as every other invite, on the same site.
 - **Reason:** The event's participant guide says that judges use the video, the code and the live product, and asks whether the product holds up live. Judging runs until 8 November and the finals are on 9 November, and the earlier dates closed model calls on 6 November. A second deployment for judges, as first planned, would add infrastructure just before the deadline for no gain in what they can try.
 - **Consequences:** Participants' records stay one day longer than first planned; the interface takes both dates from the settings, so it says so by itself. What judges do counts against the same shared budgets as the participants, and each invite is limited to 8 searches or plans and 12 try-ons. How the invites reach judges depends on the submission form, which has not been read, and no invite code goes into public text. The site's credits and hosting must also last through these dates, which the Azure trial, ending on about 2026-11-22, does.
