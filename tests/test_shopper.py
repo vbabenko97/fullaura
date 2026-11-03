@@ -164,7 +164,6 @@ def test_the_total_is_checked_against_the_budget() -> None:
     [
         (Scope.ITEM, [item(SHIRT, "top"), item(SHOES, "footwear")], "exactly one item"),
         (Scope.UPPER_BODY, [item(SHIRT, "top"), item(SHOES, "footwear")], "only upper-body"),
-        (Scope.UPPER_BODY, [item(SWEATER, "mid_layer")], "a top is missing"),
         (Scope.LOOK, [item(SHIRT, "top"), item(TROUSERS, "bottom")], "a complete outfit"),
         (
             Scope.LOOK,
@@ -567,8 +566,13 @@ def test_each_scope_accepts_what_it_asks_for(scope: Scope, chosen: list[tuple[st
     [
         (Scope.UPPER_BODY, [("Kleid", "top")], "is a one-piece, not top"),
         (Scope.UPPER_BODY, [("Kleid", "one_piece")], "only upper-body"),
-        (Scope.UPPER_BODY, [("Pullover", "mid_layer")], "a top is missing"),
         (Scope.UPPER_BODY, [("T-Shirt", "top"), ("Hose", "bottom")], "only upper-body"),
+        (
+            Scope.UPPER_BODY,
+            [("Wollmantel", "outer_layer"), ("Boots", "footwear")],
+            "only upper-body",
+        ),
+        (Scope.UPPER_BODY, [("Pullover", "top"), ("T-Shirt", "top")], "same position"),
         (Scope.ITEM, [("T-Shirt", "top"), ("Hose", "bottom")], "exactly one"),
         (Scope.LOOK, [("Kleid", "top"), ("Hose", "bottom"), ("Boots", "footwear")], "one-piece"),
         (Scope.LOOK, [("T-Shirt", "top"), ("Hose", "bottom")], "a complete outfit"),
@@ -585,6 +589,30 @@ def test_each_scope_refuses_what_it_does_not_ask_for(
     result, model = choose(scope, *chosen)
     assert problem in model.payloads[-1]["input"]
     assert result.outcome is FindOutcome.NO_MATCH
+
+
+@pytest.mark.parametrize(
+    "chosen",
+    [
+        [("Wollmantel", "outer_layer")],
+        [("Pullover", "mid_layer")],
+        [("T-Shirt", "top")],
+        [("T-Shirt", "top"), ("Wollmantel", "outer_layer")],
+    ],
+)
+def test_upper_body_takes_any_upper_body_piece_without_requiring_a_top(
+    chosen: list[tuple[str, str]],
+) -> None:
+    result, _ = choose(Scope.UPPER_BODY, *chosen)
+    assert result.outcome is FindOutcome.SUCCESS
+    assert [find.slot.value for find in result.finds] == [slot for _, slot in chosen]
+
+
+def test_the_prompt_for_upper_body_follows_the_request() -> None:
+    _, model = choose(Scope.UPPER_BODY, ("Wollmantel", "outer_layer"))
+    prompt = model.payloads[0]["input"]
+    assert "what the request asks for" in prompt
+    assert "If the request names no piece, choose a top" in prompt
 
 
 def test_no_catalog_title_is_refused_for_its_own_category() -> None:

@@ -14,6 +14,8 @@ Open the invite link. FullAura asks you to confirm that you are 18 or older, and
 
 Say what you need, choose a whole outfit, the upper body or one item, and the most you will spend, then select "Find it". An agent searches Tom Tailor, Tchibo and Giesswein by words in their product addresses while you watch its steps, and FullAura's code, not the AI, reads every price and stock on the shop's page.
 
+With the upper body, ask for a piece, such as a coat, if that is all you want; if you name no piece, the agent chooses a top and perhaps a layer. Code checks that the items are upper-body clothes, and following your words is up to the agent.
+
 These checks do not show that clothes are warm enough, go together or suit your style; that is the agent's judgment. The agent's reasons can be wrong about a pattern, lining or fabric, so check the shop's page.
 
 **Sizes.** Give your sizes as you buy them, such as "L, 32/32, 43", and give your shoe size if you want shoes, because a number on its own counts as a shoe size for shoes. A product whose page lists sizes of the same kind as yours (letters, waist and length, or numbers) and does not have yours in stock is left out. Where a page lists no sizes, or only sizes of another kind, such as a blazer in 46 to 58 when you gave L, FullAura keeps the product and says that your size was not checked. It does not convert sizes.
