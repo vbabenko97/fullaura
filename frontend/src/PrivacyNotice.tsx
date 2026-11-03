@@ -1,7 +1,7 @@
 import { recordsDeletedText } from "./format";
 
 const META_TERMS = "https://dev.meta.ai/legal/terms-of-service";
-// Checked 2026-10-31: "For synchronous Model API requests, Baseten doesn't store inputs or outputs"
+// Checked 2026-11-03: "For synchronous Model API requests, Baseten doesn't store inputs or outputs"
 const BASETEN_RETENTION = "https://docs.baseten.co/inference/model-apis/overview";
 
 interface PrivacyNoticeProps {
@@ -30,10 +30,11 @@ export function PrivacyNotice({ recordsPurgeAt, designOpen, findOpen }: PrivacyN
           )}
           <li>
             Planning sends your style goal, colors, occasion, season, budget, sizes, shoe and material choices and
-            owned-item descriptions to the Muse Spark model through Baseten's Model APIs. Baseten's{" "}
+            owned-item descriptions to the Muse Spark Open model through Baseten's Model APIs. Baseten's{" "}
             <a href={BASETEN_RETENTION} rel="noreferrer" target="_blank">documentation</a> says it does not store the
-            inputs or outputs of these requests; it keeps usage counts, such as tokens per request, and may process
-            requests outside Austria. That is Baseten's published policy, not a check of FullAura's account.{" "}
+            inputs or outputs of these requests, and its support team confirmed by email on 2 November 2026 that this
+            covers FullAura's key. They also said that Baseten runs this model itself, so these requests are not sent to
+            Meta. Baseten keeps usage counts, such as tokens per request, and may process requests outside Austria.{" "}
             {designOpen &&
               "Design my look first sends your style goal, colors, occasion, season, budget, clothing line, the kinds of bottoms and dresses you wear, and your shoe and material choices, without your sizes or owned items; it then sends its concept with the catalog products in your sizes, so that the model can pick the closest ones. "}
             FullAura does not store your preferences; the server keeps your latest plan

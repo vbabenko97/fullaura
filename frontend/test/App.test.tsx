@@ -800,7 +800,9 @@ describe(`${FIXTURE_LABEL}: data notice`, () => {
       "https://docs.baseten.co/inference/model-apis/overview",
     );
     expect(notice.getByText(/does not store the\s+inputs or outputs of these requests/)).toBeTruthy();
-    expect(notice.getByText(/not a check of FullAura's account/)).toBeTruthy();
+    expect(notice.getByText(/support team confirmed by email on 2 November 2026 that this covers FullAura's key/)).toBeTruthy();
+    expect(notice.getByText(/Baseten runs this model itself, so these requests are not sent to Meta/)).toBeTruthy();
+    expect(notice.getByText(/Baseten keeps usage counts, such as tokens per request, and may process requests outside Austria/)).toBeTruthy();
     expect(notice.getByText(/If the look includes an item you own, the description includes the words/)).toBeTruthy();
     expect(notice.queryByText(/Design my look/)).toBeNull(); // nothing about a mode this invite cannot use
   });
@@ -812,7 +814,7 @@ describe(`${FIXTURE_LABEL}: data notice`, () => {
     const notice = within(screen.getByText("How FullAura handles your data").closest("details") as HTMLElement);
     expect(
       notice.getByText(
-        /not a check of FullAura's account\. Design my look first sends your style goal, colors, occasion, season, budget, clothing line, the kinds of bottoms and dresses you wear, and your shoe and material choices, without your sizes or owned items; it then sends its concept with the catalog products in your sizes, so that the model can pick the closest ones\. FullAura does not store your preferences; the server keeps your latest plan and your latest concept in memory until a day after you last use FullAura\./,
+        /may process requests outside Austria\. Design my look first sends your style goal, colors, occasion, season, budget, clothing line, the kinds of bottoms and dresses you wear, and your shoe and material choices, without your sizes or owned items; it then sends its concept with the catalog products in your sizes, so that the model can pick the closest ones\. FullAura does not store your preferences; the server keeps your latest plan and your latest concept in memory until a day after you last use FullAura\./,
       ),
     ).toBeTruthy();
     expect(notice.getByText(/a description of the look, or of your concept in Design my look, to Meta's Muse Image model/)).toBeTruthy();
