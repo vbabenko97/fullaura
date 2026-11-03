@@ -107,6 +107,82 @@ describe("the shopping agent's page", () => {
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
+  it("waits for a search that a server still waking does not know yet", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    remember({ operation_id: "op-1", result: null, sent_at: Date.now() });
+    const unknown = () => new Response(JSON.stringify({ detail: "Unknown", reason: "find_unknown" }), { status: 404 });
+    const answers = [unknown(), unknown(), new Response(JSON.stringify({ running: true }), { status: 200 }), new Response(JSON.stringify({ result: RESULT }), { status: 200 })];
+    vi.stubGlobal("fetch", vi.fn(async () => answers.shift()));
+    show();
+    await act(async () => { await vi.advanceTimersByTimeAsync(3100); });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(screen.getByText(/kept running during the reload/)).toBeTruthy();
+    await act(async () => { await vi.advanceTimersByTimeAsync(6200); });
+    await screen.findByRole("heading", { name: "Winterjacke" });
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("says that a search was cut off once a server should have known it", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    remember({ operation_id: "op-1", result: null, sent_at: Date.now() });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ detail: "Unknown", reason: "find_unknown" }), { status: 404 })));
+    show();
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(screen.queryByRole("alert")).toBeNull();
+    await act(async () => { await vi.advanceTimersByTimeAsync(20_000); });
+    expect((await screen.findByRole("alert")).textContent).toContain("was cut off");
+    expect((screen.getByRole("button", { name: "Find it" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("does not wait for a search sent long ago, such as in a tab left open", async () => {
+    remember({ operation_id: "op-1", result: null, sent_at: Date.now() - 600_000 });
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ detail: "Unknown", reason: "find_unknown" }), { status: 404 })));
+    show();
+    expect((await screen.findByRole("alert")).textContent).toContain("was cut off");
+  });
+
+  it("keeps a search from the moment it is sent, as a server still waking answers only later", async () => {
+    const fetchMock = vi.fn(() => new Promise<Response>(() => {}));
+    vi.stubGlobal("fetch", fetchMock);
+    show();
+    fill();
+    fireEvent.click(screen.getByRole("button", { name: "Find it" }));
+    await screen.findByText(/Working\. This usually takes/);
+
+    const kept = JSON.parse(sessionStorage.getItem(SEARCH_KEY) as string);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(kept.operation_id).toBe((init.headers as Record<string, string>)["X-Operation-Id"]);
+    expect(kept.form.request).toBe("A warm jacket");
+    expect(kept.result).toBeNull();
+  });
+
+  it("leaves nothing to collect after a refusal, which started no search", async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ detail: "Busy", reason: "busy" }), { status: 409 }));
+    vi.stubGlobal("fetch", fetchMock);
+    show();
+    fill();
+    fireEvent.click(screen.getByRole("button", { name: "Find it" }));
+    await screen.findByRole("alert");
+    expect(sessionStorage.getItem(SEARCH_KEY)).toBeNull();
+    cleanup();
+
+    fetchMock.mockClear();
+    show();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect((screen.getByRole("button", { name: "Find it" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("can still collect a search whose connection was lost, as the server may have received it", async () => {
+    vi.stubGlobal("fetch", async () => {
+      throw new TypeError("offline");
+    });
+    show();
+    fill();
+    fireEvent.click(screen.getByRole("button", { name: "Find it" }));
+    await screen.findByRole("alert");
+    expect(JSON.parse(sessionStorage.getItem(SEARCH_KEY) as string).operation_id).toBeTruthy();
+  });
+
   it("keeps the earlier search for a reload when the server refuses a new one", async () => {
     const answers = [
       () => stream({ result: RESULT }),
