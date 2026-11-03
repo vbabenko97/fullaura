@@ -325,6 +325,8 @@ The rule was tested with the real model and shops on this machine, in a shuffled
 
 The check of `24812dd` on the deployed site found a fault in the reload of [D-90](DECISIONS.md#d-90-a-tab-keeps-its-last-search-and-a-reload-collects-a-running-one). On an invite whose last request had just been used, a reload hid "Find it for me", because the page showed that mode only while it could search, so the results of that last search could not be seen although the tab held them. The mode now also opens while the tab holds a search of that invite, with its button off and the reason shown.
 
+The work reached the site with the deployment of `037b6fc`. A real search and a try-on ran there on `24812dd`, and the reload on `037b6fc` ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). The try-on drew a checked shirt and a houndstooth blazer plain, which is the documented limit of a try-on from title and color.
+
 Done when: the checks in the [README](../README.md#check-a-change) pass, the new tests fail on the earlier code, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check, a real search and a try-on there. Invitations stay on hold until then.
 
 ## T-06: Evaluation and submission
