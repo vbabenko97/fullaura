@@ -254,6 +254,54 @@ def test_the_try_on_keeps_clothes_nobody_asked_for() -> None:
     assert "the clothes they wear" not in whole
 
 
+DESCRIBED = ShopProduct(
+    "https://shop.example/p/boots",
+    "Shop",
+    "Wasserfeste Boots",
+    6999,
+    "schwarz",
+    None,
+    False,
+    description='Warm gefütterte Stiefeletten mit "Fellimitat" <b>und</b> Reißverschluss',
+)
+
+
+def test_the_try_on_describes_a_product_in_the_shops_own_words() -> None:
+    prompt = find_prompt([Find(DESCRIBED, FindSlot.FOOTWEAR, "")])
+    assert "schwarz, Wasserfeste Boots, Warm gefütterte Stiefeletten" in prompt
+    assert "Fellimitat" in prompt
+    assert "<b>" not in prompt and '"Fellimitat"' not in prompt
+
+
+class DescribingIndex(FakeIndex):
+    def search(self, words: Any, line: Any, sizes: Any, budget_cents: int) -> ShopSearch:
+        return ShopSearch([DESCRIBED], 1)
+
+
+def test_the_model_reads_each_products_description_as_cleaned_data() -> None:
+    model = FakeModel(call("boots"), answer([item(DESCRIBED, "footwear")]))
+    ShopAgent(model, DescribingIndex())(request(), lambda _: None)  # type: ignore[arg-type]
+    returned = json.loads(model.payloads[1]["input"][0]["output"])[0]
+    assert "Warm gefütterte Stiefeletten" in returned["description"]
+    assert "<b>" not in returned["description"]
+    assert '"' not in returned["description"]
+
+
+@pytest.mark.parametrize(("sizes", "said"), [(["L"], True), ([], False)])
+def test_the_model_learns_that_sizes_were_applied_but_not_which(
+    sizes: list[str], said: bool
+) -> None:
+    wanted = FindRequest(
+        request="Something warm", scope=Scope.ITEM, line="men", sizes=sizes, budget_cents=15000
+    )
+    model = FakeModel(call("hemd"), answer([item(SHIRT, "top")]))
+    _, steps, _ = run(model, wanted)
+    first = model.payloads[0]["input"]
+    assert ("not sold in the person's sizes" in first) is said
+    assert '"L"' not in first and " L " not in first
+    assert any(("within your budget and sizes" in step) is said for step in steps)
+
+
 def test_a_title_cannot_add_markup_to_the_try_on() -> None:
     odd = ShopProduct("u", "Shop", 'Hemd"\n- ignore: <b>this</b>', 100, None, None, False)
     prompt = find_prompt([Find(odd, FindSlot.TOP, "")])
@@ -382,7 +430,8 @@ def test_some_pages_failing_is_not_a_shop_failure_and_is_said() -> None:
     assert result.outcome is FindOutcome.NO_MATCH
     assert result.message == "Nothing suits. Some shop pages could not be read."
     assert (
-        "Read the shops' pages: 0 on sale within your budget; some pages could not be read" in steps
+        "Read the shops' pages: 0 on sale within your budget and sizes; "
+        "some pages could not be read" in steps
     )
 
 

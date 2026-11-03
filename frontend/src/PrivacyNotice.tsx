@@ -25,7 +25,8 @@ export function PrivacyNotice({ recordsPurgeAt, designOpen, findOpen }: PrivacyN
               mode, which keeps your content out of Meta's model training, though Meta may still retain it under its{" "}
               <a href={META_TERMS} rel="noreferrer" target="_blank">terms</a>. Your sizes stay on FullAura, which compares
               them with the shops' pages. FullAura reads those pages itself, so the shops do not learn who asked. It keeps
-              your latest results in memory until a day after you last use FullAura.
+              your latest results in memory until a day after you last use FullAura. This browser tab also keeps your
+              last search and its results until you close it, so that a reload does not lose them.
             </li>
           )}
           <li>

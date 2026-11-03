@@ -110,7 +110,8 @@
   margin-bottom: var(--space-lg);
 }
 
-.mode-tabs [aria-pressed="true"] {
+.mode-tabs [aria-pressed="true"],
+.mode-tabs [aria-pressed="true"]:hover {
   border-color: var(--color-accent);
   background: var(--color-accent);
   color: var(--color-accent-ink);

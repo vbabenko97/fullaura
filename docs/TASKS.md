@@ -29,6 +29,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-25](#t-25-follow-ups-to-the-second-outside-audit) Follow-ups to the second outside audit | done | 2026-11-02 |
 | [T-26](#t-26-fixes-from-a-third-outside-audit) Fixes from a third outside audit | done | 2026-11-02 |
 | [T-27](#t-27-basetens-answer-in-the-data-notice) Baseten's answer in the data notice | done | 2026-11-03 |
+| [T-28](#t-28-search-results-a-person-can-use) Search results a person can use | done | 2026-11-03 |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | next | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -279,6 +280,20 @@ The participants' data notice and [DATA.md](DATA.md#model-providers) give Basete
 This change reached the site with the deployment of `029b163`, where the notice was also checked in Chromium ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)).
 
 Done when: the checks in the [README](../README.md#check-a-change) pass and the notice's tests hold the new wording.
+
+## T-28: Search results a person can use
+
+An agent used the site as a new person on 2026-11-03. Of the five products suggested in three searches that gave a size, four could not be bought in that size, a request for a wedding outfit got a casual shirt and lined winter boots called "elegant", and a reload lost a search that a request had paid for. This is an agent's walk, not evidence from people, who still have to test the product.
+
+- A search compares sizes that a page lists, including Tom Tailor's size list in the page as served, within their own system, and leaves out what is not sold in the person's size ([D-88](DECISIONS.md#d-88-a-search-compares-sizes-the-page-lists-within-their-own-system)).
+- The agent reads the shop's description, is asked to dress for the occasion and to give only reasons that the title and description support, and is told which words find shoes. The try-on's text also uses the description ([D-89](DECISIONS.md#d-89-the-agent-reads-the-shops-description-and-dresses-for-the-occasion)).
+- A tab keeps its last search, and a page reloaded during a search collects the answer without paying again ([D-90](DECISIONS.md#d-90-a-tab-keeps-its-last-search-and-a-reload-collects-a-running-one)).
+- A message that another request is running is worded to stay true after that request ends.
+- The selected tab's label stays readable under the mouse. It had a contrast of 1.07 to 1 there, and the mouse rests on a tab right after a click.
+
+On this code, on a local server with the real model and shops, seven searches across all three scopes and all three line choices, in English and German, all returned products. Six of the seven were compared with each shop's own page. There, all 11 products whose size code had checked were on sale in that size, and for the other 4 with a size given the page said that the size was not checked, because they are sold in numbers and a letter is not compared with those. All prices matched. Both runs of the men's wedding request returned a blazer, suit trousers, a shirt and lace-up shoes, and the agent's reasons said where the shirt or the shoes fall short of formal wear. A real search reloaded after five seconds was collected about 30 seconds later and used one request, and a try-on of the result worked after a further reload. Two earlier wordings of the prompt made women's outfits end without products, and the final one fixed the cases tried. Seven searches do not show how often a search fails or how well it suits people.
+
+Done when: the checks in the [README](../README.md#check-a-change) pass, the new tests fail on the earlier code, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check and a real search there.
 
 ## T-06: Evaluation and submission
 

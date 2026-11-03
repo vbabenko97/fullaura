@@ -1,6 +1,7 @@
 """The shopping agent over HTTP: the stream of steps, quotas, cost, repeats and the try-on."""
 
 import json
+import threading
 import uuid
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -139,6 +140,66 @@ def test_a_repeated_operation_answers_again_for_free(http: TestClient, agent: Fa
     assert first == second
     assert len(agent.requests) == 1
     assert session(http)["plan_requests_used"] == 1
+
+
+class HeldAgent(FakeAgent):
+    """An agent that does not answer until the test lets it."""
+
+    def __init__(self, result: FindResult | None = None) -> None:
+        super().__init__(result)
+        self.started = threading.Event()
+        self.release = threading.Event()
+
+    def __call__(self, request: FindRequest, on_step: Callable[[str], None]) -> FindResult:
+        self.started.set()
+        assert self.release.wait(10)
+        return super().__call__(request, on_step)
+
+
+@pytest.mark.parametrize(
+    ("result", "products"),
+    [(None, 1), (FindResult(FindOutcome.NO_MATCH, message="Nothing warm enough."), 0)],
+)
+def test_a_page_reloaded_during_a_search_can_collect_its_answer_for_free(
+    tmp_path: Path, result: FindResult | None, products: int
+) -> None:
+    agent = HeldAgent(result)
+    operation = str(uuid.uuid4())
+    with TestClient(create_app(settings(tmp_path), shop_agent=agent)) as client:
+        join(client)
+        first = threading.Thread(target=find, args=(client,), kwargs={"operation": operation})
+        first.start()
+        assert agent.started.wait(10)
+
+        running = client.get(f"/api/finds/{operation}")
+        assert running.status_code == 200
+        assert running.headers["cache-control"] == "no-store"
+        assert running.json() == {"running": True}
+
+        agent.release.set()
+        first.join(10)
+        answered = client.get(f"/api/finds/{operation}").json()["result"]
+        assert len(answered["finds"]) == products
+        assert bool(answered["find_token"]) is bool(products)
+        assert len(agent.requests) == 1
+        assert session(client)["plan_requests_used"] == 1
+
+
+def test_a_search_can_be_collected_only_by_its_session_and_operation(
+    http: TestClient, tmp_path: Path
+) -> None:
+    join(http)
+    operation = str(uuid.uuid4())
+    lines(find(http, operation=operation))
+    unknown = http.get(f"/api/finds/{uuid.uuid4()}")
+    assert unknown.status_code == 404
+    assert unknown.json()["reason"] == "find_unknown"
+    assert http.get(f"/api/finds/{operation}").status_code == 200
+    # A later search takes the earlier one's place, as the page then shows only the later one.
+    lines(find(http))
+    assert http.get(f"/api/finds/{operation}").status_code == 404
+    http.cookies.clear()
+    assert http.get(f"/api/finds/{operation}").status_code == 401
 
 
 def test_the_quota_ends_finds(tmp_path: Path, agent: FakeAgent) -> None:

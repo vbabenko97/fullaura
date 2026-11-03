@@ -82,6 +82,7 @@ from backend.app.sessions import (
     FindMemory,
     PlanMemory,
     PlanRecord,
+    SearchMemory,
     Session,
     invite_scope,
     read_session,
@@ -370,6 +371,7 @@ def create_app(
     plans = PlanMemory()
     concepts = ConceptMemory()
     finds = FindMemory()
+    searches = SearchMemory()
     catalog = Catalog.model_validate_json(settings.catalog_file.read_text(encoding="utf-8"))
     plan_reserve = planning_reserve_micro_usd(
         GENERATION_ATTEMPTS * HTTP_ATTEMPTS_PER_CALL, MAX_TOKENS
@@ -763,6 +765,7 @@ def create_app(
                 )
             except Refused as refused:
                 return _refusal(refused)
+            searches.started(session, operation_id)
 
             def work() -> None:
                 # In its own thread, so a person who leaves does not stop the settling of the cost.
@@ -798,6 +801,7 @@ def create_app(
                     except Exception as error:
                         logger.warning("find not settled: %s", type(error).__name__)
                     finally:
+                        searches.answered(session, operation_id, answer)
                         lines.put({"result": answer})
                         lines.put(None)
 
@@ -812,6 +816,21 @@ def create_app(
             media_type="application/x-ndjson",
             headers={**NO_STORE, "X-Accel-Buffering": "no"},
         )
+
+    @app.get("/api/finds/{operation_id}", tags=["shopping"])
+    def collect_find(operation_id: str, request: Request) -> JSONResponse:
+        """Where this browser session's latest search stands, for a page reloaded during it. It
+        calls nothing and counts nothing."""
+        if not beta_open():
+            return closed()
+        session = session_of(request)
+        if session is None:
+            return not_invited()
+        record = searches.of(session, operation_id)
+        if record is None:
+            return _error("This search is not known here; search again", 404, "find_unknown")
+        body = {"running": True} if record.answer is None else {"result": record.answer}
+        return JSONResponse(body, headers=NO_STORE)
 
     @app.post("/api/plans/restore", tags=["planning"])
     def restore_plan(saved: RestoreRequest, request: Request) -> JSONResponse:

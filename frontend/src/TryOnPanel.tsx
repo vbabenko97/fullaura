@@ -254,7 +254,7 @@ export function TryOnPanel({ session, target, onConsent, onFinished, idPrefix = 
         <h2 aria-describedby={`${idPrefix}-description`} id={`${idPrefix}-title`} tabIndex={-1}>Try a look on</h2>
         <p id={`${idPrefix}-description`}>
           {target.kind === "find"
-            ? `An experimental drawing of you in ${label}, made from your photos and each product's title and color. No photo of the product is used, so it may not look like what the shop sells. It needs a full-body photo and draws you from head to toe, also when you asked for the upper body or one item.`
+            ? `An experimental drawing of you in ${label}, made from your photos and each product's title, color and description. No photo of the product is used, so it may not look like what the shop sells. It needs a full-body photo and draws you from head to toe, also when you asked for the upper body or one item.`
             : `An experimental drawing of you in ${label}, made from your photos and the look's colors and garment kinds.`}
         </p>
       </div>

@@ -92,7 +92,16 @@ class FindRecord:
     operation_id: str
 
 
-class _SessionMemory[R: (PlanRecord, ConceptRecord, FindRecord)]:
+@dataclass(frozen=True, slots=True)
+class SearchRecord:
+    """A session's latest search, so a page reloaded during it can still collect its answer. It has
+    no token, as it names nothing a try-on could use, so SearchMemory has no use for current()."""
+
+    operation_id: str
+    answer: dict[str, Any] | None  # None while the search runs
+
+
+class _SessionMemory[R: (PlanRecord, ConceptRecord, FindRecord, SearchRecord)]:
     """The last record of each browser session, in process memory only, bounded per invite and
     in total. A new record gets a new token, and the previous token stops working."""
 
@@ -212,3 +221,17 @@ class FindMemory(_SessionMemory[FindRecord]):
             session,
             lambda _: FindRecord(secrets.token_urlsafe(32), finds, payload, operation_id),
         )
+
+
+class SearchMemory(_SessionMemory[SearchRecord]):
+    """The latest search of each browser session, running or answered, found or not."""
+
+    def started(self, session: Session, operation_id: str) -> None:
+        self._put(session, lambda _: SearchRecord(operation_id, None))
+
+    def answered(self, session: Session, operation_id: str, answer: dict[str, Any]) -> None:
+        self._put(session, lambda _: SearchRecord(operation_id, answer))
+
+    def of(self, session: Session, operation_id: str) -> SearchRecord | None:
+        record = self.get(session)
+        return record if record is not None and record.operation_id == operation_id else None

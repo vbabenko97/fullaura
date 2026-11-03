@@ -1,10 +1,10 @@
 """Real products from shops' own sites, read when a person asks for them.
 
-Addresses come from each shop's sitemap and facts from the structured data on its product page, both
-only where the shop's robots.txt allows this user agent, and only on the shop's own host over HTTPS,
-through redirects too. A model never supplies an address that code has not listed, so it cannot
-name a product that does not exist. Addresses and facts stay in process memory; nothing is written
-to disk.
+Addresses come from each shop's sitemap and facts from the structured data on its product page, with
+sizes from the page's own size list where the data has none, all only where the shop's robots.txt
+allows this user agent, and only on the shop's own host over HTTPS, through redirects too. A model
+never supplies an address that code has not listed, so it cannot name a product that does not
+exist. Addresses and facts stay in process memory; nothing is written to disk.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ import zlib
 from collections import deque
 from collections.abc import Callable, Iterable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Literal
 from urllib.parse import urljoin, urlsplit
 from xml.sax.saxutils import unescape
@@ -82,6 +82,22 @@ _PRICE = re.compile(r"\d+([.,]\d{1,2})?")
 _REDIRECTS = {301, 302, 303, 307, 308}
 _ONE_SIZE = {"one size", "onesize", "einheitsgröße", "einheitsgroesse", "os"}
 _PAGE_ADDRESS_KEYS = ("url", "mainEntityOfPage")
+# Tom Tailor's structured data varies by color only, so its sizes are read from the list in the page
+# as served: one button per size, and a sold out size is disabled.
+_SIZE_BUTTON = re.compile(
+    r'data-testid="variant-option-\d+"[^>]*\baria-disabled="(true|false)"[^>]*>'
+    r"\s*<div[^>]*>\s*<span[^>]*>\s*([^<]{1,12}?)\s*</span>"
+)
+_MANY_X_SIZE = re.compile(r"[2-5]xl")
+_LETTER_SIZE = re.compile(r"x{0,4}[sl]|m")
+_WAIST_AND_LENGTH = re.compile(r"\d{2}/\d{2}")
+_NUMBER_SIZE = re.compile(r"\d{2}(?:[.,]5)?")
+_WAIST_ALONE = re.compile(r"2[6-9]|3[0-4]")  # EU adult shoe sizes start above these
+_SHOES = re.compile(
+    r"sneaker|(?<!hand)schuh|boots?\b|stiefel|sandal|slipper|loafer|pumps|ballerina|clog|pantoffel"
+)
+_PLUS_SIZE = re.compile(r"plus[ -]?size")
+_BELOW_PLUS_SIZES = {"xxs", "xs", "s", "m"}
 
 
 class ShopReadError(Exception):
@@ -134,6 +150,7 @@ class PageFacts:
     title: str
     material: str | None
     offers: tuple[Offer, ...]
+    description: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -147,6 +164,7 @@ class ShopProduct:
     color: str | None
     material: str | None
     size_checked: bool  # the page lists sizes and has one the person gave, in stock
+    description: str | None = None  # the shop's words: the model cannot see the product otherwise
 
 
 @dataclass(frozen=True, slots=True)
@@ -365,7 +383,7 @@ def read_page(html: str, *addresses: str) -> PageFacts | None:
         return None
     title, variants = main
     offers: list[Offer] = []
-    material = None
+    material = description = None
     for entry in variants:
         product = entry.product
         listed = product.get("offers") or []
@@ -376,6 +394,11 @@ def read_page(html: str, *addresses: str) -> PageFacts | None:
             if cents is None:
                 continue
             material = material or _text(product.get("material"))
+            description = (
+                description
+                or _text(product.get("description"))
+                or _text((entry.group or {}).get("description"))
+            )
             offers.append(
                 Offer(
                     cents,
@@ -385,30 +408,87 @@ def read_page(html: str, *addresses: str) -> PageFacts | None:
                     _text(product.get("color")) or _text(offer.get("color")),
                 )
             )
-    return PageFacts(title, material, tuple(offers)) if offers else None
+    buttons = dict.fromkeys(_SIZE_BUTTON.findall(html))
+    if buttons and len(offers) == 1 and not offers[0].sizes:
+        only = offers[0]
+        offers = [
+            replace(only, in_stock=only.in_stock and disabled == "false", sizes=(label,))
+            for disabled, label in buttons
+        ]
+    return PageFacts(title, material, tuple(offers), description) if offers else None
+
+
+def _normal_size(size: str) -> str:
+    """A size as compared: 3XL and XXXL are one size."""
+    size = size.strip().lower()
+    return f"{'x' * int(size[0])}l" if _MANY_X_SIZE.fullmatch(size) else size
+
+
+def _fits(size: str, label: str) -> bool:
+    """Whether a size the person gave is this label: the same, or a waist alone at any length."""
+    return size == label or (
+        _WAIST_ALONE.fullmatch(size) is not None and label.startswith(f"{size}/")
+    )
+
+
+def _rules_out(size: str, labels: set[str], shoes: bool) -> bool:
+    """Whether a size that no offer in stock fits shows the product is not for this person. It does
+    when the page lists that size, which is then sold out, and when the page lists sizes in the same
+    system. A bare number rules out only shoes: on a blazer in 46 to 58 it may be a shoe size."""
+    if size in labels:
+        return True
+    if _LETTER_SIZE.fullmatch(size):
+        return any(_LETTER_SIZE.fullmatch(label) for label in labels)
+    if _WAIST_AND_LENGTH.fullmatch(size) or _WAIST_ALONE.fullmatch(size):
+        return any(_WAIST_AND_LENGTH.fullmatch(label) for label in labels)
+    return (
+        shoes
+        and _NUMBER_SIZE.fullmatch(size) is not None
+        and any(_NUMBER_SIZE.fullmatch(label) for label in labels)
+    )
 
 
 def buyable(url: str, shop: str, facts: PageFacts, sizes: Iterable[str]) -> ShopProduct | None:
     """The product at its lowest price in stock, or None when the page shows it cannot be bought
-    in euros, or not in any size the person gave. A page that lists no sizes leaves the size
-    unchecked, and a one-size product fits."""
-    wanted = {size.strip().lower() for size in sizes if size.strip()}
+    in euros, or not in a size the person gave. A size is compared only within its own system: a
+    page that lists no sizes, or none comparable with the person's, leaves the size unchecked, and
+    a one-size product fits. A product the shop names plus size is not for a person whose letter
+    sizes stop at M, which is the shop's naming and not a conversion between sizes."""
+    wanted = {_normal_size(size) for size in sizes if size.strip()}
+    labels = {_normal_size(label) for offer in facts.offers for label in offer.sizes}
+    title = facts.title.lower()
     offers = [offer for offer in facts.offers if offer.currency == "EUR" and offer.in_stock]
     checked = False
-    if any(offer.sizes for offer in facts.offers) and wanted:
+    if wanted and labels:
         fitting = [
             offer
             for offer in offers
-            if {label.lower() for label in offer.sizes} & (wanted | _ONE_SIZE)
+            if any(
+                label in _ONE_SIZE or any(_fits(size, label) for size in wanted)
+                for label in map(_normal_size, offer.sizes)
+            )
         ]
-        if not fitting:
-            return None
-        offers, checked = fitting, True
+        if fitting:
+            offers, checked = fitting, True
+        else:
+            shoes = _SHOES.search(title) is not None
+            if any(_rules_out(size, labels, shoes) for size in wanted):
+                return None
+    letters = {size for size in wanted if _LETTER_SIZE.fullmatch(size)}
+    if not checked and letters and letters <= _BELOW_PLUS_SIZES and _PLUS_SIZE.search(title):
+        return None
     if not offers:
         return None
     cheapest = min(offers, key=lambda offer: offer.price_cents)
     return ShopProduct(
-        url, shop, facts.title, cheapest.price_cents, cheapest.color, facts.material, checked
+        url,
+        shop,
+        facts.title,
+        cheapest.price_cents,
+        cheapest.color,
+        facts.material,
+        checked,
+        facts.description,
     )
 
 

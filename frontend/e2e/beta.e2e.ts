@@ -30,6 +30,19 @@ function png(width: number, height: number, rgb: [number, number, number]): Buff
   ]);
 }
 
+/** The WCAG contrast of two colors written as rgb(r, g, b). */
+function contrast(first: string, second: string): number {
+  const luminance = (color: string) => {
+    const [red, green, blue] = (color.match(/\d+/g) ?? []).slice(0, 3).map((part) => {
+      const channel = Number(part) / 255;
+      return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+  };
+  const [dark, light] = [luminance(first), luminance(second)].sort((a, b) => a - b);
+  return (light + 0.05) / (dark + 0.05);
+}
+
 async function shot(page: Page, project: string, step: string) {
   await page.screenshot({ path: `${SHOTS}/${project}-${step}.png`, fullPage: true });
 }
@@ -270,6 +283,48 @@ test("the agent finds real products in steps, says what it did not check, and tr
 
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(overflow).toBe(0);
+});
+
+test("a reload brings back the agent's results and the form", async ({ page }) => {
+  await openAgent(page);
+  await page.getByLabel("What do you need?").fill("Something smart for a video call");
+  await page.getByRole("radio", { name: "Upper body" }).check();
+  await page.getByRole("radio", { name: "Men's", exact: true }).check();
+  await page.getByLabel("Spend up to (EUR)").fill("200");
+  await page.getByLabel("Your sizes (optional)").fill("L");
+  await page.getByRole("button", { name: "Find it", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Synthetic Jacket" })).toBeVisible();
+  const left = await page.locator("header").getByText(/planning requests left/).textContent();
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Synthetic Jacket" })).toBeVisible();
+  await expect(page.getByLabel("What do you need?")).toHaveValue("Something smart for a video call");
+  await expect(page.getByLabel("Spend up to (EUR)")).toHaveValue("200");
+  await expect(page.getByLabel("Your sizes (optional)")).toHaveValue("L");
+  await expect(page.getByRole("radio", { name: "Upper body" })).toBeChecked();
+  await expect(page.getByRole("radio", { name: "Men's", exact: true })).toBeChecked();
+  await expect(page.getByRole("heading", { name: "Try a look on" })).toBeVisible();
+  await expect(page.locator("header").getByText(/planning requests left/)).toHaveText(left as string);
+});
+
+test("the selected tab stays readable under the mouse", async ({ page, isMobile }) => {
+  test.skip(isMobile, "a phone has no mouse to rest on the tab");
+  await openAgent(page);
+  for (const name of ["Three looks from the catalog", "Find it for me"]) {
+    const tab = page.getByRole("button", { name });
+    await tab.click();
+    await tab.hover();
+    await expect(tab).toHaveAttribute("aria-pressed", "true");
+    // Past any transition, the colors a person sees under the mouse.
+    await page.waitForTimeout(400);
+    const colors = await tab.evaluate((element) => {
+      const style = getComputedStyle(element);
+      return { text: style.color, background: style.backgroundColor };
+    });
+    const unhovered = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    expect(colors.background).not.toBe(unhovered);
+    expect(contrast(colors.text, colors.background)).toBeGreaterThan(4.5);
+  }
 });
 
 test("the agent says so when nothing suits, and the button stays on screen", async ({ page }) => {

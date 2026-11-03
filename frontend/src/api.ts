@@ -422,14 +422,15 @@ const REASON_MESSAGES: Record<string, string> = {
   age_required: "Confirm that you are 18 or older first.",
   photo_consent_required: "Agree to the photo processing notice before a try-on.",
   quota: "This invite has used all its requests of this kind.",
-  busy: "Another request from this invite is still running. Wait for it to finish.",
+  busy: "Another request from this invite was still running. Try again in a minute.",
   budget: "The beta's shared budget for this kind of request is used up. Your plan stays available.",
   accounting_unavailable:
     "Spending cannot be recorded right now, so model requests are paused. Your plan stays available.",
   pilot_ended: "The beta has ended. Your saved plans and shopping list stay available.",
   plan_expired: "This plan is no longer current on the server.",
   concept_expired: "This concept was replaced. Try on the current one.",
-  find_expired: "A newer search replaced these products. Try on the current ones.",
+  find_expired: "The server no longer holds these products for a try-on. Search again to try them on.",
+  find_unknown: "Your last search was cut off, so its results cannot be shown. It may still count against your invite. You can search again.",
   shops_unavailable: "The shops cannot be read right now, so nothing was counted. Try again later.",
   not_configured: "This feature is not configured on the server.",
   closed: "The beta is closed.",
@@ -502,6 +503,15 @@ export function parseFindLine(value: unknown): { kind: "step"; step: string } | 
       }),
     },
   };
+}
+
+/** Where a search that this page lost sight of stands: its answer, or null while it runs. */
+export async function collectFind(operationId: string): Promise<FindResponse | null> {
+  const value = await readJson(await fetch(`/api/finds/${encodeURIComponent(operationId)}`));
+  if (isRecord(value) && value.running === true) return null;
+  const parsed = parseFindLine(value);
+  if (parsed.kind !== "result") throw new Error("Invalid find response");
+  return parsed.result;
 }
 
 /** Post, and hand each JSON line of the answer to onLine as it arrives. */
