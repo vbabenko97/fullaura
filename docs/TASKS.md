@@ -30,6 +30,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-26](#t-26-fixes-from-a-third-outside-audit) Fixes from a third outside audit | done | 2026-11-02 |
 | [T-27](#t-27-basetens-answer-in-the-data-notice) Baseten's answer in the data notice | done | 2026-11-03 |
 | [T-28](#t-28-search-results-a-person-can-use) Search results a person can use | done | 2026-11-03 |
+| [T-29](#t-29-no-shop-description-reaches-a-model) No shop description reaches a model | done | 2026-11-03 |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | next | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -286,7 +287,7 @@ Done when: the checks in the [README](../README.md#check-a-change) pass and the 
 An agent used the site as a new person on 2026-11-03. Of the five products suggested in three searches that gave a size, four could not be bought in that size, a request for a wedding outfit got a casual shirt and lined winter boots called "elegant", and a reload lost a search that a request had paid for. This is an agent's walk, not evidence from people, who still have to test the product.
 
 - A search compares sizes that a page lists, including Tom Tailor's size list in the page as served, within their own system, and leaves out what is not sold in the person's size ([D-88](DECISIONS.md#d-88-a-search-compares-sizes-the-page-lists-within-their-own-system)).
-- The agent reads the shop's description, is asked to dress for the occasion and to give only reasons that the title and description support, and is told which words find shoes. The try-on's text also uses the description ([D-89](DECISIONS.md#d-89-the-agent-reads-the-shops-description-and-dresses-for-the-occasion)).
+- The agent is asked to dress for the occasion and to give only reasons that the product's facts support, and is told which words find shoes ([D-89](DECISIONS.md#d-89-the-agent-reads-the-shops-description-and-dresses-for-the-occasion)). This task also sent it the shop's description, which [T-29](#t-29-no-shop-description-reaches-a-model) removed.
 - A tab keeps its last search from the moment it is sent, and a page reloaded during a search collects the answer without paying again ([D-90](DECISIONS.md#d-90-a-tab-keeps-its-last-search-and-a-reload-collects-a-running-one), [D-91](DECISIONS.md#d-91-a-search-is-kept-from-the-moment-it-is-sent)).
 - A message that another request is running is worded to stay true after that request ends.
 - The selected tab's label stays readable under the mouse. It had a contrast of 1.07 to 1 there, and the mouse rests on a tab right after a click.
@@ -298,6 +299,16 @@ The first deployment, of `181323b`, kept a search only once the answer's first l
 The work reached the site with the deployment of `264fd01`, where the same case, one real search in WebKit reloaded about five seconds after it was sent, was collected, used one request and kept its results through a further reload ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). Its products passed a check against the shop's pages. It ran in Playwright's WebKit, not on a real phone.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, the new tests fail on the earlier code, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check and a real search there.
+
+## T-29: No shop description reaches a model
+
+A review of T-28 asked whether shop descriptions caused its better results, and whether FullAura may send them to Meta. A blind comparison followed, with its rules set before the results. On all 39 products it compared, Tom Tailor's description field held only a sales line, so that wording added nothing. The comparison supports the combined changes to the prompt and search words, and it did not isolate those two from each other ([D-92](DECISIONS.md#d-92-no-shop-description-reaches-a-model-and-only-a-try-on-uses-the-category)).
+
+Code no longer reads a description. The search model gets no description and no category. A try-on's text uses the shop's category path as a provisional choice for the demo, because it drew a checked shirt as checked in both drawings of it, where the other prompts drew it plain. Whether FullAura may send shop text, categories included, stays open for the author ([DATA.md](DATA.md)).
+
+On this code, with the real model and shops on this machine, the six compared cases ran once each and all returned products. A record of all 18 calls to the search model held no sales line, description field or category.
+
+Done when: the checks in the [README](../README.md#check-a-change) pass, the new tests fail on the earlier code, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check, a real search and a try-on there.
 
 ## T-06: Evaluation and submission
 

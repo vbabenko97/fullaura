@@ -178,6 +178,9 @@ def test_a_size_button_does_not_replace_sizes_the_data_states() -> None:
         ("Regular Fit Sakko", ("46", "48", "50"), ["L", "43"], "unchecked"),
         ("Regular Fit Sakko", ("46", "48", "50"), ["50"], "checked"),
         ("Kleid", ("34", "36", "38"), ["M", "39"], "unchecked"),
+        # The cost of one box for all sizes: a dress size given alone counts as a shoe size on
+        # shoes, and can leave out shoes that would suit (D-88).
+        ("Boots", ("40", "41", "42"), ["38"], "out"),
         # A waist alone matches every length of that waist, and a shoe size is not a waist.
         ("Chino Hose", ("32/30", "32/34"), ["32"], "checked"),
         ("Chino Hose", ("30/32", "31/32"), ["32"], "out"),
@@ -216,19 +219,54 @@ def test_a_plus_size_product_is_left_out_for_a_person_of_small_letter_sizes(
     assert (buyable("u", "Shop", facts, wanted) is not None) is kept
 
 
-def test_the_description_comes_from_the_product_or_its_group() -> None:
-    facts = read_page(page(product(description="Warm gefütterte Stiefeletten")))
+def breadcrumb(*names: object) -> dict[str, object]:
+    return {
+        "@type": "BreadcrumbList",
+        "itemListElement": [
+            {"@type": "ListItem", "position": number, "name": name}
+            for number, name in enumerate(names, start=1)
+        ],
+    }
+
+
+def test_the_category_is_the_shops_path_without_its_home_and_the_product() -> None:
+    html = page(product("Hemd"), breadcrumb("Startseite", "Herren", "Hemden", "Karohemden", "Hemd"))
+    facts = read_page(html)
     assert facts is not None
     found = buyable("u", "Shop", facts, [])
-    assert found is not None and found.description == "Warm gefütterte Stiefeletten"
-    group = {
-        "@type": "ProductGroup",
-        "name": "Hemd",
-        "description": "Gemustertes Hemd",
-        "hasVariant": [product("Hemd")],
-    }
-    facts = read_page(page(group))
-    assert facts is not None and facts.description == "Gemustertes Hemd"
+    assert found is not None and found.category == "Herren, Hemden, Karohemden"
+
+
+def test_a_category_can_be_named_on_the_entrys_item() -> None:
+    entries = [{"item": {"name": name}} for name in ("Startseite", "Schuhe", "Boots", "Boot")]
+    html = page(product("Boot"), {"@type": "BreadcrumbList", "itemListElement": entries})
+    facts = read_page(html)
+    assert facts is not None and facts.category == "Schuhe, Boots"
+
+
+@pytest.mark.parametrize(
+    "block",
+    [
+        {"@type": "Organization", "name": "A shop"},
+        breadcrumb("Startseite", "Hemd"),
+        {"@type": "BreadcrumbList", "itemListElement": "Hemden"},
+        {"@type": "BreadcrumbList", "itemListElement": ["Startseite", "Hemden", "Hemd"]},
+        {"@type": "BreadcrumbList", "itemListElement": [{"item": "https://x"}] * 3},
+    ],
+)
+def test_a_page_without_a_readable_category_still_gives_its_product(block: object) -> None:
+    facts = read_page(page(product("Hemd"), block))
+    assert facts is not None and facts.category is None
+    assert buyable("u", "Shop", facts, []) is not None
+
+
+def test_a_shops_description_is_not_kept() -> None:
+    # Tom Tailor's description field is a sales line, and no shop's wording goes to a model.
+    html = page(product("Hemd", description="Hemd - Jetzt online bestellen! Kauf auf Rechnung"))
+    facts = read_page(html)
+    assert facts is not None
+    found = buyable("u", "Shop", facts, [])
+    assert "bestellen" not in repr(facts) and "bestellen" not in repr(found)
 
 
 def serve(routes: dict[str, httpx2.Response], seen: list[str] | None = None) -> httpx2.Client:
