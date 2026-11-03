@@ -1,9 +1,16 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
-import { errorMessage, newOperationId, parseFindLine, postLines } from "./api";
+import { ApiResponseError, collectFind, errorMessage, newOperationId, parseFindLine, postLines } from "./api";
+import { keepLastSearch, loadLastSearch } from "./findStorage";
+import type { FindLine, SearchForm } from "./findStorage";
 import { formatMoney } from "./format";
 import { TryOnPanel } from "./TryOnPanel";
 import type { FindResponse, FindScope, Session } from "./types";
+
+const COLLECT_EVERY_MS = 3000;
+// The server counts a search as interrupted after this long, so its answer will not come later.
+const COLLECT_FOR_MS = 300_000;
+const COLLECTING = "Your search kept running during the reload. Waiting for its answer.";
 
 const SCOPES: { value: FindScope; label: string }[] = [
   { value: "look", label: "Whole outfit" },
@@ -37,20 +44,75 @@ interface ShopModeProps {
 
 /** Say what you need: the agent chooses among real products that code read from the shops' pages. */
 export function ShopMode({ session, closedText, remaining, onConsent, onFinished, children }: ShopModeProps) {
-  const [request, setRequest] = useState("");
-  const [scope, setScope] = useState<FindScope>("look");
-  const [line, setLine] = useState<(typeof LINES)[number]["value"]>("any");
-  const [sizes, setSizes] = useState("");
-  const [budget, setBudget] = useState("");
-  const [running, setRunning] = useState(false);
-  const [steps, setSteps] = useState<string[]>([]);
-  const [result, setResult] = useState<FindResponse | null>(null);
+  // A reload brings back the tab's last search; one that was still running is collected below.
+  const [remembered] = useState(() => loadLastSearch(session.invite_scope));
+  const collecting = remembered !== null && remembered.operation_id !== null && remembered.result === null;
+  const [request, setRequest] = useState(remembered?.form.request ?? "");
+  const [scope, setScope] = useState<FindScope>(remembered?.form.scope ?? "look");
+  const [line, setLine] = useState<FindLine>(remembered?.form.line ?? "any");
+  const [sizes, setSizes] = useState(remembered?.form.sizes ?? "");
+  const [budget, setBudget] = useState(remembered?.form.budget ?? "");
+  const [running, setRunning] = useState(collecting);
+  const [steps, setSteps] = useState<string[]>(collecting ? [COLLECTING] : []);
+  const [result, setResult] = useState<FindResponse | null>(remembered?.result ?? null);
   const [error, setError] = useState<string | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
 
   const canSubmit = session.find_open && !running;
   const unchecked = result?.finds.filter((find) => !find.size_checked).length ?? 0;
   const kindUnchecked = result?.finds.filter((find) => !find.slot_checked).length ?? 0;
+
+  function settled() {
+    setRunning(false);
+    onFinished();
+    requestAnimationFrame(() => {
+      if (document.activeElement === document.body) heading.current?.focus();
+      const top = heading.current?.getBoundingClientRect().top ?? 0;
+      if (top < 0 || top > window.innerHeight) heading.current?.scrollIntoView?.({ block: "start" });
+    });
+  }
+
+  // Asking where a search stands is free and starts nothing, so a reload never pays for another.
+  useEffect(() => {
+    if (remembered === null || remembered.operation_id === null || remembered.result !== null) return;
+    const { form, operation_id: operationId } = remembered;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const giveUpAt = Date.now() + COLLECT_FOR_MS;
+    const end = (answer: FindResponse | null, message: string | null) => {
+      keepLastSearch({ form, operation_id: null, result: answer }, session.invite_scope);
+      setResult(answer);
+      setError(message);
+      setSteps([]);
+      settled();
+    };
+    const ask = async () => {
+      try {
+        const answer = await collectFind(operationId);
+        if (!active) return;
+        if (answer) {
+          end(answer, null);
+          return;
+        }
+      } catch (failure) {
+        if (!active) return;
+        if (failure instanceof ApiResponseError) {
+          end(null, errorMessage(failure));
+          return;
+        }
+      }
+      if (Date.now() >= giveUpAt) {
+        end(null, errorMessage(new ApiResponseError(404, null, "find_unknown")));
+        return;
+      }
+      timer = setTimeout(() => void ask(), COLLECT_EVERY_MS);
+    };
+    void ask();
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, [remembered]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -74,25 +136,28 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
     setError(null);
     // The form can be long, so the steps may be out of view from its button.
     requestAnimationFrame(() => heading.current?.scrollIntoView?.({ block: "start" }));
+    const form: SearchForm = { request: request.trim(), scope, line, sizes, budget };
+    const operationId = newOperationId();
     try {
       let answer: FindResponse | null = null;
       let accepted = false;
       await postLines(
         "/api/finds",
         {
-          request: request.trim(),
+          request: form.request,
           scope,
           line,
           sizes: wantedSizes,
           budget_cents: budgetCents,
         },
-        { "X-Operation-Id": newOperationId() },
+        { "X-Operation-Id": operationId },
         (value) => {
           // The earlier results stay until the server accepts this search: a refusal, such as a
           // try-on of them still running, must not take them or that try-on away.
           if (!accepted) {
             accepted = true;
             setResult(null);
+            keepLastSearch({ form, operation_id: operationId, result: null }, session.invite_scope);
           }
           const parsed = parseFindLine(value);
           if (parsed.kind === "step") setSteps((current) => [...current, parsed.step]);
@@ -101,16 +166,12 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
       );
       if (answer) setResult(answer);
       else setError("The search ended without a result. Try again.");
+      keepLastSearch({ form, operation_id: null, result: answer }, session.invite_scope);
     } catch (failure) {
+      // A lost connection leaves the kept search open, so a reload can still collect its answer.
       setError(errorMessage(failure));
     } finally {
-      setRunning(false);
-      onFinished();
-      requestAnimationFrame(() => {
-        if (document.activeElement === document.body) heading.current?.focus();
-        const top = heading.current?.getBoundingClientRect().top ?? 0;
-        if (top < 0 || top > window.innerHeight) heading.current?.scrollIntoView?.({ block: "start" });
-      });
+      settled();
     }
   }
 
@@ -237,7 +298,7 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
 
           {result && result.finds.length > 0 && (
             <>
-              <p className="request-message is-success" role="status">Code read every price and stock below from the shop's own page within the last hour. It did not check warmth, whether the items go together or your style: the reasons below are the agent's.</p>
+              <p className="request-message is-success" role="status">Code read every price and stock below from the shop's own page within the hour before this search. It did not check warmth, whether the items go together or your style: the reasons below are the agent's.</p>
               {unchecked > 0 && (
                 <p className="plan-unchecked">
                   Size not checked for {unchecked === result.finds.length ? "these items" : `${unchecked} item${unchecked === 1 ? "" : "s"}`}. Check yours on the shop's page before you buy.

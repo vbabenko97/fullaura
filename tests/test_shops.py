@@ -21,6 +21,7 @@ from backend.app.shops import (
     RETRY_FAILED_SHOP_S,
     SEARCH_BUDGET_S,
     Line,
+    PageFacts,
     Robots,
     Shop,
     ShopIndex,
@@ -112,6 +113,122 @@ def test_the_lowest_price_in_stock_is_the_price() -> None:
     assert facts is not None
     found = buyable("u", "Shop", facts, [])
     assert found is not None and found.price_cents == 5000
+
+
+def with_size_buttons(html: str, *open_sizes: str, closed: tuple[str, ...] = ()) -> str:
+    """The size list as Tom Tailor's pages served it on 2026-11-03, with invented products: a sold
+    out size has its own label and strikes its text through."""
+    buttons = [
+        f'<li><button class="group" data-testid="variant-option-{number}" '
+        + (
+            f'aria-label="{size} auswählen" aria-disabled="false"><div class="flex">'
+            f'<span class="">{size}</span></div>'
+            if size in open_sizes
+            else 'aria-label="Benachrichtigen, wenn verfügbar" aria-disabled="true">'
+            f'<div class="flex"><span class="line-through">{size}</span></div>'
+        )
+        + "</button></li>"
+        for number, size in enumerate((*open_sizes, *closed))
+    ]
+    return html.replace("A page", f"<ul>{''.join(buttons)}</ul>")
+
+
+def sized(title: str, *open_sizes: str, closed: tuple[str, ...] = ()) -> PageFacts:
+    facts = read_page(with_size_buttons(page(product(title)), *open_sizes, closed=closed))
+    assert facts is not None
+    return facts
+
+
+def test_sizes_the_page_lists_as_buttons_are_compared_with_the_persons() -> None:
+    facts = sized("Hemd", "S", "M", "XL", closed=("L",))
+    found = buyable("u", "Shop", facts, ["M"])
+    assert found is not None and found.size_checked
+    assert buyable("u", "Shop", facts, ["L"]) is None  # listed, but sold out
+    assert buyable("u", "Shop", facts, ["XXS"]) is None  # not listed at all
+
+
+def test_a_page_with_every_size_sold_out_cannot_be_bought() -> None:
+    assert buyable("u", "Shop", sized("Parka", closed=("S", "M")), []) is None
+
+
+def test_a_size_button_does_not_replace_sizes_the_data_states() -> None:
+    html = page(product(offers=[offer(size="M"), offer(size="L", availability="OutOfStock")]))
+    facts = read_page(with_size_buttons(html, "XS"))
+    assert facts is not None
+    assert buyable("u", "Shop", facts, ["M"]) is not None
+    assert buyable("u", "Shop", facts, ["XS"]) is None
+
+
+@pytest.mark.parametrize(
+    ("title", "listed", "wanted", "outcome"),
+    [
+        # A size in another system says nothing about this product, so it stays, not checked.
+        ("Boots", ("40", "41", "43"), ["L"], "unchecked"),
+        ("Hemd", ("S", "M", "L"), ["43"], "unchecked"),
+        ("Hemd", ("S", "M", "L"), ["32/32"], "unchecked"),
+        ("Chino Hose", ("32/32", "32/34"), ["L"], "unchecked"),
+        # With several sizes, the one in the page's system decides.
+        ("Hemd", ("S", "M"), ["L", "32/32", "43"], "out"),
+        ("Hemd", ("S", "L"), ["L", "32/32", "43"], "checked"),
+        ("Chino Hose", ("28/34", "32/34"), ["L", "32/32", "43"], "out"),
+        ("Chino Hose", ("28/34", "32/32"), ["L", "32/32", "43"], "checked"),
+        ("Boots", ("40", "41", "42"), ["L", "32/32", "43"], "out"),
+        ("Boots", ("40", "43"), ["L", "32/32", "43"], "checked"),
+        # A blazer in 46 to 58 cannot rule itself out by a shoe size, but can match a stated 50.
+        ("Regular Fit Sakko", ("46", "48", "50"), ["L", "43"], "unchecked"),
+        ("Regular Fit Sakko", ("46", "48", "50"), ["50"], "checked"),
+        ("Kleid", ("34", "36", "38"), ["M", "39"], "unchecked"),
+        # A waist alone matches every length of that waist, and a shoe size is not a waist.
+        ("Chino Hose", ("32/30", "32/34"), ["32"], "checked"),
+        ("Chino Hose", ("30/32", "31/32"), ["32"], "out"),
+        ("Chino Hose", ("30/32", "31/32"), ["43"], "unchecked"),
+        ("Boots", ("40", "43"), ["32"], "unchecked"),
+        # Written either way.
+        ("Hemd", ("S", "XXXL"), ["3XL"], "checked"),
+        ("Hemd", ("S", "3XL"), ["xxxl"], "checked"),
+        # Labels in no known system are not compared, unless they are the same.
+        ("Mütze", ("S/M", "L/XL"), ["L"], "unchecked"),
+        ("Socken", ("35-38", "39-42"), ["39-42"], "checked"),
+        ("Socken", ("35-38", "39-42"), ["43"], "unchecked"),
+        # Gloves are not shoes.
+        ("Handschuhe", ("40", "41"), ["43"], "unchecked"),
+    ],
+)
+def test_a_size_is_compared_only_within_its_own_system(
+    title: str, listed: tuple[str, ...], wanted: list[str], outcome: str
+) -> None:
+    found = buyable("u", "Shop", sized(title, *listed), wanted)
+    if outcome == "out":
+        assert found is None
+    else:
+        assert found is not None
+        assert found.size_checked is (outcome == "checked")
+
+
+@pytest.mark.parametrize(
+    ("wanted", "kept"),
+    [(["S"], False), (["XS", "M"], False), (["L"], True), (["M", "XL"], True), ([], True)],
+)
+def test_a_plus_size_product_is_left_out_for_a_person_of_small_letter_sizes(
+    wanted: list[str], kept: bool
+) -> None:
+    facts = sized("Plus Size - Oversize Rollkragenpullover", "44", "46", "48")
+    assert (buyable("u", "Shop", facts, wanted) is not None) is kept
+
+
+def test_the_description_comes_from_the_product_or_its_group() -> None:
+    facts = read_page(page(product(description="Warm gefütterte Stiefeletten")))
+    assert facts is not None
+    found = buyable("u", "Shop", facts, [])
+    assert found is not None and found.description == "Warm gefütterte Stiefeletten"
+    group = {
+        "@type": "ProductGroup",
+        "name": "Hemd",
+        "description": "Gemustertes Hemd",
+        "hasVariant": [product("Hemd")],
+    }
+    facts = read_page(page(group))
+    assert facts is not None and facts.description == "Gemustertes Hemd"
 
 
 def serve(routes: dict[str, httpx2.Response], seen: list[str] | None = None) -> httpx2.Client:

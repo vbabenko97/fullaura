@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { PrivacyNotice } from "../src/PrivacyNotice";
 import { ShopMode } from "../src/ShopMode";
 import type { Session } from "../src/types";
 
@@ -66,10 +67,180 @@ function show(session: Session = SESSION, closedText: string | null = null) {
   return onFinished;
 }
 
+const SEARCH_KEY = "fullaura.last-search.v1";
+const FORM = { request: "A warm jacket", scope: "item", line: "men", sizes: "L", budget: "150" };
+
+function remember(search: Record<string, unknown>) {
+  sessionStorage.setItem(SEARCH_KEY, JSON.stringify({ invite_scope: null, form: FORM, ...search }));
+}
+
 describe("the shopping agent's page", () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    vi.useRealTimers();
+    sessionStorage.clear();
+  });
+
+  it("brings the last search back after a reload, with its form and try-on, at no cost", async () => {
+    const fetchMock = vi.fn(async () => stream({ result: RESULT }));
+    vi.stubGlobal("fetch", fetchMock);
+    show();
+    fill();
+    fireEvent.click(screen.getByRole("radio", { name: "One item" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Men's" }));
+    fireEvent.change(screen.getByLabelText("Your sizes (optional)"), { target: { value: "L" } });
+    fireEvent.click(screen.getByRole("button", { name: "Find it" }));
+    await screen.findByRole("heading", { name: "Winterjacke" });
+    cleanup();
+    fetchMock.mockClear();
+
+    show();
+    expect(screen.getByRole("heading", { name: "Winterjacke" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Try a look on" })).toBeTruthy();
+    expect((screen.getByLabelText("What do you need?") as HTMLTextAreaElement).value).toBe("A warm jacket");
+    expect((screen.getByLabelText("Spend up to (EUR)") as HTMLInputElement).value).toBe("150");
+    expect((screen.getByLabelText("Your sizes (optional)") as HTMLInputElement).value).toBe("L");
+    expect((screen.getByRole("radio", { name: "One item" }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("radio", { name: "Men's" }) as HTMLInputElement).checked).toBe(true);
+    expect((screen.getByRole("button", { name: "Find it" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("keeps the earlier search for a reload when the server refuses a new one", async () => {
+    const answers = [
+      () => stream({ result: RESULT }),
+      () => new Response(JSON.stringify({ detail: "Busy", reason: "busy" }), { status: 409 }),
+    ];
+    vi.stubGlobal("fetch", async () => (answers.shift() as () => Response)());
+    show();
+    fill();
+    fireEvent.click(screen.getByRole("button", { name: "Find it" }));
+    await screen.findByRole("heading", { name: "Winterjacke" });
+    fireEvent.change(screen.getByLabelText("What do you need?"), { target: { value: "A hat" } });
+    fireEvent.click(screen.getByRole("button", { name: "Find it" }));
+    await screen.findByRole("alert");
+    cleanup();
+
+    show();
+    expect(screen.getByRole("heading", { name: "Winterjacke" })).toBeTruthy();
+    expect((screen.getByLabelText("What do you need?") as HTMLTextAreaElement).value).toBe("A warm jacket");
+  });
+
+  it("does not show another invite's search, and removes it", () => {
+    remember({ invite_scope: "someone-else", operation_id: null, result: RESULT });
+    show({ ...SESSION, invite_scope: "mine" });
+    expect(screen.queryByRole("heading", { name: "Winterjacke" })).toBeNull();
+    expect((screen.getByLabelText("What do you need?") as HTMLTextAreaElement).value).toBe("");
+    expect(sessionStorage.getItem(SEARCH_KEY)).toBeNull();
+  });
+
+  it.each(["{broken", '{"invite_scope":null,"form":{},"operation_id":null,"result":null}', '{"invite_scope":null,"form":{"request":"x","scope":"everything","line":"men","sizes":"","budget":"1"},"operation_id":null,"result":null}'])(
+    "ignores what cannot be read from the tab: %s",
+    (stored) => {
+      sessionStorage.setItem(SEARCH_KEY, stored);
+      vi.stubGlobal("fetch", vi.fn());
+      show();
+      expect((screen.getByLabelText("What do you need?") as HTMLTextAreaElement).value).toBe("");
+      expect((screen.getByRole("button", { name: "Find it" }) as HTMLButtonElement).disabled).toBe(false);
+    },
+  );
+
+  it("collects a search that was running when the page reloaded, for free", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    remember({ operation_id: "op-1", result: null });
+    const answers = [{ running: true }, { result: RESULT }];
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(answers.shift()), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const onFinished = show();
+
+    expect(await screen.findByText(/kept running during the reload/)).toBeTruthy();
+    expect((screen.getByRole("button", { name: "Looking…" }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByLabelText("What do you need?") as HTMLTextAreaElement).value).toBe("A warm jacket");
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await act(async () => { await vi.advanceTimersByTimeAsync(3100); });
+
+    await screen.findByRole("heading", { name: "Winterjacke" });
+    expect(fetchMock.mock.calls.map((call) => (call as unknown as [string])[0])).toEqual(["/api/finds/op-1", "/api/finds/op-1"]);
+    expect(screen.queryByText(/kept running during the reload/)).toBeNull();
+    expect(onFinished).toHaveBeenCalled();
+    cleanup();
+
+    // Collected once: another reload shows it without asking again.
+    fetchMock.mockClear();
+    show();
+    expect(screen.getByRole("heading", { name: "Winterjacke" })).toBeTruthy();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("says what happened when a running search cannot be collected, and lets the person search again", async () => {
+    remember({ operation_id: "op-1", result: null });
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ detail: "Unknown", reason: "find_unknown" }), { status: 404 }));
+    vi.stubGlobal("fetch", fetchMock);
+    show();
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("was cut off");
+    expect(alert.textContent).toContain("may still count");
+    expect((screen.getByRole("button", { name: "Find it" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByLabelText("What do you need?") as HTMLTextAreaElement).value).toBe("A warm jacket");
+    cleanup();
+
+    fetchMock.mockClear();
+    show();
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect((screen.getByRole("button", { name: "Find it" }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it("keeps asking through a passing network failure, and stops after five minutes", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    remember({ operation_id: "op-1", result: null });
+    const fetchMock = vi.fn(async () => {
+      throw new TypeError("offline");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    show();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await act(async () => { await vi.advanceTimersByTimeAsync(10_000); });
+    expect(fetchMock.mock.calls.length).toBeGreaterThan(1);
+    expect(screen.queryByRole("alert")).toBeNull();
+    await act(async () => { await vi.advanceTimersByTimeAsync(300_000); });
+    expect((await screen.findByRole("alert")).textContent).toContain("was cut off");
+  });
+
+  it("stops asking when the page goes away", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    remember({ operation_id: "op-1", result: null });
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ running: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    show();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    cleanup();
+    const asked = fetchMock.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(fetchMock.mock.calls.length).toBe(asked);
+  });
+
+  it("does not start a paid search on its own after a reload", async () => {
+    remember({ operation_id: "op-1", result: null });
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ running: true }), { status: 200 }));
+    vi.stubGlobal("fetch", fetchMock);
+    show();
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    for (const call of fetchMock.mock.calls as unknown as [string, RequestInit | undefined][]) {
+      expect(call[1]?.method ?? "GET").toBe("GET");
+    }
+  });
+
+  it("says in the data notice that a tab keeps its last search", () => {
+    render(<PrivacyNotice designOpen={false} findOpen recordsPurgeAt={null} />);
+    expect(screen.getByText(/This browser tab also keeps your\s+last search and its results until you close it/)).toBeTruthy();
+  });
+
+  it("says when the results were read, which stays true after a reload", async () => {
+    remember({ operation_id: null, result: RESULT });
+    show();
+    expect(screen.getByText(/within the hour before this search/)).toBeTruthy();
+    expect(screen.queryByText(/within the last hour/)).toBeNull();
   });
 
   it("sends the request and shows facts from the shop's page, with what was not checked", async () => {
@@ -216,7 +387,7 @@ describe("the shopping agent's page", () => {
     fill();
     fireEvent.click(screen.getByRole("button", { name: "Find it" }));
     await screen.findByRole("heading", { name: "Winterjacke" });
-    expect(screen.getByText(/each product's title and color\. No photo of the product is used/)).toBeTruthy();
+    expect(screen.getByText(/each product's title, color and description\. No photo of the product is used/)).toBeTruthy();
   });
 
   it("explains a refusal from the server", async () => {
@@ -224,7 +395,8 @@ describe("the shopping agent's page", () => {
     show();
     fill();
     fireEvent.click(screen.getByRole("button", { name: "Find it" }));
-    expect((await screen.findByRole("alert")).textContent).toContain("Another request from this invite is still running");
+    // Worded so that it stays true after that request ends, as the message stays on screen.
+    expect((await screen.findByRole("alert")).textContent).toBe("Another request from this invite was still running. Try again in a minute.");
     expect((screen.getByRole("button", { name: "Find it" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
