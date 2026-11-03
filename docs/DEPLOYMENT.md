@@ -1,6 +1,6 @@
 # Azure deployment
 
-**Status:** The closed beta has run on Azure Container Apps in France Central since 2026-10-30. It serves `main` at `037b6fc`; [Checks on the deployed beta](#checks-on-the-deployed-beta) lists each deployment and what it added. Invited sessions can search real shops with the agent, plan and try looks on; everyone else sees the invite step. The pilot closes model calls at 2026-11-10 06:00 Vienna time. The purge job is scheduled to delete the pilot records at 2026-11-10 10:00 Vienna time, when the beta closes; it has not run on the real records yet.
+**Status:** The closed beta has run on Azure Container Apps in France Central since 2026-10-30. It serves `main` at `a768f3e`; [Checks on the deployed beta](#checks-on-the-deployed-beta) lists each deployment and what it added. Invited sessions can search real shops with the agent, plan and try looks on; everyone else sees the invite step. The pilot closes model calls at 2026-11-10 06:00 Vienna time. The purge job is scheduled to delete the pilot records at 2026-11-10 10:00 Vienna time, when the beta closes; it has not run on the real records yet.
 
 This document holds, in order: the [deployed configuration](#deployed-configuration), [configuration and cost](#configuration-and-cost), [deleting the pilot records](#deleting-the-pilot-records), the [deployment procedure](#deployment-procedure), [rolling back](#rolling-back), [stopping the beta](#stopping-the-beta), [official references](#official-references) and the [checks on the deployed beta](#checks-on-the-deployed-beta).
 
@@ -26,14 +26,14 @@ This document holds, in order: the [deployed configuration](#deployed-configurat
 | Planning model | `meta-models/muse-spark-open-1026` at `https://inference.baseten.co/v1`, key in the secret `baseten-api-key` |
 | Try-on model | `muse-image-1.0` in Standard mode, key in the secret `model-api-key` |
 | Shopping agent model | `muse-spark-1.3` in Standard mode at `https://api.meta.ai/v1/responses`, key in the secret `model-api-key` |
-| App image | `ghcr.io/vbabenko97/fullaura@sha256:a8eb6d680d6872b0c3f4a220239a26ee6c703c860c579d87b5293ae2ffbbb112` (tag `037b6fc-linux-amd64`; its `linux/amd64` manifest is `sha256:4329b43b43645303fe4b216aa0d1b3410ecaeae192c345d2433ea4b43da8e8e1`) |
+| App image | `ghcr.io/vbabenko97/fullaura@sha256:1bba0a950e8875bb1128281cecbf63b53f9466e3671ff0d3a6150468196bc01d` (tag `a768f3e-linux-amd64`; its `linux/amd64` manifest is `sha256:25e1f1bc201a1a065895822a6fe2b7eef0fefe4d4f947dcd40b3956507ba8c8e`) |
 | Purge job image | `ghcr.io/vbabenko97/fullaura@sha256:5366c7af7995102dd036c450a59415c81fd919630d68a3ac178bc8b327207e68`, the build of `62bd84f` (its `linux/amd64` manifest is `sha256:f61b8767673ccd9d4e5b6f7ec92c0472bce3f101cd6a64952ad946c1d3d5772a`); its purge writes the closure marker. |
-| Application source | `main` at `037b6fc`, with `FULLAURA_DESIGN_MODE` unset, so Design My Look is off, and `FULLAURA_SHOP_MODE` unset, so the shopping agent is on |
-| App rollback image | `ghcr.io/vbabenko97/fullaura@sha256:6d090c7ba1d40482919a4c0af0ff377691a2cf27aa885e724b9d70368bfcfd65` (tag `24812dd-linux-amd64`; its `linux/amd64` manifest is `sha256:1a41b8884c59ba94f51a8be6086d354727c32337307b3e36bb901cf15741901f`), the build of `24812dd`, which served on 2026-11-03; [Earlier app images](#earlier-app-images) lists it with the images before it |
+| Application source | `main` at `a768f3e`, with `FULLAURA_DESIGN_MODE` unset, so Design My Look is off, and `FULLAURA_SHOP_MODE` unset, so the shopping agent is on |
+| App rollback image | `ghcr.io/vbabenko97/fullaura@sha256:a8eb6d680d6872b0c3f4a220239a26ee6c703c860c579d87b5293ae2ffbbb112` (tag `037b6fc-linux-amd64`; its `linux/amd64` manifest is `sha256:4329b43b43645303fe4b216aa0d1b3410ecaeae192c345d2433ea4b43da8e8e1`), the build of `037b6fc`, which served on 2026-11-03; [Earlier app images](#earlier-app-images) lists it with the images before it |
 | Purge job rollback image | none: no earlier image can run the purge job |
 | ARM deployments | `fullaura-beta-20261030`, `fullaura-beta-budgets-20261030`, `fullaura-beta-fixes-20261031`, `fullaura-purge-fence-20261031` and `fullaura-judging-20261102`, from `infra/azure/main.bicep` |
 
-The purge job kept its image through every later deployment. The deployments of `7e1d48d`, `97530e2`, `b9e7cd0`, `a5e6028`, `33e4fe3` and `7267da0` changed nothing the job runs, that of `87fd7a2` only made the store's URL check stricter, which the job's URL passes, that of `8ba7fac` changed the job's replica timeout but not what it runs, those of `b192cbd` and `6c4a462` changed only the page, and those of `194651b`, `f2d68dc`, `5eb9a64`, `bf5751c`, `259c686`, `14e49b1`, `1688393`, `029b163`, `181323b`, `264fd01`, `f881183`, `24812dd` and `037b6fc` left the job's purge and store code as it was, so the job kept this image.
+The purge job kept its image through every later deployment. The deployments of `7e1d48d`, `97530e2`, `b9e7cd0`, `a5e6028`, `33e4fe3` and `7267da0` changed nothing the job runs, that of `87fd7a2` only made the store's URL check stricter, which the job's URL passes, that of `8ba7fac` changed the job's replica timeout but not what it runs, those of `b192cbd` and `6c4a462` changed only the page, and those of `194651b`, `f2d68dc`, `5eb9a64`, `bf5751c`, `259c686`, `14e49b1`, `1688393`, `029b163`, `181323b`, `264fd01`, `f881183`, `24812dd`, `037b6fc` and `a768f3e` left the job's purge and store code as it was, so the job kept this image.
 
 The image is public, and GHCR issues an anonymous pull token for it. The keys, the session secret and the invite digests are encrypted Container Apps secrets, passed to the template as secure parameters; none is in the image or the repository. The resource group and the existing subscription-level budget remain in place.
 
@@ -137,11 +137,11 @@ To change only the invites, set the secret to every digest that should stay vali
 
 The app and the purge job roll back separately. The app rolls back to the digest recorded for it in the table above, and the purge job has no earlier image to roll back to ([D-51](DECISIONS.md#d-51-the-app-and-the-purge-job-have-their-own-images-and-roll-back-apart)).
 
-- **App.** To end only the shopping agent, run `az containerapp update` with `--set-env-vars FULLAURA_SHOP_MODE=false`: the image stays, and the page offers only the catalog. The recorded app rollback image, of `24812dd`, checks the closure marker and can serve the beta:
+- **App.** To end only the shopping agent, run `az containerapp update` with `--set-env-vars FULLAURA_SHOP_MODE=false`: the image stays, and the page offers only the catalog. The recorded app rollback image, of `037b6fc`, checks the closure marker and can serve the beta:
 
   ```bash
   az containerapp update --name fullaura-demo --resource-group rg-fullaura-demo --subscription <subscription ID> \
-    --image ghcr.io/vbabenko97/fullaura@sha256:6d090c7ba1d40482919a4c0af0ff377691a2cf27aa885e724b9d70368bfcfd65
+    --image ghcr.io/vbabenko97/fullaura@sha256:a8eb6d680d6872b0c3f4a220239a26ee6c703c860c579d87b5293ae2ffbbb112
   ```
 
   Check it with `scripts/smoke_http.py <URL>`, which must report an open beta session. [Earlier app images](#earlier-app-images) says what each older image lacks. An image older than `62bd84f` writes without checking the marker, so switch the beta off in the same command:
@@ -161,7 +161,8 @@ Each image is at `ghcr.io/vbabenko97/fullaura@<digest>`, newest first. An image 
 
 | Build | Digest | What to know before rolling back to it |
 | --- | --- | --- |
-| `24812dd` | `sha256:6d090c7ba1d40482919a4c0af0ff377691a2cf27aa885e724b9d70368bfcfd65` | The recorded rollback image, which served on 2026-11-03. It differs from the current image in one way: a reload on an invite with no requests left hides the last search. |
+| `037b6fc` | `sha256:a8eb6d680d6872b0c3f4a220239a26ee6c703c860c579d87b5293ae2ffbbb112` | The recorded rollback image, which served on 2026-11-03. It differs from the current image in one way: a search whose connection drops shows an error and turns the button back on, and only a reload collects its answer. |
+| `24812dd` | `sha256:6d090c7ba1d40482919a4c0af0ff377691a2cf27aa885e724b9d70368bfcfd65` | Served on 2026-11-03. A reload on an invite with no requests left hides the last search. |
 | `f881183` | `sha256:ae45093c3b018c2e471bd71905655754a665df14efeaa24cec33a69909eedfb1` | Served until 2026-11-03. It sends each product's category to the image model, which the author took out for the limited test ([D-92](DECISIONS.md#d-92-no-shop-description-or-category-reaches-a-model)), and has no prompt rule on what a reason states. |
 | `264fd01` | `sha256:4cc7673f92b5e15398154daab5eb23e825933dcc18f41f1b050a8e3ac50a3811` | Also served until 2026-11-03. It sends each product's sales line to Meta's models, as [D-92](DECISIONS.md#d-92-no-shop-description-or-category-reaches-a-model) records. |
 | `181323b` | not recorded | Do not roll back to it. It served for part of 2026-11-03, and a reload on a server that has just woken lost a search that had used its request. |
@@ -504,3 +505,14 @@ On 2026-11-03, after the deployments of `main` at `24812dd` and then at `037b6fc
 - No search or try-on ran on revision `fullaura-demo--0000033`, whose change touches only which page opens. The prompt rule and the title-only try-on ran on revision `fullaura-demo--0000032`.
 - The operator's first invite for the demo video has used all 8 of its planning requests and 4 of its 12 try-ons, with photo consent withdrawn. The invite for recording the video has used 5 of 8 and 2 of 12.
 - `scripts/pilot_report.py` with the participants' digests counts ten invites, none activated. The ledger holds $0.922228 for planning and $0.32 for images.
+
+### 2026-11-03: Deployment of `a768f3e`
+
+On 2026-11-03, after the deployment of `main` at `a768f3e`, which adds [T-31](TASKS.md#t-31-a-search-survives-a-dropped-connection), with `az containerapp update` of the app image only:
+
+- CI passed on the pull request ([run 41677108190](https://github.com/vbabenko97/fullaura/actions/runs/41677108190)) and on `a768f3e` ([run 41677922718](https://github.com/vbabenko97/fullaura/actions/runs/41677922718)). A local build passed `scripts/smoke_http.py` as a closed beta.
+- Revision `fullaura-demo--0000034` serves all traffic with the app image above and is healthy. A comparison of the settings before and after the deployment shows that only the app's image changed. The purge job did not change.
+- `scripts/smoke_http.py` passed over HTTPS with an open beta session once this revision had taken over, and the script the page serves holds the new message. A first run while the revision was still activating does not count, because the page it read did not yet hold that message.
+- The deployment waited for two minutes without a model request, because it forgets the products and plans held in memory.
+- No search or try-on ran on this revision, because the change is on the page only. A browser test with a reset connection covers it in Chromium, and no real phone has run it.
+- `scripts/pilot_report.py` with the participants' digests counts ten invites, three activated, three searches or plans, three try-ons and one feedback answer. The ledger holds $0.972629 for planning and $0.35 for images.

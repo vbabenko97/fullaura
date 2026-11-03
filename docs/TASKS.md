@@ -32,7 +32,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-28](#t-28-search-results-a-person-can-use) Search results a person can use | done | 2026-11-03 |
 | [T-29](#t-29-no-shop-description-reaches-a-model) No shop description reaches a model | done | 2026-11-03 |
 | [T-30](#t-30-a-rule-for-reasons-and-a-try-on-from-title-and-color) A rule for reasons, and a try-on from title and color | done | 2026-11-03 |
-| [T-31](#t-31-a-search-survives-a-dropped-connection) A search survives a dropped connection | next | |
+| [T-31](#t-31-a-search-survives-a-dropped-connection) A search survives a dropped connection | done | 2026-11-03 |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | next | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -335,6 +335,8 @@ Done when: the checks in the [README](../README.md#check-a-change) pass, the new
 A participant on a phone left the browser for another app during a search on the deployed site. The page said to check the connection and turned the button back on while the server went on with the search, so new searches were refused as busy. The next one that went through used a second request, and the first answer was never shown.
 
 The page now asks the server for the answer when a search's connection fails, with the read that a reload already uses, which calls no model and counts nothing ([D-94](DECISIONS.md#d-94-a-page-that-loses-a-searchs-connection-asks-for-its-answer)). The server did not change.
+
+The work reached the site with the deployment of `a768f3e`, which passed the HTTP smoke check there ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). It ran in Chromium with a reset connection, not on a real phone.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, the new tests fail on the earlier code, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check.
 
