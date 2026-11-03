@@ -307,6 +307,30 @@ test("a reload brings back the agent's results and the form", async ({ page }) =
   await expect(page.locator("header").getByText(/planning requests left/)).toHaveText(left as string);
 });
 
+test("a search whose connection drops is collected without a reload or a second request", async ({ page }) => {
+  await openAgent(page);
+  await page.getByLabel("What do you need?").fill("Something smart for a video call");
+  await page.getByRole("radio", { name: "Upper body" }).check();
+  await page.getByLabel("Spend up to (EUR)").fill("200");
+  // The server receives the search and its answer never reaches the page, as when a phone leaves
+  // the browser for another app.
+  let posts = 0;
+  await page.route("**/api/finds", async (route) => {
+    posts += 1;
+    void page.request.fetch(route.request()).catch(() => undefined);
+    await route.abort("connectionreset");
+  });
+  await page.getByRole("button", { name: "Find it", exact: true }).click();
+  await expect(page.getByText(/The connection dropped/)).toBeVisible();
+  await expect(page.getByRole("button", { name: "Looking…" })).toBeDisabled();
+
+  await expect(page.getByRole("heading", { name: "Synthetic Jacket" })).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByRole("alert")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Try a look on" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Find it", exact: true })).toBeEnabled();
+  expect(posts).toBe(1);
+});
+
 test("the selected tab stays readable under the mouse", async ({ page, isMobile }) => {
   test.skip(isMobile, "a phone has no mouse to rest on the tab");
   await openAgent(page);

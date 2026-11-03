@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { ApiResponseError, collectFind, errorMessage, newOperationId, parseFindLine, postLines } from "./api";
 import { forgetLastSearch, keepLastSearch, loadLastSearch } from "./findStorage";
-import type { FindLine, SearchForm } from "./findStorage";
+import type { FindLine, LastSearch, SearchForm } from "./findStorage";
 import { formatMoney } from "./format";
 import { TryOnPanel } from "./TryOnPanel";
 import type { FindResponse, FindScope, Session } from "./types";
@@ -14,6 +14,7 @@ const COLLECT_FOR_MS = 300_000;
 // waits up to a minute, so until then "unknown" means not yet.
 const NOT_YET_KNOWN_FOR_MS = 75_000;
 const COLLECTING = "Your search kept running during the reload. Waiting for its answer.";
+const CONNECTION_LOST = "The connection dropped, so FullAura is asking the server for your search's answer.";
 
 const SCOPES: { value: FindScope; label: string }[] = [
   { value: "look", label: "Whole outfit" },
@@ -49,14 +50,16 @@ interface ShopModeProps {
 export function ShopMode({ session, closedText, remaining, onConsent, onFinished, children }: ShopModeProps) {
   // A reload brings back the tab's last search; one that was still running is collected below.
   const [remembered] = useState(() => loadLastSearch(session.invite_scope));
-  const collecting = remembered !== null && remembered.operation_id !== null && remembered.result === null;
+  const reloadedDuringSearch = remembered !== null && remembered.operation_id !== null && remembered.result === null;
+  // The search whose answer this page asks for: one running at a reload, or one whose connection dropped.
+  const [collecting, setCollecting] = useState<LastSearch | null>(reloadedDuringSearch ? remembered : null);
   const [request, setRequest] = useState(remembered?.form.request ?? "");
   const [scope, setScope] = useState<FindScope>(remembered?.form.scope ?? "look");
   const [line, setLine] = useState<FindLine>(remembered?.form.line ?? "any");
   const [sizes, setSizes] = useState(remembered?.form.sizes ?? "");
   const [budget, setBudget] = useState(remembered?.form.budget ?? "");
-  const [running, setRunning] = useState(collecting);
-  const [steps, setSteps] = useState<string[]>(collecting ? [COLLECTING] : []);
+  const [running, setRunning] = useState(reloadedDuringSearch);
+  const [steps, setSteps] = useState<string[]>(reloadedDuringSearch ? [COLLECTING] : []);
   const [result, setResult] = useState<FindResponse | null>(remembered?.result ?? null);
   const [error, setError] = useState<string | null>(null);
   const heading = useRef<HTMLHeadingElement>(null);
@@ -75,15 +78,17 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
     });
   }
 
-  // Asking where a search stands is free and starts nothing, so a reload never pays for another.
+  // Asking where a search stands is free and starts nothing, so neither a reload nor a dropped
+  // connection pays for another.
   useEffect(() => {
-    if (remembered === null || remembered.operation_id === null || remembered.result !== null) return;
-    const { form, operation_id: operationId, sent_at: sentAt } = remembered;
+    if (collecting === null || collecting.operation_id === null) return;
+    const { form, operation_id: operationId, sent_at: sentAt } = collecting;
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const giveUpAt = Date.now() + COLLECT_FOR_MS;
     const end = (answer: FindResponse | null, message: string | null) => {
       keepLastSearch({ form, operation_id: null, sent_at: null, result: answer }, session.invite_scope);
+      setCollecting(null);
       setResult(answer);
       setError(message);
       setSteps([]);
@@ -118,7 +123,7 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
       active = false;
       clearTimeout(timer);
     };
-  }, [remembered]);
+  }, [collecting]);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -147,7 +152,8 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
     // Kept before it is sent: a server that has just woken answers only once it has read the shops'
     // lists, about six seconds later, and it goes on with a search whose page has reloaded.
     const earlier = loadLastSearch(session.invite_scope);
-    keepLastSearch({ form, operation_id: operationId, sent_at: Date.now(), result: null }, session.invite_scope);
+    const sent: LastSearch = { form, operation_id: operationId, sent_at: Date.now(), result: null };
+    keepLastSearch(sent, session.invite_scope);
     try {
       let answer: FindResponse | null = null;
       let accepted = false;
@@ -177,16 +183,19 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
       else setError("The search ended without a result. Try again.");
       keepLastSearch({ form, operation_id: null, sent_at: null, result: answer }, session.invite_scope);
     } catch (failure) {
-      // A refusal started nothing, so the earlier search stays. A lost connection leaves this one
-      // open, as the server may have received it and a reload can still collect its answer.
-      if (failure instanceof ApiResponseError) {
-        if (earlier) keepLastSearch(earlier, session.invite_scope);
-        else forgetLastSearch();
+      // A phone can drop the answer while the person is in another app. The server goes on with a
+      // search it received, and would refuse a new one until then, so the page asks for its answer.
+      if (!(failure instanceof ApiResponseError)) {
+        setSteps((current) => [...current, CONNECTION_LOST]);
+        setCollecting(sent);
+        return;
       }
+      // A refusal started nothing, so the earlier search stays.
+      if (earlier) keepLastSearch(earlier, session.invite_scope);
+      else forgetLastSearch();
       setError(errorMessage(failure));
-    } finally {
-      settled();
     }
+    settled();
   }
 
   return (
