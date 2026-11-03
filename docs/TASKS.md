@@ -308,6 +308,8 @@ Code no longer reads a description. The search model gets no description and no 
 
 On this code, with the real model and shops on this machine, the six compared cases ran once each and all returned products. A record of all 18 calls to the search model held no sales line, description field or category.
 
+The work reached the site with the deployment of `f881183`, which passed the HTTP smoke check, a real search and a try-on there ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). That search also showed an open problem: the agent called a checked shirt "solid blue" and "without check pattern", and the try-on drew it checked, so the page contradicts itself. The search model sees no category, so it cannot know, and the prompt's rule against calling a product plain did not stop it.
+
 Done when: the checks in the [README](../README.md#check-a-change) pass, the new tests fail on the earlier code, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check, a real search and a try-on there.
 
 ## T-06: Evaluation and submission
