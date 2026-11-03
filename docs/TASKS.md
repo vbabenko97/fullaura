@@ -28,6 +28,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-24](#t-24-fixes-from-a-second-outside-audit) Fixes from a second outside audit | done | 2026-11-02 |
 | [T-25](#t-25-follow-ups-to-the-second-outside-audit) Follow-ups to the second outside audit | done | 2026-11-02 |
 | [T-26](#t-26-fixes-from-a-third-outside-audit) Fixes from a third outside audit | done | 2026-11-02 |
+| [T-27](#t-27-basetens-answer-in-the-data-notice) Baseten's answer in the data notice | done | 2026-11-03 |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | next | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -270,6 +271,14 @@ The audit's patch was not adopted as written. Its check of the price still let a
 These changes have not reached the site.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass and the new tests fail on the earlier code.
+
+## T-27: Baseten's answer in the data notice
+
+The participants' data notice and [DATA.md](DATA.md#model-providers) give Baseten's email answer of 2026-11-02 about FullAura's key and about Meta, in place of the caveat that its policy was unchecked for FullAura's account ([D-87](DECISIONS.md#d-87-the-data-notice-gives-basetens-answer-about-fullauras-key)).
+
+This change has not reached the site.
+
+Done when: the checks in the [README](../README.md#check-a-change) pass and the notice's tests hold the new wording.
 
 ## T-06: Evaluation and submission
 
