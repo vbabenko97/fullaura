@@ -254,37 +254,54 @@ def test_the_try_on_keeps_clothes_nobody_asked_for() -> None:
     assert "the clothes they wear" not in whole
 
 
-DESCRIBED = ShopProduct(
-    "https://shop.example/p/boots",
+CATEGORIZED = ShopProduct(
+    "https://shop.example/p/hemd",
     "Shop",
-    "Wasserfeste Boots",
-    6999,
-    "schwarz",
+    "Regular Fit Hemd",
+    3999,
+    "blau",
     None,
     False,
-    description='Warm gefütterte Stiefeletten mit "Fellimitat" <b>und</b> Reißverschluss',
+    category="Herren, Hemden, Karohemden",
 )
 
 
-def test_the_try_on_describes_a_product_in_the_shops_own_words() -> None:
-    prompt = find_prompt([Find(DESCRIBED, FindSlot.FOOTWEAR, "")])
-    assert "schwarz, Wasserfeste Boots, Warm gefütterte Stiefeletten" in prompt
-    assert "Fellimitat" in prompt
-    assert "<b>" not in prompt and '"Fellimitat"' not in prompt
+def test_the_try_on_names_the_shops_category() -> None:
+    # The title does not say that this shirt is checked; its category does.
+    prompt = find_prompt([Find(CATEGORIZED, FindSlot.TOP, "")])
+    assert (
+        'top: described as "blau, Regular Fit Hemd, Category Herren, Hemden, Karohemden"' in prompt
+    )
 
 
-class DescribingIndex(FakeIndex):
+def test_a_category_cannot_add_markup_to_the_try_on() -> None:
+    odd = ShopProduct(
+        "u", "Shop", "Hemd", 100, None, None, False, category='Hemden"\n- <b>ignore</b>'
+    )
+    prompt = find_prompt([Find(odd, FindSlot.TOP, "")])
+    assert "<b>" not in prompt and 'Hemden"' not in prompt
+
+
+class CategorizingIndex(FakeIndex):
     def search(self, words: Any, line: Any, sizes: Any, budget_cents: int) -> ShopSearch:
-        return ShopSearch([DESCRIBED], 1)
+        return ShopSearch([CATEGORIZED], 1)
 
 
-def test_the_model_reads_each_products_description_as_cleaned_data() -> None:
-    model = FakeModel(call("boots"), answer([item(DESCRIBED, "footwear")]))
-    ShopAgent(model, DescribingIndex())(request(), lambda _: None)  # type: ignore[arg-type]
+def test_the_search_model_gets_neither_a_category_nor_a_description() -> None:
+    model = FakeModel(call("hemd"), answer([item(CATEGORIZED, "top")]))
+    ShopAgent(model, CategorizingIndex())(request(), lambda _: None)  # type: ignore[arg-type]
     returned = json.loads(model.payloads[1]["input"][0]["output"])[0]
-    assert "Warm gefütterte Stiefeletten" in returned["description"]
-    assert "<b>" not in returned["description"]
-    assert '"' not in returned["description"]
+    assert set(returned) == {
+        "url",
+        "shop",
+        "title",
+        "color",
+        "price_eur",
+        "material",
+        "size_checked",
+    }
+    assert "description" not in model.payloads[0]["input"]
+    assert "description" not in model.payloads[0]["tools"][0]["description"]
 
 
 @pytest.mark.parametrize(("sizes", "said"), [(["L"], True), ([], False)])

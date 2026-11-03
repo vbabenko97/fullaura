@@ -150,7 +150,7 @@ class PageFacts:
     title: str
     material: str | None
     offers: tuple[Offer, ...]
-    description: str | None = None
+    category: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -164,7 +164,9 @@ class ShopProduct:
     color: str | None
     material: str | None
     size_checked: bool  # the page lists sizes and has one the person gave, in stock
-    description: str | None = None  # the shop's words: the model cannot see the product otherwise
+    category: str | None = (
+        None  # the shop's path to it; a title may not say that a shirt is checked
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -373,6 +375,32 @@ def _offer_price(offer: dict[str, Any]) -> int | None:
     return cents if cents > 0 else None
 
 
+def _category(html: str) -> str | None:
+    """The shop's path to the product, without its home page and the product's own name, when the
+    page's structured data states one. It is a label and not the shop's wording about the product:
+    Tom Tailor's description field holds only a sales line, so that field is not read."""
+    for block in _JSON_LD.findall(html):
+        try:
+            data = json.loads(block.strip())
+        except (json.JSONDecodeError, RecursionError):
+            continue
+        if not isinstance(data, dict) or data.get("@type") != "BreadcrumbList":
+            continue
+        entries = data.get("itemListElement")
+        if not isinstance(entries, list):
+            continue
+        names = []
+        for entry in entries:
+            if isinstance(entry, dict):
+                item = entry.get("item")
+                name = _text(entry.get("name")) or (_text(item) if isinstance(item, dict) else None)
+                names.append(name)
+        path = [name for name in names[1:-1] if name]
+        if path:
+            return ", ".join(path)[:MAX_TEXT_CHARS]
+    return None
+
+
 def read_page(html: str, *addresses: str) -> PageFacts | None:
     """The facts in a page's structured data about the product it sells, or None when it has no
     price for that product or does not say which one that is. A page holds other products too, such
@@ -383,7 +411,7 @@ def read_page(html: str, *addresses: str) -> PageFacts | None:
         return None
     title, variants = main
     offers: list[Offer] = []
-    material = description = None
+    material = None
     for entry in variants:
         product = entry.product
         listed = product.get("offers") or []
@@ -394,11 +422,6 @@ def read_page(html: str, *addresses: str) -> PageFacts | None:
             if cents is None:
                 continue
             material = material or _text(product.get("material"))
-            description = (
-                description
-                or _text(product.get("description"))
-                or _text((entry.group or {}).get("description"))
-            )
             offers.append(
                 Offer(
                     cents,
@@ -415,7 +438,7 @@ def read_page(html: str, *addresses: str) -> PageFacts | None:
             replace(only, in_stock=only.in_stock and disabled == "false", sizes=(label,))
             for disabled, label in buttons
         ]
-    return PageFacts(title, material, tuple(offers), description) if offers else None
+    return PageFacts(title, material, tuple(offers), _category(html)) if offers else None
 
 
 def _normal_size(size: str) -> str:
@@ -488,7 +511,7 @@ def buyable(url: str, shop: str, facts: PageFacts, sizes: Iterable[str]) -> Shop
         cheapest.color,
         facts.material,
         checked,
-        facts.description,
+        facts.category,
     )
 
 
