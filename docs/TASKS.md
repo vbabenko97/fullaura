@@ -34,7 +34,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-30](#t-30-a-rule-for-reasons-and-a-try-on-from-title-and-color) A rule for reasons, and a try-on from title and color | done | 2026-11-03 |
 | [T-31](#t-31-a-search-survives-a-dropped-connection) A search survives a dropped connection | done | 2026-11-03 |
 | [T-32](#t-32-what-the-first-participants-met) What the first participants met | done | 2026-11-03 |
-| [T-33](#t-33-upper-body-without-a-required-top) Upper body without a required top | next | |
+| [T-33](#t-33-upper-body-without-a-required-top) Upper body without a required top | done | 2026-11-03 |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | next | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -363,6 +363,8 @@ Done when: the checks in the [README](../README.md#check-a-change) pass, the new
 The author chose this after [T-32](#t-32-what-the-first-participants-met) showed that a request for one coat under "Upper body" could return no products, or a shirt that nobody asked for. Code now accepts any combination of a top, a mid layer and an outer layer there, and the prompt asks the agent to follow the request ([D-96](DECISIONS.md#d-96-upper-body-takes-what-the-request-asks-for)). Following the request rests on the model, not on a check.
 
 On this code, with the real model and shops, ten runs all returned products: six coat requests each returned a coat alone, and four general requests each returned a top with layers. One drawing on a synthetic persona showed the coat over the clothes in the full-body photo. The search conditions were written before the runs. These checks cost about $0.15 outside the ledger.
+
+The work reached the site with the deployment of `bf7d4b6`, which passed the HTTP smoke check there ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). No search has run on that revision yet.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, the new tests fail on the earlier code, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check.
 
