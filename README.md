@@ -4,24 +4,55 @@
 
 **Built with Muse Spark Open.**
 
-FullAura is a web app that helps you choose clothes you can buy. Say what you need, and an agent searches three supported shops, Tom Tailor, Tchibo and Giesswein, for real products while code checks each price and stock on the shop's own page. Warmth, whether items go together and style stay the agent's judgment. FullAura also plans three looks from a small checked catalog, around your preferences, budget and existing wardrobe.
+FullAura is a web app, in closed beta, that helps you choose clothes you can buy. Say what you need, and an agent searches three supported shops, Tom Tailor, Tchibo and Giesswein, for real products while code checks each price and stock on the shop's own page. Warmth, whether items go together and style stay the agent's judgment. It was built for the Meta Global AI Developer Hackathon ([what was built during the event](#built-during-the-hackathon)).
 
-Muse Spark 1.3 is the agent, Muse Spark Open plans the looks, and Muse Image draws an experimental try-on on your own photos. Every product links to its shop. When you keep an item, change a preference or lower the budget, code checks the changed plan again. Hair and beard previews are planned.
+![FullAura's page after a search: the request on the left, and on the right the total, what code checked, two Tom Tailor products with the agent's reasons, and the start of the try-on panel](docs/demo/call_result.png)
 
-## Status: closed beta
+*Recorded run, 2 November 2026: the deployed site's answer to "Something smart for a video call", two products for €99.98. Since then, a search also reads the size lists on Tom Tailor's pages and compares them with the sizes given, within one size system; Tchibo's and Giesswein's sizes stay unchecked. [See the whole run](docs/DEMO.md).*
 
-The [Azure site](https://fullaura-demo.blackbay-aaeee2c5.francecentral.azurecontainerapps.io) serves invited people only ([docs/BETA.md](docs/BETA.md)). Without an invite, [a recorded run](docs/DEMO.md) shows what the site answered on 2 November 2026.
+## Try it
+
+- **Without an invite:** [a recorded run](docs/DEMO.md) shows two searches and a try-on as they ran on the deployed site, with no live model calls.
+- **With an invite:** the [hosted closed beta](https://fullaura-demo.blackbay-aaeee2c5.francecentral.azurecontainerapps.io) needs an invite because each search and try-on is a paid model call ([docs/BETA.md](docs/BETA.md)). After the site has been idle, it can take about 30 seconds to open.
+- **With your own keys:** [run it locally](#run-locally). The interface and catalog load without keys, and model calls are charged to your keys.
+
+## What it does
 
 An invited person confirms they are 18 or older and then uses either mode:
 
 - **Find it for me.** They say what they need, and the agent answers with real products they can try on.
-- **Three looks from the catalog.** They state a style goal, budget, shoes, sizes and optional wishes, and get three looks from a catalog of real products that ship to Austria, checked in code against the hard constraints. They can try a look on their own photos as an experimental visualization, keep items, lower the budget, replace one item, copy or print a shared shopping list, save plans on their device, restore them, and send feedback.
+- **Three looks from the catalog.** They state a style goal, budget, shoes, sizes, optional wishes and items they already own, and get three looks from a small catalog of real products that ship to Austria, checked in code against the hard constraints. They can try a look on their own photos as an experimental visualization, keep items, lower the budget, replace one item, copy or print a shared shopping list, save plans on their device, restore them, and send feedback. When they keep an item, change a preference or lower the budget, code checks the changed plan again.
 
-The limits of the beta:
+Every product links to its shop. FullAura calls three of Meta's models:
+
+| Model | What it does | Where it runs |
+| --- | --- | --- |
+| Muse Spark 1.3 | The shopping agent: asks for products by words in their addresses and chooses among those returned | Meta's API, Standard mode |
+| Muse Spark Open | Plans the three looks | Baseten |
+| Muse Image | Draws the experimental try-on from two photos and text the server writes | Meta's API, Standard mode |
+
+## Limits of the closed beta
 
 - Each invite has 8 planning requests and 12 try-ons, and a shared ledger stops model calls when the beta's $8 planning or $3 image budget is used up.
 - Model calls close at the end of the pilot, on 10 November 2026 at 06:00 Vienna time. At 10:00 that day a scheduled job deletes the pilot's records and the beta closes.
-- The try-on's formal [feasibility test](docs/FEASIBILITY.md) has not run yet, because it waits for its inputs, and hair and beard previews are not implemented.
+- The try-on's formal [feasibility test](docs/FEASIBILITY.md) has not run yet, because it waits for its inputs, and hair and beard previews are planned and not implemented.
+
+## Built during the hackathon
+
+FullAura was built for the Meta Global AI Developer Hackathon, in the Indie Developer track under the theme Build for Your World. The event opened on 26 October 2026 at 18:00 Vienna time, and the first commit in this repository is from 20:34 that evening, under the name LookPilot; the project became FullAura on 27 October ([D-19](docs/DECISIONS.md#d-19-the-product-is-named-fullaura)). The commit history shows when each part was added.
+
+Built during the event:
+
+- the shopping agent and the checks on its choice (`backend/app/shopper.py`);
+- the reader of shops' sitemaps and product pages (`backend/app/shops.py`);
+- the try-on on a person's own photos (`backend/app/photos.py`, `backend/app/meta_images.py`);
+- the catalog, its hard constraints and the planner of three looks (`backend/app/catalog.py`, `constraints.py`, `planner.py`);
+- the closed beta: invites, quotas, the spending ledger, the job that deletes its records, and the Azure deployment;
+- the interface in `frontend/`.
+
+Not built here: Meta's models, which FullAura calls (Muse Spark 1.3 and Muse Image on Meta's API, Muse Spark Open through Baseten), and the open-source libraries listed in `uv.lock` and `frontend/package-lock.json`. Product facts come from the shops' own pages, and FullAura shows no shop's image; [docs/DATA.md](docs/DATA.md) records each source and its terms.
+
+One person built FullAura, working with AI coding agents. Most commits carry a `Co-Authored-By: Claude` line, and a few list Claude as their author.
 
 ## Run locally
 
@@ -114,22 +145,8 @@ uv run --frozen python scripts/smoke_http.py
 - [Planning evaluation protocol](docs/EVALUATION.md)
 - [Feasibility test of the try-on](docs/FEASIBILITY.md)
 - [Contributor and coding-agent guidance](AGENTS.md)
+- [Reporting a security problem](.github/SECURITY.md)
 
-## Built during the hackathon
-
-FullAura was built for the Meta Global AI Developer Hackathon, in the Indie Developer track under the theme Build for Your World. The event opened on 26 October 2026 at 18:00 Vienna time, and the first commit in this repository is from 20:34 that evening, under the name LookPilot; the project became FullAura on 27 October ([D-19](docs/DECISIONS.md#d-19-the-product-is-named-fullaura)). The commit history shows when each part was added.
-
-Built during the event:
-
-- the shopping agent and the checks on its choice (`backend/app/shopper.py`);
-- the reader of shops' sitemaps and product pages (`backend/app/shops.py`);
-- the try-on on a person's own photos (`backend/app/photos.py`, `backend/app/meta_images.py`);
-- the catalog, its hard constraints and the planner of three looks (`backend/app/catalog.py`, `constraints.py`, `planner.py`);
-- the closed beta: invites, quotas, the spending ledger, the job that deletes its records, and the Azure deployment;
-- the interface in `frontend/`.
-
-Not built here: Meta's models, which FullAura calls (Muse Spark 1.3 and Muse Image on Meta's API, Muse Spark Open through Baseten), and the open-source libraries listed in `uv.lock` and `frontend/package-lock.json`. Product facts come from the shops' own pages, and FullAura shows no shop's image; [docs/DATA.md](docs/DATA.md) records each source and its terms.
-
-One person built FullAura, working with AI coding agents. Most commits carry a `Co-Authored-By: Claude` line, and a few list Claude as their author.
+## License
 
 Source code is available under the [MIT license](LICENSE). Third-party models, product data, and photographs retain their own terms.
