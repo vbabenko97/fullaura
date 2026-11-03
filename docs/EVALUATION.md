@@ -1,6 +1,6 @@
 # Planning evaluation
 
-The T-06 protocol compares Muse Spark's generated and code-checked plans with a deterministic baseline on the same fixed, non-personal cases. Live comparisons ran on 2026-10-29 against code commit `2ade8433a27b8dd6c6873a765aedcb805d467b3d` and on 2026-10-30 against `dd8ba6689b46d37da16269d52e4fd21f859067e4`, which includes the fit constraint and the example-fit case. The demo video and submission remain outstanding.
+This protocol, part of [T-06](TASKS.md#t-06-evaluation-and-submission), compares Muse Spark's generated and code-checked plans with a deterministic baseline on the same fixed, non-personal cases. Live comparisons ran on 2026-10-29 against code commit `2ade8433a27b8dd6c6873a765aedcb805d467b3d` and on 2026-10-30 against `dd8ba6689b46d37da16269d52e4fd21f859067e4`, which includes the fit constraint and the example-fit case. The demo video and submission remain outstanding.
 
 ## Cases
 
@@ -96,7 +96,7 @@ The runner records machine-checked results separately from human judgments:
 - Catalog price: the selected plan's EUR cents under the case's budget mode. This is product price, not model usage cost.
 - Human judgment: for `mens-fit-per-look` only, the two yes-or-no answers for each look described in [Human scoring](#human-scoring), with a note where an answer needs explanation. These answers do not change the hard-constraint result.
 
-The planner records aggregate proposal counters and logs them. The counters do not include the brief or raw provider response. Live runs write raw HTTP response bodies to `provider_responses.jsonl` under the ignored run folder; the PR contains only validated item IDs and aggregate metrics. HTTP error bodies redact the API key if it appears in a response.
+The planner records aggregate proposal counters and logs them. The counters do not include the brief or raw provider response. Live runs write raw HTTP response bodies to `provider_responses.jsonl` under the ignored run folder; what is committed contains only validated item IDs and aggregate metrics. HTTP error bodies redact the API key if it appears in a response.
 
 ## Run
 
@@ -113,7 +113,7 @@ uv run --frozen --env-file .env python -m scripts.evaluate_planner \
   --live --case-id wool-free-per-look
 ```
 
-The live runner uses `BASETEN_API_KEY` from the environment and enforces `meta-models/muse-spark-open-1026` at `https://inference.baseten.co/v1`. `--live` without at least one `--case-id` is rejected. The PR records aggregate run results; raw provider responses remain in the ignored run folder.
+The live runner uses `BASETEN_API_KEY` from the environment and enforces `meta-models/muse-spark-open-1026` at `https://inference.baseten.co/v1`. `--live` without at least one `--case-id` is rejected. This file records aggregate run results; raw provider responses remain in the ignored run folder.
 
 Each run writes `run.json`, `source.diff` and `human_scores.csv` under ignored `runs/t06/`. A live run also writes `provider_responses.jsonl`. The run manifest records the case inputs, model endpoint and ID, catalog and source-code hashes, attempt ceiling, token rates and Git revision.
 
