@@ -311,7 +311,8 @@ Dress for the occasion the person names. For a wedding or another formal event, 
 tailored pieces, such as sakko, anzughose, kleid or bluse and rock, and use the budget they need; a
 checked shirt, sneakers or lined winter boots do not suit one. Prefer a product with size_checked
 true. Judge each product by its title and material, and give a reason they support: never call a
-product elegant, smart or plain unless they do. A word can return nothing, so try a plainer one
+product elegant, smart or plain unless they do, and state a pattern, lining or fabric, or its
+absence, only if the title or material gives it. A word can return nothing, so try a plainer one
 before giving up. Offer the closest choice and say in its reason where it falls short. Use why_not
 only when nothing returned could be worn for the request.
 
@@ -632,15 +633,13 @@ def find_json(result: FindResult, request: FindRequest, token: str | None) -> di
 
 def find_prompt(finds: list[Find]) -> str:
     """The try-on prompt for what the agent found: each item's position and the words of the shop's
-    color, title and category, as a description. A title may not say what the category does: with
-    the category, a checked shirt was drawn checked in two drawings of two, and plain without it.
-    Clothes that were not asked for stay as in the photo."""
+    color and title, as a description. No shop description or category goes to the model for the
+    limited test, so a pattern or detail that the title does not name can be missing from the
+    drawing (D-92). Clothes that were not asked for stay as in the photo."""
     lines = []
     for find in finds:
-        product = find.product
-        category = f"Category {product.category}" if product.category else ""
-        words = [product.color or "", product.title, category]
-        described = plain_words(", ".join(word for word in words if word), 300)
+        words = [find.product.color or "", find.product.title]
+        described = plain_words(", ".join(word for word in words if word), 160)
         lines.append(f'- {find.slot.value}: described as "{described}"')
     slots = {find.slot for find in finds}
     dressed = FindSlot.ONE_PIECE in slots or {FindSlot.TOP, FindSlot.BOTTOM} <= slots

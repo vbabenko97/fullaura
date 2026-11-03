@@ -31,6 +31,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-27](#t-27-basetens-answer-in-the-data-notice) Baseten's answer in the data notice | done | 2026-11-03 |
 | [T-28](#t-28-search-results-a-person-can-use) Search results a person can use | done | 2026-11-03 |
 | [T-29](#t-29-no-shop-description-reaches-a-model) No shop description reaches a model | done | 2026-11-03 |
+| [T-30](#t-30-a-rule-for-reasons-and-a-try-on-from-title-and-color) A rule for reasons, and a try-on from title and color | done | 2026-11-03 |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | next | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -302,7 +303,7 @@ Done when: the checks in the [README](../README.md#check-a-change) pass, the new
 
 ## T-29: No shop description reaches a model
 
-A review of T-28 asked whether shop descriptions caused its better results, and whether FullAura may send them to Meta. A blind comparison followed, with its rules set before the results. On all 39 products it compared, Tom Tailor's description field held only a sales line, so that wording added nothing. The comparison supports the combined changes to the prompt and search words, and it did not isolate those two from each other ([D-92](DECISIONS.md#d-92-no-shop-description-reaches-a-model-and-only-a-try-on-uses-the-category)).
+A review of T-28 asked whether shop descriptions caused its better results, and whether FullAura may send them to Meta. A blind comparison followed, with its rules set before the results. On all 39 products it compared, Tom Tailor's description field held only a sales line, so that wording added nothing. The comparison supports the combined changes to the prompt and search words, and it did not isolate those two from each other ([D-92](DECISIONS.md#d-92-no-shop-description-or-category-reaches-a-model)).
 
 Code no longer reads a description. The search model gets no description and no category. A try-on's text uses the shop's category path as a provisional choice for the demo, because it drew a checked shirt as checked in both drawings of it, where the other prompts drew it plain. Whether FullAura may send shop text, categories included, stays open for the author ([DATA.md](DATA.md)).
 
@@ -311,6 +312,18 @@ On this code, with the real model and shops on this machine, the six compared ca
 The work reached the site with the deployment of `f881183`, which passed the HTTP smoke check, a real search and a try-on there ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). That search also showed an open problem: the agent called a checked shirt "solid blue" and "without check pattern", and the try-on drew it checked, so the page contradicts itself. The search model sees no category, so it cannot know, and the prompt's rule against calling a product plain did not stop it.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, the new tests fail on the earlier code, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check, a real search and a try-on there.
+
+## T-30: A rule for reasons, and a try-on from title and color
+
+On the author's instruction of 2026-11-03, for the limited test:
+
+- The search prompt tells the agent to state a pattern, lining or fabric, or its absence, only if the title or material gives it. This is a mitigation, not a guarantee.
+- Code no longer reads a shop's category, and a try-on's text holds only the shop's color and title. The try-on panel and [BETA.md](BETA.md#for-participants) say that a pattern or detail the title does not name can be missing ([D-92](DECISIONS.md#d-92-no-shop-description-or-category-reaches-a-model)).
+- The author accepted [D-90](DECISIONS.md#d-90-a-tab-keeps-its-last-search-and-a-reload-collects-a-running-one) and [D-91](DECISIONS.md#d-91-a-search-is-kept-from-the-moment-it-is-sent), and [D-88](DECISIONS.md#d-88-a-search-compares-sizes-the-page-lists-within-their-own-system) provisionally. D-92 stays proposed, and whether FullAura may send shop titles stays open.
+
+The rule was tested with the real model and shops on this machine, in a shuffled order: 13 runs of the prompt as deployed and 13 of the new one, on a bank interview (5 each), a men's wedding (5 each) and a women's wedding (3 each). All 26 returned products. With the prompt as deployed, 6 of 46 reasons, in 6 of 13 runs, stated a pattern or its absence that the title and material do not give, such as "solid" or "without check". With the new prompt, none of 46 reasons did. A first count by code was wrong, because it took "size-checked" for a pattern, so the count was redone, and all 46 reasons of the new prompt were also read. Thirteen clean runs would still fit such claims in up to about one run in five, so this does not show that they stop. The new prompt's reasons mostly list materials, and they can still judge a product "formal" or "suitable" without support.
+
+Done when: the checks in the [README](../README.md#check-a-change) pass, the new tests fail on the earlier code, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check, a real search and a try-on there. Invitations stay on hold until then.
 
 ## T-06: Evaluation and submission
 
