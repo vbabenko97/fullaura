@@ -33,7 +33,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-29](#t-29-no-shop-description-reaches-a-model) No shop description reaches a model | done | 2026-11-03 |
 | [T-30](#t-30-a-rule-for-reasons-and-a-try-on-from-title-and-color) A rule for reasons, and a try-on from title and color | done | 2026-11-03 |
 | [T-31](#t-31-a-search-survives-a-dropped-connection) A search survives a dropped connection | done | 2026-11-03 |
-| [T-32](#t-32-what-the-first-participants-met) What the first participants met | next | |
+| [T-32](#t-32-what-the-first-participants-met) What the first participants met | done | 2026-11-03 |
 | [T-06](#t-06-evaluation-and-submission) Evaluation and submission | next | |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
@@ -345,11 +345,15 @@ Done when: the checks in the [README](../README.md#check-a-change) pass, the new
 
 The first participants tested the deployed site on 2026-11-03, and the author chose these changes on their feedback:
 
-- A try-on drew clothes that a participant had not expected. The try-on's text tells the model to keep what was not asked for as in the full-body photo, and it holds nothing of what the person typed, but the page did not say so. The try-on panel now says it. Whether this was the cause is not confirmed: photos and prompts are not stored. In eight real searches with similar words, each found a coat, and none of the four whole outfits held jeans or sneakers.
+- A try-on drew clothes that a participant had not expected. The try-on's text tells the model to keep what was not asked for as in the full-body photo, and it holds nothing of what the person typed, but the page did not say so. The try-on panel now says it. The participant later said which scope they chose and what they wore in the full-body photo, and both fit this, although photos and prompts are not stored, so the drawing itself cannot be checked.
 - Participants asked to see the products. FullAura records no right to show the shops' photos ([D-25](DECISIONS.md#d-25-product-facts-and-product-images-need-different-rights), [D-56](DECISIONS.md#d-56-a-variant-can-carry-a-photo-only-with-recorded-rights)), so a search's shop link now reads "View at Tom Tailor" in place of the shop's name alone.
 - One server stays running during the test ([D-95](DECISIONS.md#d-95-one-server-stays-running-during-the-limited-test)).
 
 Not done: sending what the person typed to the image model, which would change the data notice, and taking height and weight into account.
+
+The work reached the site with the deployment of `1be5341`, which passed the HTTP smoke check and kept its replica through about ten idle minutes ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)).
+
+An open problem came out of these checks, tested with the real model, shops and image model on a synthetic persona. "Upper body" refuses a choice without a top, so a request for one coat cannot get only a coat. In six runs on the current rule, three returned no products, which uses a request, and three added a shirt that nobody asked for. In the two runs traced, the agent's first answer was the coat alone. The drawings then showed the coat, the added shirt and the trousers and shoes of the full-body photo. With a changed rule, patched only in the test, all six runs succeeded: four coat requests returned a coat alone, and two general requests still returned a shirt and a jacket. These are few runs. The tests cost about $0.38 outside the ledger.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, the new tests fail on the earlier code, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check and one replica running after five idle minutes.
 
