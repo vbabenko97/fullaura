@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { ApiResponseError, collectFind, errorMessage, newOperationId, parseFindLine, postLines } from "./api";
-import { keepLastSearch, loadLastSearch } from "./findStorage";
+import { forgetLastSearch, keepLastSearch, loadLastSearch } from "./findStorage";
 import type { FindLine, SearchForm } from "./findStorage";
 import { formatMoney } from "./format";
 import { TryOnPanel } from "./TryOnPanel";
@@ -10,6 +10,9 @@ import type { FindResponse, FindScope, Session } from "./types";
 const COLLECT_EVERY_MS = 3000;
 // The server counts a search as interrupted after this long, so its answer will not come later.
 const COLLECT_FOR_MS = 300_000;
+// A server that has just woken knows a search only once it has read the shops' lists, for which it
+// waits up to a minute, so until then "unknown" means not yet.
+const NOT_YET_KNOWN_FOR_MS = 75_000;
 const COLLECTING = "Your search kept running during the reload. Waiting for its answer.";
 
 const SCOPES: { value: FindScope; label: string }[] = [
@@ -75,12 +78,12 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
   // Asking where a search stands is free and starts nothing, so a reload never pays for another.
   useEffect(() => {
     if (remembered === null || remembered.operation_id === null || remembered.result !== null) return;
-    const { form, operation_id: operationId } = remembered;
+    const { form, operation_id: operationId, sent_at: sentAt } = remembered;
     let active = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
     const giveUpAt = Date.now() + COLLECT_FOR_MS;
     const end = (answer: FindResponse | null, message: string | null) => {
-      keepLastSearch({ form, operation_id: null, result: answer }, session.invite_scope);
+      keepLastSearch({ form, operation_id: null, sent_at: null, result: answer }, session.invite_scope);
       setResult(answer);
       setError(message);
       setSteps([]);
@@ -97,8 +100,11 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
       } catch (failure) {
         if (!active) return;
         if (failure instanceof ApiResponseError) {
-          end(null, errorMessage(failure));
-          return;
+          const notYet = failure.reason === "find_unknown" && Date.now() < (sentAt ?? 0) + NOT_YET_KNOWN_FOR_MS;
+          if (!notYet) {
+            end(null, errorMessage(failure));
+            return;
+          }
         }
       }
       if (Date.now() >= giveUpAt) {
@@ -138,6 +144,10 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
     requestAnimationFrame(() => heading.current?.scrollIntoView?.({ block: "start" }));
     const form: SearchForm = { request: request.trim(), scope, line, sizes, budget };
     const operationId = newOperationId();
+    // Kept before it is sent: a server that has just woken answers only once it has read the shops'
+    // lists, about six seconds later, and it goes on with a search whose page has reloaded.
+    const earlier = loadLastSearch(session.invite_scope);
+    keepLastSearch({ form, operation_id: operationId, sent_at: Date.now(), result: null }, session.invite_scope);
     try {
       let answer: FindResponse | null = null;
       let accepted = false;
@@ -157,7 +167,6 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
           if (!accepted) {
             accepted = true;
             setResult(null);
-            keepLastSearch({ form, operation_id: operationId, result: null }, session.invite_scope);
           }
           const parsed = parseFindLine(value);
           if (parsed.kind === "step") setSteps((current) => [...current, parsed.step]);
@@ -166,9 +175,14 @@ export function ShopMode({ session, closedText, remaining, onConsent, onFinished
       );
       if (answer) setResult(answer);
       else setError("The search ended without a result. Try again.");
-      keepLastSearch({ form, operation_id: null, result: answer }, session.invite_scope);
+      keepLastSearch({ form, operation_id: null, sent_at: null, result: answer }, session.invite_scope);
     } catch (failure) {
-      // A lost connection leaves the kept search open, so a reload can still collect its answer.
+      // A refusal started nothing, so the earlier search stays. A lost connection leaves this one
+      // open, as the server may have received it and a reload can still collect its answer.
+      if (failure instanceof ApiResponseError) {
+        if (earlier) keepLastSearch(earlier, session.invite_scope);
+        else forgetLastSearch();
+      }
       setError(errorMessage(failure));
     } finally {
       settled();

@@ -23,6 +23,8 @@ export interface LastSearch {
   form: SearchForm;
   /** Set while the search may still be running, so the page can collect its answer. */
   operation_id: string | null;
+  /** When that search was sent, in milliseconds since the epoch. */
+  sent_at: number | null;
   result: FindResponse | null;
 }
 
@@ -53,7 +55,7 @@ function readResult(value: unknown): FindResponse | null {
   return parsed.kind === "result" ? parsed.result : null;
 }
 
-function forget(): void {
+export function forgetLastSearch(): void {
   try {
     sessionStorage.removeItem(KEY);
   } catch {
@@ -70,7 +72,7 @@ export function loadLastSearch(scope: string | null): LastSearch | null {
     const value: unknown = JSON.parse(text);
     if (!isRecord(value)) return null;
     if ((value.invite_scope ?? null) !== scope) {
-      forget();
+      forgetLastSearch();
       return null;
     }
     const form = readForm(value.form);
@@ -78,6 +80,7 @@ export function loadLastSearch(scope: string | null): LastSearch | null {
     return {
       form,
       operation_id: typeof value.operation_id === "string" ? value.operation_id : null,
+      sent_at: typeof value.sent_at === "number" ? value.sent_at : null,
       result: value.result === null || value.result === undefined ? null : readResult(value.result),
     };
   } catch {
