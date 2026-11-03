@@ -14,6 +14,7 @@ import {
 import { AccessGate } from "./AccessGate";
 import { ConceptCard } from "./ConceptCard";
 import { FeedbackForm } from "./FeedbackForm";
+import { loadLastSearch } from "./findStorage";
 import { budgetKept, formatCheckedRange, formatMoney, lookLabel } from "./format";
 import { LookCard } from "./LookCard";
 import {
@@ -729,7 +730,10 @@ function Workspace({ invite, onOtherInvite }: { invite: string | null; onOtherIn
             ? "Planning is paused because the beta's shared budget is used up, or the model is not configured."
             : null;
   useEffect(() => {
-    if (!session?.find_open) return;
+    if (!session) return;
+    // Closed, the mode still shows a search this tab holds: a reload must not hide what the invite's
+    // last request paid for.
+    if (!session.find_open && loadLastSearch(session.invite_scope) === null) return;
     // First seen with work already on the catalog's page, the mode must not take the page away.
     if (!findSeen && (current || requestState === "loading")) setCatalogMode(true);
     setFindSeen(true);
