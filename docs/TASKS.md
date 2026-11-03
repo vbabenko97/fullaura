@@ -268,7 +268,7 @@ A third outside audit of the source, made with GPT, named two defects. Both were
 
 The audit's patch was not adopted as written. Its check of the price still let an offer of another type or no type through, and it did not apply to the source.
 
-These changes have not reached the site.
+These changes reached the site with the deployment of `029b163`.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass and the new tests fail on the earlier code.
 
@@ -276,7 +276,7 @@ Done when: the checks in the [README](../README.md#check-a-change) pass and the 
 
 The participants' data notice and [DATA.md](DATA.md#model-providers) give Baseten's email answer of 2026-11-02 about FullAura's key and about Meta, in place of the caveat that its policy was unchecked for FullAura's account ([D-87](DECISIONS.md#d-87-the-data-notice-gives-basetens-answer-about-fullauras-key)).
 
-This change has not reached the site.
+This change reached the site with the deployment of `029b163`, where the notice was also checked in Chromium ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)).
 
 Done when: the checks in the [README](../README.md#check-a-change) pass and the notice's tests hold the new wording.
 
