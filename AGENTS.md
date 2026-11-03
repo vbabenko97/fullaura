@@ -8,7 +8,7 @@ Read `README.md` and `docs/SPEC.md` before changing product behavior. `docs/TASK
 - Use type hints, validated boundaries, and small dependencies. Keep `uv.lock` and `frontend/package-lock.json` in sync with dependency changes.
 - Start with a single backend and one frontend. Add a database, job queue, or extra model when a working use case requires it.
 - Keep model calls on the server. Add explicit timeouts, bounded retries, and usage accounting when implementing the provider adapter.
-- Follow the product rules in `docs/SPEC.md`: hard constraints validated in code against structured state, recommendations only from catalog records, previews labeled as previews, and no inference of sensitive traits from photographs.
+- Follow the product rules in `docs/SPEC.md`: hard constraints validated in code against structured state, recommendations only from catalog records or shop pages that code read, previews labeled as previews, and no inference of sensitive traits from photographs.
 
 ## Data and credentials
 

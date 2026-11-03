@@ -8,7 +8,20 @@ Say what you need, and an agent searches three supported shops for real products
 
 FullAura aims to combine outfits, optional hair and beard previews, and links to real products. A plan should remain consistent when you keep an item, change a preference, or lower the budget.
 
-**Status: closed beta.** The [Azure site](https://fullaura-demo.blackbay-aaeee2c5.francecentral.azurecontainerapps.io) serves invited people only ([docs/BETA.md](docs/BETA.md)). Without an invite, [a recorded run](docs/DEMO.md) shows what the site answered on 2 November 2026. An invited person confirms they are 18 or older and says what they need, and the agent answers with real products they can try on. In the second mode, they state a style goal, budget, shoes, sizes and optional wishes, and get three looks from a catalog of real products that ship to Austria, checked in code against the hard constraints. There they can try a look on their own photos as an experimental visualization, keep items, lower the budget, replace one item, copy or print a shared shopping list, save plans on their device, restore them, and send feedback. Each invite has 8 planning requests and 12 try-ons, and a shared ledger stops model calls when the beta's $8 planning or $3 image budget is used up. Model calls close at the end of the pilot, on 10 November 2026 at 06:00 Vienna time; at 10:00 that day a scheduled job deletes the pilot's records and the beta closes. The try-on has not passed the formal feasibility test (T-02), and hair and beard previews are not implemented.
+## Status: closed beta
+
+The [Azure site](https://fullaura-demo.blackbay-aaeee2c5.francecentral.azurecontainerapps.io) serves invited people only ([docs/BETA.md](docs/BETA.md)). Without an invite, [a recorded run](docs/DEMO.md) shows what the site answered on 2 November 2026.
+
+An invited person confirms they are 18 or older and then uses either mode:
+
+- **Find it for me.** They say what they need, and the agent answers with real products they can try on.
+- **Three looks from the catalog.** They state a style goal, budget, shoes, sizes and optional wishes, and get three looks from a catalog of real products that ship to Austria, checked in code against the hard constraints. They can try a look on their own photos as an experimental visualization, keep items, lower the budget, replace one item, copy or print a shared shopping list, save plans on their device, restore them, and send feedback.
+
+The limits of the beta:
+
+- Each invite has 8 planning requests and 12 try-ons, and a shared ledger stops model calls when the beta's $8 planning or $3 image budget is used up.
+- Model calls close at the end of the pilot, on 10 November 2026 at 06:00 Vienna time. At 10:00 that day a scheduled job deletes the pilot's records and the beta closes.
+- The try-on has not passed the formal [feasibility test](docs/FEASIBILITY.md), and hair and beard previews are not implemented.
 
 ## Run locally
 
@@ -39,9 +52,17 @@ npm run dev
 
 Open the link in `data/private/beta-dev/invites.csv`. Vite forwards `/api` requests to the backend at port 8000. Development API docs are at <http://localhost:8000/api/docs>.
 
+### Settings for local development
+
 Development always opens the beta; production opens it only with `FULLAURA_BETA_ENABLED=true`. Without `FULLAURA_STORE_URL`, development keeps quotas, spending and feedback in memory; `file:///absolute/folder` keeps them across restarts. Without `FULLAURA_SESSION_SECRET`, each start signs cookies with a new secret, so the invite link must be opened again. `FULLAURA_DESIGN_MODE=true` adds the experimental Design My Look mode ([docs/SPEC.md](docs/SPEC.md#design-my-look)).
 
-Planning needs `BASETEN_API_KEY` in `.env`, which Git ignores, and the shopping agent and the try-on need Meta Standard-mode access through `MODEL_API_KEY`. These calls cost money and count against the invite's quota and the beta's budget. The server asks Muse Spark Open on Baseten for three looks and checks them against the hard constraints; it writes the try-on prompt from the checked look, and the browser sends only two photos, redrawn as JPEGs without metadata. Loading the interface and catalog needs no cloud credentials. Two scripts also call models, with keys from `.env`: the feasibility test script ([docs/FEASIBILITY.md](docs/FEASIBILITY.md)) calls Meta, and the model smoke check makes one small call to each model and prints its status, latency and token usage:
+### Model keys
+
+Planning needs `BASETEN_API_KEY` in `.env`, which Git ignores, and the shopping agent and the try-on need Meta Standard-mode access through `MODEL_API_KEY`. These calls cost money and count against the invite's quota and the beta's budget. Loading the interface and catalog needs no cloud credentials.
+
+The server asks Muse Spark Open on Baseten for three looks and checks them against the hard constraints; it writes the try-on prompt from the checked look, and the browser sends only two photos, redrawn as JPEGs without metadata.
+
+Two scripts also call models, with keys from `.env`: the feasibility test script ([docs/FEASIBILITY.md](docs/FEASIBILITY.md)) calls Meta, and the model smoke check makes one small call to each model and prints its status, latency and token usage:
 
 ```bash
 uv run --frozen --env-file .env python -m scripts.smoke_models
@@ -81,7 +102,7 @@ While the container is running, check it from another terminal:
 uv run --frozen python scripts/smoke_http.py
 ```
 
-## Continue development
+## Documents
 
 - [Product specification](docs/SPEC.md)
 - [Tasks in build order](docs/TASKS.md)
@@ -91,6 +112,7 @@ uv run --frozen python scripts/smoke_http.py
 - [Azure deployment](docs/DEPLOYMENT.md)
 - [Data and asset provenance](docs/DATA.md)
 - [Planning evaluation protocol](docs/EVALUATION.md)
+- [Feasibility test of the try-on](docs/FEASIBILITY.md)
 - [Contributor and coding-agent guidance](AGENTS.md)
 
 ## Built during the hackathon
