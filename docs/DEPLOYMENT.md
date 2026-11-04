@@ -15,7 +15,7 @@ This document holds, in order: the [deployed configuration](#deployed-configurat
 | Log Analytics workspace | `law-fullaura-demo-frc`, 30-day retention |
 | Container Apps environment | `cae-fullaura-demo-frc`, Consumption workload profile |
 | Container App | `fullaura-demo`, with a system-assigned managed identity |
-| Revision | `fullaura-demo--0000033`, serving all traffic since 2026-11-03 |
+| Revision | `fullaura-demo--0000036`, serving all traffic since 2026-11-03 |
 | Compute and scaling | 0.5 vCPU / 1 GiB; minimum 1 and maximum 1 replica until the pilot's records are deleted ([D-95](DECISIONS.md#d-95-one-server-stays-running-during-the-limited-test)); with minimum 0 it scales to zero after 300 seconds without traffic |
 | Ingress | External HTTPS, target port 8000, insecure HTTP disabled |
 | Beta | `FULLAURA_BETA_ENABLED=true`; 19 invite digests in the secret `invite-hashes` (10 for participants, 4 for the operator: the first, whose planning requests are used up, two added on 2026-10-31 for the T-08 acceptance and the demo video, and one added on 2026-11-02 for recording the video; and 5 added on 2026-11-02 for judges, not yet given to anyone); cookies signed with the secret `session-secret` |

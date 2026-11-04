@@ -13,7 +13,7 @@ FullAura is a web app, in closed beta, that helps you choose clothes you can buy
 ## Try it
 
 - **Without an invite:** [a recorded run](docs/DEMO.md) shows two searches and a try-on as they ran on the deployed site, with no live model calls.
-- **With an invite:** the [hosted closed beta](https://fullaura-demo.blackbay-aaeee2c5.francecentral.azurecontainerapps.io) needs an invite because each search and try-on is a paid model call ([docs/BETA.md](docs/BETA.md)). After the site has been idle, it can take about 30 seconds to open.
+- **With an invite:** the [hosted closed beta](https://fullaura-demo.blackbay-aaeee2c5.francecentral.azurecontainerapps.io) needs an invite because each search and try-on is a paid model call ([docs/BETA.md](docs/BETA.md)).
 - **With your own keys:** [run it locally](#run-locally). The interface and catalog load without keys, and model calls are charged to your keys.
 
 ## What it does
