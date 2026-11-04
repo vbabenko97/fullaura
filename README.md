@@ -12,7 +12,9 @@ FullAura is a web app, in closed beta, that helps you choose clothes you can buy
 
 ## Try it
 
+- **Watch:** [the demo video](https://youtu.be/iHPLdXnKQ6w) was recorded on the deployed site on 4 November 2026.
 - **Without an invite:** [a recorded run](docs/DEMO.md) shows two searches and a try-on as they ran on the deployed site, with no live model calls.
+- **Without an invite or keys:** [click through the flow locally](#without-keys-on-scripted-data) on scripted data. No model or shop is called, so nothing it shows is model output.
 - **With an invite:** the [hosted closed beta](https://fullaura-demo.blackbay-aaeee2c5.francecentral.azurecontainerapps.io) needs an invite because each search and try-on is a paid model call ([docs/BETA.md](docs/BETA.md)).
 - **With your own keys:** [run it locally](#run-locally). The interface and catalog load without keys, and model calls are charged to your keys.
 
@@ -82,6 +84,21 @@ npm run dev
 ```
 
 Open the link in `data/private/beta-dev/invites.csv`. Vite forwards `/api` requests to the backend at port 8000. Development API docs are at <http://localhost:8000/api/docs>.
+
+### Without keys, on scripted data
+
+This runs the page the closed beta serves, with the real server's quotas and the catalog mode's hard constraints, against scripted stand-ins for the models and the shops. It needs no keys and no `.env`, and it calls no model or shop. In "Find it for me" the products are invented and named "Synthetic", their links lead nowhere, each choice of how much of an outfit gives fixed results whatever you ask, and the agent and the checks on its choice do not run. The try-on returns a plain colored image. Nothing it shows is model output, so it shows how the flow works, and not how good the results are. The [demo video](https://youtu.be/iHPLdXnKQ6w) and the [recorded run](docs/DEMO.md) show real results.
+
+```bash
+git clone https://github.com/vbabenko97/fullaura.git
+cd fullaura
+uv sync --frozen
+npm --prefix frontend ci
+npm --prefix frontend run build
+uv run --frozen python -m scripts.e2e_server --port 8765 --design-mode off
+```
+
+Open <http://127.0.0.1:8765/#invite=e2e-invite-code-not-for-production>. That code is a test value from `scripts/e2e_server.py`, which works only on this local server; the hosted beta refuses it.
 
 ### Settings for local development
 
