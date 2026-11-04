@@ -364,7 +364,7 @@ The author chose this after [T-32](#t-32-what-the-first-participants-met) showed
 
 On this code, with the real model and shops, ten runs all returned products: six coat requests each returned a coat alone, and four general requests each returned a top with layers. One drawing on a synthetic persona showed the coat over the clothes in the full-body photo. The search conditions were written before the runs. These checks cost about $0.15 outside the ledger.
 
-The work reached the site with the deployment of `bf7d4b6`, which passed the HTTP smoke check there ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). On 2026-11-04 three searches and a try-on ran on that revision to record the demo video, and all four succeeded.
+The work reached the site with the deployment of `bf7d4b6`, which passed the HTTP smoke check there ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). On 2026-11-04 six searches and three try-ons ran on that revision to record the demo video, and all of them succeeded.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, the new tests fail on the earlier code, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check.
 
