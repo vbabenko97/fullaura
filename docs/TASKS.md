@@ -35,7 +35,7 @@ This file lists the work that builds the first version described in [SPEC.md](SP
 | [T-31](#t-31-a-search-survives-a-dropped-connection) A search survives a dropped connection | done | 2026-11-03 |
 | [T-32](#t-32-what-the-first-participants-met) What the first participants met | done | 2026-11-03 |
 | [T-33](#t-33-upper-body-without-a-required-top) Upper body without a required top | done | 2026-11-03 |
-| [T-06](#t-06-evaluation-and-submission) Evaluation and submission | next | |
+| [T-06](#t-06-evaluation-and-submission) Evaluation and submission | done | 2026-11-04 |
 | [T-07](#t-07-photo-of-an-owned-item) Photo of an owned item (optional) | planned | |
 
 ## T-01: Foundation
@@ -376,13 +376,13 @@ Compare the full workflow with a simple baseline on the same cases. Record const
 
 The participant guide requires a public repository, a three-minute video that highlights what was built during the event, and every person who worked on the project on the submission page, and it says that judges must be able to tell what was created during the event, or the project is disqualified. Judges use the video, the code and the live product, and they score impact (30%), use of Meta's AI tooling (25%), technical depth and execution (20%) and the demo (25%). The submission form has no field for the live site or for access details, and its consent box lets the organizers publish what is submitted, so no invite code goes in it.
 
-The fixed cases, deterministic baseline, live comparison metrics and the author's answers for the example-fit case are recorded in [EVALUATION.md](EVALUATION.md). Raw screen recordings of searches and a try-on on the deployed site, from 2026-11-02 and 2026-11-04, exist on the operator's machine, without narration, and [DEMO.md](DEMO.md) shows the runs of 2026-11-02 for people without an invite. The README also says how to click through the flow locally on scripted data, with no invite and no keys. The [finished video](https://youtu.be/iHPLdXnKQ6w) is unlisted on YouTube. The submission remains outstanding, so T-06 is not done.
+The fixed cases, deterministic baseline, live comparison metrics and the author's answers for the example-fit case are recorded in [EVALUATION.md](EVALUATION.md). Raw screen recordings of searches and a try-on on the deployed site, from 2026-11-02 and 2026-11-04, exist on the operator's machine, without narration, and [DEMO.md](DEMO.md) shows the runs of 2026-11-02 for people without an invite. The README also says how to click through the flow locally on scripted data, with no invite and no keys. The [finished video](https://youtu.be/iHPLdXnKQ6w) is unlisted on YouTube.
 
 Done when: the submission is sent and its confirmation is received. Being ready to submit does not finish the task, so record each step on its own line:
 
-- Ready to submit:
-- Submitted:
-- Confirmation received:
+- Ready to submit: 2026-11-04
+- Submitted: 2026-11-04, about 21:16 Vienna time, as team FullAura, number 2827, in the Indie Developer Track under Build for Your World
+- Confirmation received: 2026-11-04, by email from Cerebral Valley Hackathons
 
 ## T-07: Photo of an owned item
 
