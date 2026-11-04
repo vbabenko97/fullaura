@@ -364,7 +364,7 @@ The author chose this after [T-32](#t-32-what-the-first-participants-met) showed
 
 On this code, with the real model and shops, ten runs all returned products: six coat requests each returned a coat alone, and four general requests each returned a top with layers. One drawing on a synthetic persona showed the coat over the clothes in the full-body photo. The search conditions were written before the runs. These checks cost about $0.15 outside the ledger.
 
-The work reached the site with the deployment of `bf7d4b6`, which passed the HTTP smoke check there ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). No search has run on that revision yet.
+The work reached the site with the deployment of `bf7d4b6`, which passed the HTTP smoke check there ([DEPLOYMENT.md](DEPLOYMENT.md#checks-on-the-deployed-beta)). On 2026-11-04 three searches and a try-on ran on that revision to record the demo video, and all four succeeded.
 
 Done when: the checks in the [README](../README.md#check-a-change) pass, the new tests fail on the earlier code, and the work is deployed as [DEPLOYMENT.md](DEPLOYMENT.md) describes, with the deployed site passing the HTTP smoke check.
 
@@ -376,7 +376,7 @@ Compare the full workflow with a simple baseline on the same cases. Record const
 
 The participant guide requires a public repository, a three-minute video that highlights what was built during the event, and every person who worked on the project on the submission page, and it says that judges must be able to tell what was created during the event, or the project is disqualified. Judges use the video, the code and the live product, and they score impact (30%), use of Meta's AI tooling (25%), technical depth and execution (20%) and the demo (25%). The submission form has no field for the live site or for access details, and its consent box lets the organizers publish what is submitted, so no invite code goes in it.
 
-The fixed cases, deterministic baseline, live comparison metrics and the author's answers for the example-fit case are recorded in [EVALUATION.md](EVALUATION.md). Raw screen recordings of two searches and a try-on on the deployed site exist on the operator's machine, without narration, and [DEMO.md](DEMO.md) shows the same runs for people without an invite. The finished video and the submission remain outstanding, so T-06 is not done.
+The fixed cases, deterministic baseline, live comparison metrics and the author's answers for the example-fit case are recorded in [EVALUATION.md](EVALUATION.md). Raw screen recordings of searches and a try-on on the deployed site, from 2026-11-02 and 2026-11-04, exist on the operator's machine, without narration, and [DEMO.md](DEMO.md) shows the runs of 2026-11-02 for people without an invite. The finished video and the submission remain outstanding, so T-06 is not done.
 
 Done when: the submission is sent and its confirmation is received. Being ready to submit does not finish the task, so record each step on its own line:
 
