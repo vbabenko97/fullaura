@@ -293,8 +293,7 @@ resource app 'Microsoft.App/containerApps@2025-07-01' = {
         }
       ]
       scale: {
-        // One until the pilot's records are deleted on 2026-11-10, then back to 0 (D-95).
-        minReplicas: 1
+        minReplicas: 0
         maxReplicas: 1
         cooldownPeriod: 300
         pollingInterval: 30
